@@ -11,8 +11,7 @@ SELECT
     WHEN 'VIEW'       THEN 'view'
     WHEN 'EXTERNAL'   THEN 'externa'
   END AS tipo,
-  creation_time,
-  last_modified_time
+  creation_time
 FROM (
   SELECT * FROM `adframework.raw.INFORMATION_SCHEMA.TABLES`
   UNION ALL
