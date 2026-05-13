@@ -1,143 +1,126 @@
-# Problemas de Qualidade de IDs — AdFramework
+# Análise de Qualidade de IDs — AdFramework
 
-> Análise realizada em 2026-05-12  
-> Baseada no repositório github.com/rshiro-newad/adframework + inspeção BigQuery
-
----
-
-## Resumo executivo
-
-Há **6 classes de problemas estruturais** na geração e uso de IDs no AdFramework. Alguns causam duplicação silenciosa na gold layer, outros causam perda de dados históricos, e alguns criam JOINs que silenciosamente retornam NULL sem erro. Nenhum é catastrófico isolado, mas combinados explicam os problemas de duplicação observados (especialmente Luckbet).
+> Realizada em 2026-05-12 | Fonte: `github.com/rshiro-newad/adframework` + inspeção BigQuery
 
 ---
 
-## 1. `newad_client_id` — sem unicidade por anunciante real
+## 1. Mapa de IDs — origem, formato e onde vivem
 
-**Arquivo:** `admin_ui/app/main.py`, linha 312  
-**Função:** `_gen_platform_client_id(name)`
-
-```python
-def _gen_platform_client_id(name: str = "") -> str:
-    base = _slug(name)
-    suffix = uuid.uuid4().hex[:8]   # apenas 8 hex = sufixo curto
-    return f"nwd_{base[:20]}_{suffix}"
-```
-
-**Problema:** A unicidade é checada pelo ID gerado (document ID no Firestore), não pelo nome do anunciante. Dois admins podem criar dois `platform_clients` para o mesmo anunciante real — o sistema não impede isso. O endpoint `/platform-clients/create` não tem validação de duplicidade por `advertiser_name`.
-
-**O que causou o Luckbet duplo:** `nwd_luckbet_a485d6bc` e `nwd_luckbet_69e72f18` foram criados em dois momentos diferentes (possivelmente via backfill e depois via UI, ou dois imports manuais). O sistema aceitou ambos sem reclamar.
-
-**Risco adicional:** A verificação de unicidade é um Firestore read-before-write **sem transaction**. Sob concorrência, dois creates simultâneos podem ambos ver `exists=False` e o segundo sobrescreve o primeiro silenciosamente.
-
-**Ação necessária (Shiro):**
-- Adicionar validação por `advertiser_name` antes de criar novo `platform_client`
-- Implementar deduplicação: verificar se já existe um cliente com mesmo nome ou mesmo DSP account ID
+| ID | Formato | Gerado por | Armazenado em | Exemplo |
+|---|---|---|---|---|
+| `newad_client_id` | `nwd_{slug}_{8hex}` | `_gen_platform_client_id()` — `main.py:312` | Firestore `platform_clients` → BQ `core.platform_client_links` | `nwd_luckbet_a485d6bc` |
+| `io_id` | `io_{slug(io_number)}` | `main.py:1232` (determinístico) | Firestore `io_manager` → BQ `core.io_manager_v2` | `io_202603_nwd-banco-cora-acfae3ab_001` |
+| `line_id` | `{io_id}_line_{slug(line_number)}` | `main.py:1232` (determinístico) | Firestore `io_manager` → BQ `core.io_manager_v2` | `io_202603_..._001_line_001` |
+| `platform_campaign_id` | string livre (vem do DSP) | Entrada manual no Admin UI (campo de formulário) | `core.io_line_bindings_v2`, `raw.mediasmart_daily` | `35ey8fny8gizx3vfxwac4ft1xjitbfbe` |
+| `platform_strategy_id` | string livre (vem do DSP) | Entrada manual ou derivado no stg | `core.io_line_bindings_v2` | — |
+| `link_value` | varia por plataforma | Admin UI — seleção de lista BQ | Firestore `activations` → BQ `core.platform_client_links` | MS: `newad_brazil-xyz`, MGID: `12220857`, Siprocal: `luckbet` |
+| `advertiser_id` | slug ou hash SHA256 | Legado — várias origens | `core.io_line_bindings_v2`, `gold.dim_client` | `adv_b559ffdcbd` ou `luckbet` |
 
 ---
 
-## 2. `io_id` e `line_id` — determinísticos, não aleatórios
+## 2. Problemas encontrados por ID
 
-**Arquivo:** `admin_ui/app/main.py`, linha 1232; `scripts/import_io_manager_firestore.py`
+### `newad_client_id`
 
-```python
-io_id   = f"io_{_slug(io_number or advertiser_name or 'io')}"
-line_id = f"{io_id}_line_{_slug(line_number)}"
-```
-
-**Problema crítico:** Se `io_number` estiver em branco para múltiplos IOs do mesmo anunciante, todos recebem o mesmo `io_id`. Exemplo: dois IOs da Luckbet sem `io_number` → ambos geram `io_luckbet`. As linhas de ambos ficam com `line_id` idênticos. O Firestore (`.set()`) silenciosamente sobrescreve o primeiro com o segundo.
-
-**Impacto no BigQuery:** `gold.dim_io_line` faz `QUALIFY ROW_NUMBER() OVER (PARTITION BY line_id ORDER BY start_date DESC) = 1` — mantém apenas o mais recente, descartando os outros sem nenhum aviso ou erro.
-
-**Problema secundário:** Quando um IO é editado (novo `io_number` ou `line_number`), o código cria um novo documento Firestore e deleta o antigo. O BigQuery (`core.io_manager_v2`) é sincronizado manualmente — existe uma janela de tempo onde o `line_id` em `core.io_line_bindings_v2` aponta para um documento que não existe mais.
-
-**Ação necessária (Shiro):**
-- Garantir que `io_number` seja obrigatório e único por anunciante
-- Ou trocar para UUID aleatório (`uuid4().hex[:8]`) em vez de slug determinístico
-- Implementar sync automático Firestore → BQ após qualquer operação de IO
+| Campo | Detalhe |
+|---|---|
+| **Problema** | Unicidade checada só pelo ID gerado, não pelo nome do anunciante |
+| **Causa raiz** | `/platform-clients/create` não valida se já existe cliente com mesmo `advertiser_name` |
+| **Risco adicional** | Read-before-write sem transaction Firestore — concorrência pode criar duplicata |
+| **Caso real** | `nwd_luckbet_a485d6bc` (canônico) + `nwd_luckbet_69e72f18` (legacy) — mesmo anunciante, dois IDs |
+| **Impacto BQ** | Entrega da Luckbet contada 2-3x na gold layer |
+| **Urgência** | 🔴 Alta |
+| **Ação** | Adicionar validação por `advertiser_name` antes de criar; bloquear duplicata |
 
 ---
 
-## 3. `platform_client_links` — tabela manual, fora do código
+### `io_id` e `line_id`
 
-**Achado:** `core.platform_client_links` (27 linhas), `core.io_manager_v2` (229 linhas) e `core.io_line_bindings_v2` (170 linhas) **não são criadas por nenhum script do repositório**. São objetos BQ mantidos manualmente.
-
-**O Admin UI escreve no Firestore** (subcollection `platform_clients/{id}/activations/{platform}`). A sincronização Firestore → BigQuery não está automatizada no código.
-
-**Impacto:** Qualquer ativação de link feita no Admin UI só chega ao BigQuery quando alguém executa a sincronização manual. O intervalo de desatualização é desconhecido.
-
-**Ação necessária (Shiro):**
-- Documentar o processo de sync manual: quem executa, com que frequência, qual query/script
-- Ou implementar sync automático via Cloud Function/Pub-Sub no evento de write do Firestore
-
----
-
-## 4. Siprocal — atribuição por nome, sem ID estruturado + histórico destruído
-
-**Arquivo:** `orchestrator.py`, método `_run_siprocal_external()`
-
-```python
-# Recria a tabela do zero a cada execução
-"CREATE OR REPLACE TABLE raw.siprocal_daily_materialized AS SELECT ... FROM {source_ref}"
-```
-
-**Dois problemas independentes:**
-
-**4a. Sem ID estruturado:** `link_value` para Siprocal é o campo `advertiser` (STRING livre, ex: `"luckbet"`). Se alguém digitar `"Luckbet"` no Google Sheet em vez de `"luckbet"`, o JOIN falha silenciosamente e a entrega desaparece da gold. Não há LOWER() aplicado no storage.
-
-**4b. Histórico destruído:** `CREATE OR REPLACE TABLE` apaga e recria a tabela inteira a cada run. Se o Google Sheet for editado retroativamente, dados históricos são perdidos. Isso explica por que `raw.siprocal_daily_materialized` parou em **2026-03-08** — se o Sheet foi encerrado ou modificado, o histórico anterior foi sobrescrito.
-
-**Ação necessária (Shiro):**
-- Trocar `CREATE OR REPLACE` por INSERT incremental com deduplicação por `(day, advertiser, campaign_id)`
-- Aplicar `LOWER(TRIM(advertiser))` no momento da ingestão
-- Definir um ID numérico para Siprocal ou usar `campaign_id` como chave em vez do nome do anunciante
+| Campo | Detalhe |
+|---|---|
+| **Problema** | IDs determinísticos — gerados por slug do `io_number`, não por UUID |
+| **Fórmula** | `io_id = f"io_{slug(io_number or advertiser_name)}"` |
+| **Risco de colisão** | Se `io_number` estiver em branco, todos os IOs do mesmo anunciante geram o mesmo `io_id` |
+| **Comportamento Firestore** | `.set()` sem merge = segundo write sobrescreve o primeiro silenciosamente |
+| **Impacto BQ** | `gold.dim_io_line` faz `ROW_NUMBER() PARTITION BY line_id` — mantém só o mais recente, descarta os outros sem aviso |
+| **Problema secundário** | Editar `io_number` cria novo documento + deleta o antigo no Firestore; BQ fica desatualizado até o próximo sync manual |
+| **Urgência** | 🔴 Alta |
+| **Ação** | Tornar `io_number` obrigatório e único; ou trocar para UUID aleatório |
 
 ---
 
-## 5. MGID — nome de coluna sem underscore após normalize_data
+### `platform_campaign_id` e `platform_strategy_id`
 
-**Arquivo:** `adframework_python/src/base.py`, método `normalize_data()`
-
-O normalizador converte `campaignId` → `campaignid` (tudo minúsculo, sem underscore). Isso é diferente de `campaign_id` (com underscore).
-
-**Impacto potencial:** Qualquer SQL que referencie `campaign_id` esperando dados MGID pode silenciosamente receber NULL se a coluna real se chama `campaignid`. Precisa verificar nos views stg se o JOIN está usando o nome correto.
-
-**Ação necessária (Shiro):**
-- Confirmar que todas as stg views que leem `raw.mgid_daily` usam o nome correto `campaignid` (sem underscore)
-- Ou corrigir o normalizador para gerar `campaign_id` via regex `s/([a-z])([A-Z])/\1_\2/`
-
----
-
-## 6. Creative fetch usa `io_manager_enriched` (legacy, 62 linhas) em vez de `io_manager_v2` (229 linhas)
-
-**Arquivo:** `orchestrator.py`, linha ~723, método `_fetch_mediasmart_creatives_iter()`
-
-O código busca criativos usando `core.io_manager_enriched`, que por sua vez lê `core.io_manager` — a **tabela externa apontando para o Google Sheets** com apenas 62 linhas (IO legados). `core.io_manager_v2` tem 229 linhas (estado atual).
-
-**Impacto:** Metadados de criativos só são buscados para ~27% dos IOs. Os outros 73% nunca têm criativos fetchados automaticamente.
-
-**Ação necessária (Shiro):**
-- Trocar a query de lookup de criativos para usar `core.io_manager_v2` em vez de `core.io_manager_enriched`
+| Campo | Detalhe |
+|---|---|
+| **Problema** | Campo de texto livre — sem validação se o ID existe no DSP |
+| **Armazenamento** | Guardado exatamente como digitado — sem TRIM, sem LOWER |
+| **Risco** | Espaço extra ou capitalização diferente quebra o JOIN com `raw.mediasmart_daily` silenciosamente |
+| **Caso real** | 2 campaigns com entrega real (~6M impressões) sem IO binding — nunca aparecem na gold |
+| **Impacto BQ** | Linhas da raw que não fazem JOIN com nenhum binding ficam invisíveis na gold |
+| **Urgência** | 🟡 Média |
+| **Ação** | Adicionar lookup BQ para validar que o ID existe antes de salvar; aplicar TRIM no formulário |
 
 ---
 
-## Quadro resumo — o que dizer para o Shiro
+### `link_value` (platform_client_links)
 
-| # | Problema | Impacto atual | Urgência |
+| Campo | Detalhe |
+|---|---|
+| **Problema MediaSmart** | ID estruturado — funciona bem; sem colisão confirmada |
+| **Problema MGID** | ID numérico — funciona bem; sem colisão confirmada |
+| **Problema Siprocal** | Atribuição por nome (`advertiser = 'luckbet'`) — sem ID estruturado |
+| **Risco Siprocal** | Capitalização diferente no Google Sheet (`Luckbet` vs `luckbet`) quebra JOIN silenciosamente |
+| **Colisão atual** | `nwd_luckbet_a485d6bc` e `nwd_luckbet_69e72f18` compartilham `link_value = 'luckbet'` no Siprocal |
+| **Sem unicidade** | Nada impede dois `newad_client_id` diferentes de ter o mesmo `link_value` na mesma plataforma |
+| **Urgência** | 🟡 Média |
+| **Ação** | Aplicar `LOWER(TRIM())` no storage do Siprocal; bloquear `link_value` duplicado na mesma plataforma |
+
+---
+
+### `core.*` — tabelas sem sync automático
+
+| Campo | Detalhe |
+|---|---|
+| **Problema** | `core.platform_client_links`, `core.io_manager_v2`, `core.io_line_bindings_v2` não existem em nenhum script do repositório |
+| **O que acontece** | Admin UI escreve no Firestore; BQ recebe via sync **manual** sem frequência documentada |
+| **Risco** | Qualquer link ou IO criado no Admin UI pode levar horas/dias para aparecer no BQ |
+| **Urgência** | 🟡 Média |
+| **Ação** | Documentar quem faz o sync, quando e como; ou automatizar via Cloud Function |
+
+---
+
+## 3. Problemas por plataforma de ingestão
+
+| Plataforma | Script | Modo de carga | Problema |
 |---|---|---|---|
-| 1 | Dois client IDs para Luckbet | Duplicação na gold — números errados | 🔴 Alta |
-| 2 | io_id determinístico + sem io_number obrigatório | Perda silenciosa de IOs com mesmo slug | 🔴 Alta |
-| 3 | core.* sem sync automático | Lag desconhecido entre Admin UI e BQ | 🟡 Média |
-| 4a | Siprocal sem ID estruturado | Risco de JOIN falhar por capitalização | 🟡 Média |
-| 4b | Siprocal `CREATE OR REPLACE` destrói histórico | Dados históricos não recuperáveis | 🔴 Alta |
-| 5 | MGID coluna `campaignid` vs `campaign_id` | Possível NULL silencioso em JOINs stg | 🟡 Média |
-| 6 | Creative fetch usa io_manager legado | 73% dos IOs sem fetch de criativo | 🟡 Média |
+| MediaSmart | `orchestrator._run_mediasmart_daily()` | APPEND diário | Funciona bem; valores gravados como STRING (`df.astype(str)`) |
+| MGID | `orchestrator._run_mgid_daily()` | APPEND diário | `campaignId` → `campaignid` após normalize (sem underscore); pode quebrar JOIN |
+| Siprocal | `orchestrator._run_siprocal_external()` | `CREATE OR REPLACE` (destrói histórico) | Recria tabela inteira a cada run; histórico perdido se Sheet for editado |
+| Criativos MS | `orchestrator._fetch_mediasmart_creatives_iter()` | Query em `core.io_manager_enriched` | Usa tabela legada (62 IOs) em vez de `core.io_manager_v2` (229 IOs) — 73% dos IOs sem criativo |
 
 ---
 
-## O que NÃO está no código (precisa documentar com Shiro)
+## 4. Quadro consolidado — o que levar para o Shiro
 
-- Quem executa o sync Firestore → `core.io_manager_v2`?
-- Com que frequência e como `core.io_line_bindings_v2` é atualizado?
-- Como `core.platform_client_links` foi criado inicialmente e quem o mantém?
-- A tabela `share.io_validation_full` (48 linhas, última modificação fev/26) — ainda é usada?
-- O dataset `pixel` (mencionado no orchestrator) — existe no projeto BQ? O que armazena?
+| # | ID afetado | Problema | Impacto atual na gold | Urgência |
+|---|---|---|---|---|
+| 1 | `newad_client_id` | Sem unicidade por anunciante — permite duplicata | Luckbet contada 2-3x | 🔴 Alta |
+| 2 | `io_id` / `line_id` | Determinístico — colisão quando `io_number` em branco | IO sobrescrito silenciosamente | 🔴 Alta |
+| 3 | `link_value` Siprocal | Nome livre sem LOWER — JOIN quebra por capitalização | Entrega Siprocal pode sumir | 🔴 Alta |
+| 4 | `platform_campaign_id` | Campo livre sem validação — sem TRIM | Campaigns órfãs invisíveis na gold | 🟡 Média |
+| 5 | `core.*` | Sem sync automático Firestore → BQ | Lag desconhecido | 🟡 Média |
+| 6 | MGID `campaignid` | Coluna sem underscore — potencial JOIN NULL | Dados MGID podem sumir no stg | 🟡 Média |
+| 7 | Criativos | orchestrator usa `io_manager_enriched` (legado) | 73% dos criativos não são buscados | 🟡 Média |
+
+---
+
+## 5. Perguntas abertas para o Shiro
+
+| Pergunta | Por que importa |
+|---|---|
+| Quem executa o sync Firestore → `core.*`? Com que frequência? | Sem isso não sabemos o lag real dos dados |
+| `core.platform_client_links` foi criado como? Por qual script? | Não existe em nenhum arquivo do repositório |
+| `share.io_validation_full` (48 linhas, fev/26) ainda é usada? | Pode ser objeto morto ocupando espaço |
+| O dataset `pixel` existe no projeto BQ? O que armazena? | Mencionado no orchestrator mas não aparece nos datasets auditados |
+| `nwd_luckbet_69e72f18` pode ser desativado com segurança? | Precisa confirmar que nenhum IO ativo depende dele |
