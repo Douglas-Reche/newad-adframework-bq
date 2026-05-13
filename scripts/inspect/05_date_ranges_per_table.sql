@@ -2,11 +2,11 @@
 -- Rode para saber "qual período existe no BQ" sem abrir dashboard nenhum
 -- ATENÇÃO: este script processa dados reais — vai cobrar bytes no BQ
 
-SELECT 'raw.mediasmart_daily_operational'     AS tabela, MIN(date) AS inicio, MAX(date) AS fim, COUNT(*) AS linhas FROM `adframework.raw.mediasmart_daily_operational`
+SELECT 'raw.mediasmart_daily'                AS tabela, MIN(CAST(day AS DATE)) AS inicio, MAX(CAST(day AS DATE)) AS fim, COUNT(*) AS linhas FROM `adframework.raw.mediasmart_daily`
 UNION ALL
-SELECT 'raw.mgid_daily_operational',                     MIN(date), MAX(date), COUNT(*) FROM `adframework.raw.mgid_daily_operational`
+SELECT 'raw.mgid_daily',                                 MIN(CAST(day AS DATE)), MAX(CAST(day AS DATE)), COUNT(*) FROM `adframework.raw.mgid_daily`
 UNION ALL
-SELECT 'raw.siprocal_daily_materialized',                MIN(date), MAX(date), COUNT(*) FROM `adframework.raw.siprocal_daily_materialized`
+SELECT 'raw.siprocal_daily_materialized',                MIN(CAST(day AS DATE)), MAX(CAST(day AS DATE)), COUNT(*) FROM `adframework.raw.siprocal_daily_materialized`
 UNION ALL
 SELECT 'share.newad_operational_daily',                  MIN(date), MAX(date), COUNT(*) FROM `adframework.share.newad_operational_daily`
 UNION ALL
