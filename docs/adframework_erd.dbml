@@ -1,0 +1,5103 @@
+// AdFramework BigQuery ERD
+// 7 datasets | 164 objects | 4,289 columns
+// Import: https://dbdiagram.io/d  (paste DBML content)
+
+// ================================================
+// Layer: RAW
+// ================================================
+
+Table raw__mediasmart_advertisers {
+  Note: 'raw.mediasmart_advertisers | TABLE | 746 rows'
+  id varchar [pk]
+  name varchar
+  iab_category varchar
+  domain varchar
+  sensitive_content boolean
+  event_id varchar
+}
+
+Table raw__mediasmart_bid_supply_daily {
+  Note: 'raw.mediasmart_bid_supply_daily | TABLE | 602,179 rows'
+  platform varchar
+  report_name varchar
+  raw_ingested_at timestamp
+  day varchar
+  event_id varchar
+  eventid varchar
+  campaign_id varchar
+  controlid varchar
+  auction_type varchar
+  auctiontype varchar
+  publisher_domain varchar
+  domain varchar
+  ad_exchange varchar
+  exchange varchar
+  publisher_company varchar
+  publishercompany varchar
+  publisher_id varchar
+  publisherid varchar
+  publisher_name varchar
+  publishername varchar
+  publisher_url varchar
+  publisherurl varchar
+  bid_offers varchar
+  offers varchar
+  bids varchar
+  bid_percent varchar
+  bid_ varchar
+  won varchar
+  won_percent varchar
+  won_ varchar
+  media_cost varchar
+  wonprice varchar
+  total_bids_cost varchar
+  bidprice varchar
+  hour varchar
+  hour_of_day varchar
+  hourofday varchar
+  strategy_id varchar
+  strategyid varchar
+  iab_category varchar
+  iabcategory varchar
+  iab_subcategory varchar
+  iabsubcategory varchar
+  usd_cost varchar
+  usdcost varchar
+  deal_charge varchar
+  dealcharge varchar
+  impressions varchar
+  clicks varchar
+  conversions_1 varchar
+  conversions_2 varchar
+  conversions_3 varchar
+  conversions_4 varchar
+  conversions_5 varchar
+  conversions1 varchar
+  conversions2 varchar
+  conversions3 varchar
+  conversions4 varchar
+  conversions5 varchar
+  events1 varchar
+  events2 varchar
+  events3 varchar
+  events4 varchar
+  events5 varchar
+}
+
+Table raw__mediasmart_campaigns {
+  Note: 'raw.mediasmart_campaigns | TABLE | 2,231 rows'
+  favorite varchar
+  ms_version varchar
+  type varchar
+  tags varchar
+  state varchar
+  pending_approval varchar
+  id varchar [pk]
+  goal varchar
+  active varchar
+  color varchar
+  search varchar
+  strategies varchar
+  description varchar
+  updated_at varchar
+  schedule varchar
+  pricing varchar
+  session_data_enabled varchar
+  created_at varchar
+  name varchar
+  hidden varchar
+  deals_and_pricing varchar
+  creatives varchar
+}
+
+Table raw__mediasmart_creatives {
+  Note: 'raw.mediasmart_creatives | TABLE | 24,932 rows'
+  campaign_id varchar
+  id varchar [pk]
+  creative_id varchar
+  type varchar
+  name varchar
+  thumbnail_url varchar
+  image_url varchar
+  created_at varchar
+  updated_at varchar
+  campaign varchar
+  creative varchar
+  description varchar
+}
+
+Table raw__mediasmart_daily {
+  Note: 'raw.mediasmart_daily | TABLE | 640,602 rows'
+  day varchar
+  creative_type varchar
+  creative_id varchar
+  controlid varchar
+  eventid varchar
+  strategyid varchar
+  strategyname varchar
+  nativesize varchar
+  size varchar
+  client_currency varchar
+  conversion_source varchar
+  impressions varchar
+  clicks varchar
+  video_start varchar
+  video_25_viewed varchar
+  video_50_viewed varchar
+  video_75_viewed varchar
+  video_completion varchar
+  conversions_1 varchar
+  conversions_2 varchar
+  conversions_3 varchar
+  conversions_4 varchar
+  conversions_5 varchar
+  clientrevenue varchar
+  convertedclientrevenue varchar
+  client_cost varchar
+  platform varchar
+  report_name varchar
+  raw_ingested_at timestamp
+}
+
+Table raw__mediasmart_daily_backup_20260227_111821 {
+  Note: 'raw.mediasmart_daily_backup_20260227_111821 | TABLE | 595,942 rows'
+  day varchar
+  creative_type varchar
+  creative_id varchar
+  controlid varchar
+  eventid varchar
+  strategyid varchar
+  strategyname varchar
+  nativesize varchar
+  size varchar
+  client_currency varchar
+  conversion_source varchar
+  impressions varchar
+  clicks varchar
+  video_start varchar
+  video_25_viewed varchar
+  video_50_viewed varchar
+  video_75_viewed varchar
+  video_completion varchar
+  conversions_1 varchar
+  conversions_2 varchar
+  conversions_3 varchar
+  conversions_4 varchar
+  conversions_5 varchar
+  clientrevenue varchar
+  convertedclientrevenue varchar
+  client_cost varchar
+  platform varchar
+  report_name varchar
+  raw_ingested_at timestamp
+}
+
+Table raw__mediasmart_daily_creative {
+  Note: 'raw.mediasmart_daily_creative | TABLE | 0 rows'
+  platform varchar
+  report_name varchar
+  raw_ingested_at timestamp
+  day varchar
+  controlid varchar
+  creative_type varchar
+  creative_id varchar
+  strategyid varchar
+  strategyname varchar
+  nativesize varchar
+  size varchar
+  impressions varchar
+  clicks varchar
+  video_start varchar
+  video_25_viewed varchar
+  video_50_viewed varchar
+  video_75_viewed varchar
+  video_completion varchar
+  conversions_1 varchar
+  conversions_2 varchar
+  conversions_3 varchar
+  conversions_4 varchar
+  conversions_5 varchar
+}
+
+Table raw__mediasmart_daily_legacy_20260227_061441 {
+  Note: 'raw.mediasmart_daily_legacy_20260227_061441 | TABLE | 626,696 rows'
+  day varchar
+  creative_type varchar
+  creative_id varchar
+  campaign_id varchar
+  event_id varchar
+  native_size varchar
+  size varchar
+  device_type varchar
+  conversion_source varchar
+  tracking_tool varchar
+  impressions varchar
+  clicks varchar
+  video_start varchar
+  video_25_viewed varchar
+  video_50_viewed varchar
+  video_75_viewed varchar
+  video_completion varchar
+  conversions_1 varchar
+  conversions_2 varchar
+  conversions_3 varchar
+  conversions_4 varchar
+  conversions_5 varchar
+  time_to_conversion_1_seconds varchar
+  time_to_conversion_2_seconds varchar
+  time_to_conversion_3_seconds varchar
+  time_to_conversion_4_seconds varchar
+  time_to_conversion_5_seconds varchar
+  platform varchar
+  report_name varchar
+  raw_ingested_at timestamp
+  date varchar
+  client_cost varchar
+  wonprice varchar
+  final_price varchar
+  media_cost__brl varchar
+  eventid varchar
+  strategyid varchar
+  strategy_id varchar
+  strategyname varchar
+  strategy_name varchar
+  nativesize varchar
+  clientcurrency varchar
+  client_currency varchar
+  clientrevenue varchar
+  client_revenue varchar
+  convertedclientrevenue varchar
+  converted_client_revenue varchar
+}
+
+Table raw__mediasmart_daily_legacy_20260227_065635 {
+  Note: 'raw.mediasmart_daily_legacy_20260227_065635 | TABLE | 626,696 rows'
+  day varchar
+  date varchar
+  creative_type varchar
+  creative_id varchar
+  campaign_id varchar
+  event_id varchar
+  strategy_id varchar
+  strategy_name varchar
+  native_size varchar
+  size varchar
+  device_type varchar
+  client_currency varchar
+  conversion_source varchar
+  impressions varchar
+  clicks varchar
+  video_start varchar
+  video_25_viewed varchar
+  video_50_viewed varchar
+  video_75_viewed varchar
+  video_completion varchar
+  conversions_1 varchar
+  conversions_2 varchar
+  conversions_3 varchar
+  conversions_4 varchar
+  conversions_5 varchar
+  client_revenue varchar
+  converted_client_revenue varchar
+  client_cost varchar
+  platform varchar
+  report_name varchar
+  raw_ingested_at timestamp
+  controlid varchar
+  eventid varchar
+  strategyid varchar
+  strategyname varchar
+  nativesize varchar
+  clientrevenue varchar
+  convertedclientrevenue varchar
+}
+
+Table raw__mediasmart_daily_operational {
+  Note: 'raw.mediasmart_daily_operational | TABLE | 0 rows'
+  platform varchar
+  report_name varchar
+  raw_ingested_at timestamp
+  day varchar
+  controlid varchar
+  eventid varchar
+  strategyid varchar
+  strategyname varchar
+  conversion_source varchar
+  impressions varchar
+  clicks varchar
+  video_start varchar
+  video_completion varchar
+  conversions_1 varchar
+  conversions_2 varchar
+  conversions_3 varchar
+  conversions_4 varchar
+  conversions_5 varchar
+}
+
+Table raw__mediasmart_revenue_daily {
+  Note: 'raw.mediasmart_revenue_daily | TABLE | 8,913 rows'
+  platform varchar
+  report_name varchar
+  raw_ingested_at timestamp
+  day varchar
+  controlid varchar
+  campaign_id varchar
+  campaignid varchar
+  eventid varchar
+  event_id varchar
+  strategyid varchar
+  strategy_id varchar
+  revenue_source varchar
+  revenuesource varchar
+  conversion_source varchar
+  convsource varchar
+  clientrevenue varchar
+  client_revenue varchar
+  event_revenue varchar
+}
+
+Table raw__mgid_campaigns {
+  Note: 'raw.mgid_campaigns | TABLE | 15,238 rows'
+  id varchar [pk]
+  language varchar
+  name varchar
+  status varchar
+  domainsFilter varchar
+  ipsFilter varchar
+  widgetsFilterUid varchar
+  statistics varchar
+  limitsFilter varchar
+  trackingOptions varchar
+  targets varchar
+  languageTargeting varchar
+  browserTargeting varchar
+  whenAdd varchar
+  campaignType varchar
+  category varchar
+  startDate varchar
+  endDate varchar
+  sourcesOptimization varchar
+  sourceFilters varchar
+}
+
+Table raw__mgid_creatives {
+  Note: 'raw.mgid_creatives | TABLE | 9,858 rows'
+  id varchar [pk]
+  title varchar
+  advertText varchar
+  url varchar
+  imageLink varchar
+  previewLinks varchar
+  cropLeft varchar
+  cropTop varchar
+  cropWidth varchar
+  priceOfClickByLocations varchar
+  goodPrice varchar
+  goodOldPrice varchar
+  currency varchar
+  category varchar
+  callToAction varchar
+  ad_type varchar
+  campaignId varchar
+  who_add varchar
+  status varchar
+  statistics varchar
+  conversion varchar
+  blocked_by varchar
+}
+
+Table raw__mgid_daily {
+  Note: 'raw.mgid_daily | TABLE | 4,160 rows'
+  day varchar
+  campaignid varchar
+  teaserid varchar
+  impressions varchar
+  clicks varchar
+  conversionsinterest varchar
+  conversionsdecision varchar
+  conversionsbuy varchar
+  platform varchar
+  report_name varchar
+  raw_ingested_at timestamp
+}
+
+Table raw__mgid_daily_device {
+  Note: 'raw.mgid_daily_device | TABLE | 803 rows'
+  day varchar
+  campaignid varchar
+  devicetype varchar
+  impressions varchar
+  clicks varchar
+  conversionsbuy varchar
+  conversionsinterest varchar
+  conversionsdecision varchar
+}
+
+Table raw__mgid_daily_legacy_20260227_061627 {
+  Note: 'raw.mgid_daily_legacy_20260227_061627 | TABLE | 3,439 rows'
+  day varchar
+  campaignid varchar
+  teaserid varchar
+  impressions varchar
+  clicks varchar
+  conversionsbuy varchar
+  conversionsinterest varchar
+  conversionsdecision varchar
+  platform varchar
+  report_name varchar
+  raw_ingested_at timestamp
+  campaign_id varchar
+  teaser_id varchar
+  conversions_interest varchar
+  conversions_decision varchar
+  conversions_buy varchar
+}
+
+Table raw__mgid_daily_legacy_20260227_065913 {
+  Note: 'raw.mgid_daily_legacy_20260227_065913 | TABLE | 3,446 rows'
+  day varchar
+  campaign_id varchar
+  teaser_id varchar
+  impressions varchar
+  clicks varchar
+  conversions_interest varchar
+  conversions_decision varchar
+  conversions_buy varchar
+  platform varchar
+  report_name varchar
+  raw_ingested_at timestamp
+  campaignid varchar
+  teaserid varchar
+  conversionsinterest varchar
+  conversionsdecision varchar
+  conversionsbuy varchar
+}
+
+Table raw__siprocal_daily {
+  Note: 'raw.siprocal_daily | EXTERNAL | 0 rows'
+  day date
+  advertiser varchar
+  campaign_id varchar
+  creative_type varchar
+  creative varchar
+  impressions bigint
+  clicks bigint
+}
+
+Table raw__siprocal_daily_materialized {
+  Note: 'raw.siprocal_daily_materialized | TABLE | 706 rows'
+  day varchar
+  advertiser varchar
+  campaign_id varchar
+  creative_type varchar
+  creative varchar
+  impressions varchar
+  clicks varchar
+  platform varchar
+  report_name varchar
+  raw_ingested_at timestamp
+}
+
+Table raw__siprocal_daily_native {
+  Note: 'raw.siprocal_daily_native | TABLE | 706 rows'
+  day date
+  advertiser varchar
+  campaign_id varchar
+  creative_type varchar
+  creative varchar
+  impressions bigint
+  clicks bigint
+}
+
+// ================================================
+// Layer: RAW_NEWADFRAMEWORK
+// ================================================
+
+Table raw_newadframework__io_line_bindings_v2 {
+  Note: 'raw_newadframework.io_line_bindings_v2 | VIEW | 0 rows'
+  binding_id varchar [pk]
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_line varchar
+  platform varchar
+  binding_scope varchar
+  platform_entity_id varchar
+  platform_entity_name varchar
+  platform_parent_id varchar
+  platform_campaign_id varchar
+  platform_campaign_name varchar
+  platform_strategy_id varchar
+  platform_strategy_name varchar
+  allocation_mode varchar
+  allocation_value decimal
+  line_status varchar
+  link_status varchar
+  start_date date
+  end_date date
+  proposal_month varchar
+  created_at timestamp
+  updated_at timestamp
+  nwd_ctx varchar
+}
+
+Table raw_newadframework__io_manager_v2 {
+  Note: 'raw_newadframework.io_manager_v2 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  advertiser varchar
+  product varchar
+  campaign_type varchar
+  campaign_name varchar
+  target varchar
+  interest varchar
+  start_date date
+  end_date date
+  total_budget decimal
+  funnel varchar
+  objective varchar
+  line_item varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  deliverable_volume decimal
+  platform varchar
+  platform_campaign_id varchar
+  platform_line_item_id varchar
+  proposal_month varchar
+  created_at timestamp
+  updated_at timestamp
+  newad_client_id varchar
+  advertiser_id varchar
+  line_id varchar [pk]
+  line_number varchar
+  line_status varchar
+}
+
+Table raw_newadframework__platform_client_links {
+  Note: 'raw_newadframework.platform_client_links | VIEW | 0 rows'
+  newad_client_id varchar
+  client_name varchar
+  advertiser_name varchar
+  advertiser_id varchar
+  platform varchar
+  status varchar
+  link_value varchar
+  link_label varchar
+  search_text varchar
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table raw_newadframework__proposal_lines {
+  Note: 'raw_newadframework.proposal_lines | VIEW | 0 rows'
+  proposal_line_id varchar
+  proposal_id varchar [pk]
+  line_name varchar
+  tactic_name varchar
+  funnel_stage varchar
+  target_description varchar
+  format varchar
+  buying_model_sold varchar
+  unit_price_sold decimal
+  budget_sold decimal
+  period_start date
+  period_end date
+  kpi_target_sold varchar
+  expected_volume_sold decimal
+  notes varchar
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table raw_newadframework__proposals {
+  Note: 'raw_newadframework.proposals | VIEW | 0 rows'
+  proposal_id varchar [pk]
+  advertiser_id varchar
+  product_id varchar
+  campaign_group_name varchar
+  period_start date
+  period_end date
+  budget_total_sold decimal
+  status varchar
+  owner_account_manager varchar
+  strategy_summary varchar
+  source_xls_id varchar
+  notes varchar
+  created_at timestamp
+  updated_at timestamp
+}
+
+// ================================================
+// Layer: STG
+// ================================================
+
+Table stg__io_lines_v4 {
+  Note: 'stg.io_lines_v4 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  nwd_adv_id varchar
+  nwd_agc_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  campaign_type varchar
+  campaign_name varchar
+  target varchar
+  interest varchar
+  funnel varchar
+  objective varchar
+  proposal_month varchar
+  line_id varchar [pk]
+  line_item varchar
+  line_number varchar
+  line_status varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  deliverable_volume decimal
+  platform varchar
+  platform_campaign_id varchar
+  platform_line_item_id varchar
+  start_date date
+  end_date date
+  budget_total decimal
+}
+
+Table stg__mediasmart_bid_supply_daily {
+  Note: 'stg.mediasmart_bid_supply_daily | VIEW | 0 rows'
+  date date
+  hour_of_day bigint
+  platform varchar
+  event_id varchar
+  campaign_id varchar
+  strategy_id varchar
+  iab_category varchar
+  iab_subcategory varchar
+  auction_type varchar
+  publisher_domain varchar
+  ad_exchange varchar
+  publisher_company varchar
+  publisher_id varchar
+  publisher_name varchar
+  publisher_url varchar
+  bid_offers bigint
+  bids bigint
+  bid_percent decimal
+  won bigint
+  won_percent decimal
+  usd_cost decimal
+  media_cost decimal
+  deal_charge decimal
+  total_bids_cost decimal
+  impressions bigint
+  clicks bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  report_name varchar
+  stg_ingested_at timestamp
+}
+
+Table stg__mediasmart_creative_daily {
+  Note: 'stg.mediasmart_creative_daily | VIEW | 0 rows'
+  date date
+  platform varchar
+  platform_campaign_id varchar
+  creative_id varchar
+  creative_url varchar
+  creative_type varchar
+  strategy_id varchar
+  strategy_name varchar
+  native_size varchar
+  format varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25_viewed bigint
+  video_50_viewed bigint
+  video_75_viewed bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  raw_ingested_at timestamp
+}
+
+Table stg__mediasmart_daily {
+  Note: 'stg.mediasmart_daily | VIEW | 0 rows'
+  date date
+  platform varchar
+  platform_campaign_id varchar
+  creative_id varchar
+  creative_url varchar
+  creative_type varchar
+  strategy_id varchar
+  strategy_name varchar
+  native_size varchar
+  format varchar
+  device_type varchar
+  client_currency varchar
+  conversion_source varchar
+  event_id varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25_viewed bigint
+  video_50_viewed bigint
+  video_75_viewed bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  client_revenue decimal
+  converted_client_revenue decimal
+  client_cost decimal
+  raw_ingested_at timestamp
+}
+
+Table stg__mediasmart_daily_std {
+  Note: 'stg.mediasmart_daily_std | VIEW | 0 rows'
+  date date
+  platform varchar
+  platform_campaign_id varchar
+  creative_id varchar
+  creative_url varchar
+  creative_type varchar
+  strategy_id varchar
+  strategy_name varchar
+  native_size varchar
+  format varchar
+  device_type varchar
+  client_currency varchar
+  conversion_source varchar
+  event_id varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25_viewed bigint
+  video_50_viewed bigint
+  video_75_viewed bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  client_revenue decimal
+  converted_client_revenue decimal
+  client_cost decimal
+  raw_ingested_at timestamp
+}
+
+Table stg__mediasmart_operational_daily {
+  Note: 'stg.mediasmart_operational_daily | VIEW | 0 rows'
+  date date
+  platform varchar
+  platform_campaign_id varchar
+  event_id varchar
+  strategy_id varchar
+  strategy_name varchar
+  conversion_source varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  raw_ingested_at timestamp
+}
+
+Table stg__mediasmart_operational_v2 {
+  Note: 'stg.mediasmart_operational_v2 | VIEW | 0 rows'
+  date date
+  platform varchar
+  advertiser_platform_id varchar
+  platform_campaign_id varchar
+  platform_strategy_id varchar
+  platform_strategy_name varchar
+  conversion_source varchar
+  operational_grain varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  raw_ingested_at timestamp
+}
+
+Table stg__mediasmart_revenue_daily {
+  Note: 'stg.mediasmart_revenue_daily | VIEW | 0 rows'
+  date date
+  campaign_id varchar
+  event_id varchar
+  strategy_id varchar
+  conversion_source varchar
+  revenue_source varchar
+  client_revenue decimal
+  platform varchar
+  report_name varchar
+  stg_ingested_at timestamp
+}
+
+Table stg__mgid_daily {
+  Note: 'stg.mgid_daily | VIEW | 0 rows'
+  date date
+  platform varchar
+  platform_campaign_id varchar
+  creative_id varchar
+  creative_url varchar
+  creative_type varchar
+  strategy_id varchar
+  strategy_name varchar
+  native_size varchar
+  format varchar
+  device_type varchar
+  client_currency varchar
+  conversion_source varchar
+  event_id varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25_viewed bigint
+  video_50_viewed bigint
+  video_75_viewed bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  client_revenue decimal
+  converted_client_revenue decimal
+  client_cost decimal
+  raw_ingested_at timestamp
+}
+
+Table stg__mgid_daily_std {
+  Note: 'stg.mgid_daily_std | VIEW | 0 rows'
+  date date
+  platform varchar
+  platform_campaign_id varchar
+  creative_id varchar
+  creative_url varchar
+  creative_type varchar
+  strategy_id varchar
+  strategy_name varchar
+  native_size varchar
+  format varchar
+  device_type varchar
+  client_currency varchar
+  conversion_source varchar
+  event_id varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25_viewed bigint
+  video_50_viewed bigint
+  video_75_viewed bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  client_revenue decimal
+  converted_client_revenue decimal
+  client_cost decimal
+  raw_ingested_at timestamp
+}
+
+Table stg__mgid_operational_v2 {
+  Note: 'stg.mgid_operational_v2 | VIEW | 0 rows'
+  date date
+  platform varchar
+  advertiser_platform_id varchar
+  platform_campaign_id varchar
+  platform_strategy_id varchar
+  platform_strategy_name varchar
+  conversion_source varchar
+  operational_grain varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  raw_ingested_at timestamp
+}
+
+Table stg__newad_creative_daily {
+  Note: 'stg.newad_creative_daily | VIEW | 0 rows'
+  date date
+  platform varchar
+  advertiser_platform_id varchar
+  platform_campaign_id varchar
+  platform_campaign_name varchar
+  platform_strategy_id varchar
+  platform_strategy_name varchar
+  creative_id varchar
+  creative_url varchar
+  creative_type varchar
+  native_size varchar
+  format varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  raw_ingested_at timestamp
+}
+
+Table stg__newad_daily {
+  Note: 'stg.newad_daily | VIEW | 0 rows'
+  date date
+  platform varchar
+  platform_campaign_id varchar
+  creative_id varchar
+  creative_url varchar
+  creative_type varchar
+  strategy_id varchar
+  strategy_name varchar
+  native_size varchar
+  format varchar
+  device_type varchar
+  client_currency varchar
+  conversion_source varchar
+  event_id varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25_viewed bigint
+  video_50_viewed bigint
+  video_75_viewed bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  client_revenue decimal
+  converted_client_revenue decimal
+  client_cost decimal
+  raw_ingested_at timestamp
+}
+
+Table stg__newad_operational_daily {
+  Note: 'stg.newad_operational_daily | VIEW | 0 rows'
+  date date
+  platform varchar
+  advertiser_platform_id varchar
+  platform_campaign_id varchar
+  platform_campaign_name varchar
+  platform_strategy_id varchar
+  platform_strategy_name varchar
+  conversion_source varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  raw_ingested_at timestamp
+}
+
+Table stg__newad_operational_daily_v2 {
+  Note: 'stg.newad_operational_daily_v2 | VIEW | 0 rows'
+  date date
+  platform varchar
+  advertiser_platform_id varchar
+  platform_campaign_id varchar
+  platform_strategy_id varchar
+  platform_strategy_name varchar
+  conversion_source varchar
+  operational_grain varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  raw_ingested_at timestamp
+}
+
+Table stg__newad_revenue_daily {
+  Note: 'stg.newad_revenue_daily | VIEW | 0 rows'
+  date date
+  platform varchar
+  advertiser_platform_id varchar
+  platform_campaign_id varchar
+  platform_campaign_name varchar
+  platform_strategy_id varchar
+  platform_strategy_name varchar
+  revenue_source varchar
+  client_revenue decimal
+  raw_ingested_at timestamp
+}
+
+Table stg__siprocal_daily {
+  Note: 'stg.siprocal_daily | VIEW | 0 rows'
+  date date
+  platform varchar
+  platform_campaign_id varchar
+  creative_id varchar
+  creative_url varchar
+  creative_type varchar
+  strategy_id varchar
+  strategy_name varchar
+  native_size varchar
+  format varchar
+  device_type varchar
+  client_currency varchar
+  conversion_source varchar
+  event_id varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25_viewed bigint
+  video_50_viewed bigint
+  video_75_viewed bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  client_revenue decimal
+  converted_client_revenue decimal
+  client_cost decimal
+  raw_ingested_at timestamp
+}
+
+Table stg__siprocal_daily_std {
+  Note: 'stg.siprocal_daily_std | VIEW | 0 rows'
+  date date
+  platform varchar
+  platform_campaign_id varchar
+  creative_id varchar
+  creative_url varchar
+  creative_type varchar
+  strategy_id varchar
+  strategy_name varchar
+  native_size varchar
+  format varchar
+  device_type varchar
+  client_currency varchar
+  conversion_source varchar
+  event_id varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25_viewed bigint
+  video_50_viewed bigint
+  video_75_viewed bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  client_revenue decimal
+  converted_client_revenue decimal
+  client_cost decimal
+  raw_ingested_at timestamp
+}
+
+Table stg__siprocal_operational_v2 {
+  Note: 'stg.siprocal_operational_v2 | VIEW | 0 rows'
+  date date
+  platform varchar
+  advertiser_platform_id varchar
+  platform_campaign_id varchar
+  platform_strategy_id varchar
+  platform_strategy_name varchar
+  conversion_source varchar
+  operational_grain varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  raw_ingested_at timestamp
+}
+
+// ================================================
+// Layer: CORE
+// ================================================
+
+Table core__io_binding_registry_v4 {
+  Note: 'core.io_binding_registry_v4 | VIEW | 0 rows'
+  binding_id varchar [pk]
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  nwd_adv_id varchar
+  nwd_agc_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_line varchar
+  platform varchar
+  binding_scope varchar
+  platform_entity_id varchar
+  platform_entity_name varchar
+  platform_parent_id varchar
+  platform_campaign_id varchar
+  platform_campaign_name varchar
+  platform_strategy_id varchar
+  platform_strategy_name varchar
+  allocation_mode varchar
+  allocation_value decimal
+  line_status varchar
+  link_status varchar
+  start_date date
+  end_date date
+  proposal_month varchar
+}
+
+Table core__io_line_bindings_enriched_v2 {
+  Note: 'core.io_line_bindings_enriched_v2 | VIEW | 0 rows'
+  binding_id varchar [pk]
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_line varchar
+  platform varchar
+  binding_scope varchar
+  platform_entity_id varchar
+  platform_entity_name varchar
+  platform_parent_id varchar
+  platform_campaign_id varchar
+  platform_campaign_name varchar
+  platform_strategy_id varchar
+  platform_strategy_name varchar
+  allocation_mode varchar
+  allocation_value decimal
+  line_status varchar
+  link_status varchar
+  start_date date
+  end_date date
+  proposal_month varchar
+}
+
+Table core__io_line_bindings_v2 {
+  Note: 'core.io_line_bindings_v2 | TABLE | 170 rows'
+  binding_id varchar [pk]
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_line varchar
+  platform varchar
+  binding_scope varchar
+  platform_entity_id varchar
+  platform_entity_name varchar
+  platform_parent_id varchar
+  platform_campaign_id varchar
+  platform_campaign_name varchar
+  platform_strategy_id varchar
+  platform_strategy_name varchar
+  allocation_mode varchar
+  allocation_value decimal
+  line_status varchar
+  link_status varchar
+  start_date date
+  end_date date
+  proposal_month varchar
+  created_at timestamp
+  updated_at timestamp
+  nwd_ctx varchar
+}
+
+Table core__io_manager {
+  Note: 'core.io_manager | EXTERNAL | 0 rows'
+  id varchar [pk]
+  advertiser varchar
+  product varchar
+  proposal_id varchar [pk]
+  campaign_type varchar
+  campaign_name varchar
+  target varchar
+  interest varchar
+  start_date date
+  end_date date
+  total_budget varchar
+  funnel varchar
+  objective varchar
+  line_item varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value varchar
+  deliverable_metric varchar
+  deliverable_volume varchar
+  platform varchar
+  platform_campaign_id varchar
+  io_id varchar [pk]
+  io_number varchar
+  line_id varchar [pk]
+  line_number varchar
+  advertiser_id varchar
+  advertiser_name varchar
+  campaign_line varchar
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table core__io_manager_enriched {
+  Note: 'core.io_manager_enriched | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  advertiser varchar
+  product varchar
+  campaign_type varchar
+  campaign_name varchar
+  target varchar
+  interest varchar
+  start_date date
+  end_date date
+  total_budget decimal
+  funnel varchar
+  objective varchar
+  line_item varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  deliverable_volume decimal
+  platform varchar
+  platform_campaign_id varchar
+  platform_line_item_id varchar
+  proposal_month varchar
+}
+
+Table core__io_manager_enriched_v2 {
+  Note: 'core.io_manager_enriched_v2 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  campaign_type varchar
+  campaign_name varchar
+  target varchar
+  interest varchar
+  start_date date
+  end_date date
+  total_budget decimal
+  funnel varchar
+  objective varchar
+  line_id varchar [pk]
+  line_item varchar
+  line_number varchar
+  line_status varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  deliverable_volume decimal
+  platform varchar
+  platform_campaign_id varchar
+  platform_line_item_id varchar
+  proposal_month varchar
+}
+
+Table core__io_manager_legacy_cache {
+  Note: 'core.io_manager_legacy_cache | TABLE | 62 rows'
+  id varchar [pk]
+  advertiser varchar
+  product varchar
+  proposal_id varchar [pk]
+  campaign_type varchar
+  campaign_name varchar
+  target varchar
+  interest varchar
+  start_date varchar
+  end_date varchar
+  total_budget varchar
+  funnel varchar
+  objective varchar
+  line_item varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value varchar
+  deliverable_metric varchar
+  deliverable_volume varchar
+  platform varchar
+  platform_campaign_id varchar
+  io_id varchar [pk]
+  io_number varchar
+  line_id varchar [pk]
+  line_number varchar
+  advertiser_id varchar
+  advertiser_name varchar
+  campaign_line varchar
+  created_at varchar
+  updated_at varchar
+  platform_line_item_id varchar
+}
+
+Table core__io_manager_v2 {
+  Note: 'core.io_manager_v2 | TABLE | 229 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  advertiser varchar
+  product varchar
+  campaign_type varchar
+  campaign_name varchar
+  target varchar
+  interest varchar
+  start_date date
+  end_date date
+  total_budget decimal
+  funnel varchar
+  objective varchar
+  line_item varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  deliverable_volume decimal
+  platform varchar
+  platform_campaign_id varchar
+  platform_line_item_id varchar
+  proposal_month varchar
+  created_at timestamp
+  updated_at timestamp
+  newad_client_id varchar
+  advertiser_id varchar
+  line_id varchar [pk]
+  line_number varchar
+  line_status varchar
+}
+
+Table core__io_registry_v4 {
+  Note: 'core.io_registry_v4 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  nwd_adv_id varchar
+  nwd_agc_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  campaign_type varchar
+  campaign_name varchar
+  target varchar
+  interest varchar
+  funnel varchar
+  objective varchar
+  start_date date
+  end_date date
+  total_budget decimal
+  proposal_month varchar
+  line_id varchar [pk]
+  line_item varchar
+  line_number varchar
+  line_status varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  deliverable_volume decimal
+  platform varchar
+  platform_campaign_id varchar
+  platform_line_item_id varchar
+}
+
+Table core__platform_client_links {
+  Note: 'core.platform_client_links | TABLE | 27 rows'
+  newad_client_id varchar
+  client_name varchar
+  advertiser_name varchar
+  advertiser_id varchar
+  platform varchar
+  status varchar
+  link_value varchar
+  link_label varchar
+  search_text varchar
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table core__proposal_lines {
+  Note: 'core.proposal_lines | TABLE | 0 rows'
+  proposal_line_id varchar
+  proposal_id varchar [pk]
+  line_name varchar
+  tactic_name varchar
+  funnel_stage varchar
+  target_description varchar
+  format varchar
+  buying_model_sold varchar
+  unit_price_sold decimal
+  budget_sold decimal
+  period_start date
+  period_end date
+  kpi_target_sold varchar
+  expected_volume_sold decimal
+  notes varchar
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table core__proposals {
+  Note: 'core.proposals | TABLE | 0 rows'
+  proposal_id varchar [pk]
+  advertiser_id varchar
+  product_id varchar
+  campaign_group_name varchar
+  period_start date
+  period_end date
+  budget_total_sold decimal
+  status varchar
+  owner_account_manager varchar
+  strategy_summary varchar
+  source_xls_id varchar
+  notes varchar
+  created_at timestamp
+  updated_at timestamp
+}
+
+// ================================================
+// Layer: MARTS
+// ================================================
+
+Table marts__fact_daily_detail {
+  Note: 'marts.fact_daily_detail | VIEW | 0 rows'
+  date date
+  platform varchar
+  platform_campaign_id varchar
+  creative_id varchar
+  creative_url varchar
+  creative_type varchar
+  format varchar
+  device_type varchar
+  strategy_id varchar
+  strategy_name varchar
+  native_size varchar
+  client_currency varchar
+  conversion_source varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25_viewed bigint
+  video_50_viewed bigint
+  video_75_viewed bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  client_revenue decimal
+  converted_client_revenue decimal
+  client_cost decimal
+  io_id varchar [pk]
+  io_number bigint
+  line_id varchar [pk]
+  line_number varchar
+  advertiser_id bigint
+  advertiser_name varchar
+  io_platform varchar
+  funnel varchar
+  objective varchar
+  campaign_line varchar
+  io_creative_type varchar
+  target_device varchar
+  start_date date
+  end_date date
+  total_budget decimal
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  deliverable_volume decimal
+  io_platform_campaign_id varchar
+  io_line_uid varchar
+  daily_cost decimal
+  delivered_volume bigint
+}
+
+Table marts__fact_daily_io {
+  Note: 'marts.fact_daily_io | VIEW | 0 rows'
+  date date
+  io_line_uid varchar
+  io_id varchar [pk]
+  io_number bigint
+  line_id varchar [pk]
+  line_number varchar
+  advertiser_id bigint
+  advertiser_name varchar
+  io_platform varchar
+  funnel varchar
+  objective varchar
+  campaign_line varchar
+  io_creative_type varchar
+  target_device varchar
+  start_date date
+  end_date date
+  total_budget decimal
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  deliverable_volume decimal
+  io_platform_campaign_id varchar
+  platform_campaign_id varchar
+  strategy_id varchar
+  strategy_name varchar
+  native_size varchar
+  client_currency varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25_viewed bigint
+  video_50_viewed bigint
+  video_75_viewed bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  client_revenue decimal
+  converted_client_revenue decimal
+  client_cost decimal
+  daily_cost decimal
+  delivered_volume bigint
+  daily_budget decimal
+  daily_volume decimal
+  days_scheduled bigint
+  day_index bigint
+  planned_cost_to_date decimal
+  planned_volume_to_date decimal
+  line_delivered_volume bigint
+  line_campaigns bigint
+  line_share float
+  daily_budget_alloc decimal
+  daily_volume_alloc decimal
+  planned_cost_to_date_alloc decimal
+  planned_volume_to_date_alloc decimal
+  daily_budget_pacing float
+  daily_volume_pacing float
+  cpm decimal
+  cpc decimal
+  cpv decimal
+  cpcv decimal
+  cpa1 decimal
+  cpa2 decimal
+  cpa3 decimal
+  cpa4 decimal
+  cpa5 decimal
+  ctr decimal
+  vtr decimal
+  cvtr decimal
+  convrate1 decimal
+  convrate2 decimal
+  convrate3 decimal
+  convrate4 decimal
+  convrate5 decimal
+}
+
+Table marts__io_calc_daily_v4 {
+  Note: 'marts.io_calc_daily_v4 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  nwd_adv_id varchar
+  nwd_agc_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  campaign_type varchar
+  campaign_name varchar
+  target varchar
+  interest varchar
+  funnel varchar
+  objective varchar
+  proposal_month varchar
+  line_id varchar [pk]
+  line_item varchar
+  line_number varchar
+  line_status varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  deliverable_volume decimal
+  platform varchar
+  platform_campaign_id varchar
+  platform_line_item_id varchar
+  start_date date
+  end_date date
+  date date
+  active_days bigint
+  budget_total decimal
+  planned_volume_total decimal
+  planned_budget_daily decimal
+  planned_volume_daily decimal
+  planned_budget_to_date decimal
+  planned_volume_to_date decimal
+  raw_ingested_at timestamp
+  binding_scope varchar
+  platform_campaign_name varchar
+  platform_strategy_name varchar
+  platform_strategy_id varchar
+  campaign_count bigint
+  strategy_count bigint
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  realized_volume bigint
+  realized_revenue_estimated float
+  pacing_ratio decimal
+}
+
+Table marts__io_delivery_daily_v4 {
+  Note: 'marts.io_delivery_daily_v4 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  nwd_adv_id varchar
+  nwd_agc_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_line varchar
+  platform varchar
+  binding_scope varchar
+  platform_campaign_id varchar
+  platform_campaign_name varchar
+  platform_strategy_name varchar
+  platform_strategy_id varchar
+  proposal_month varchar
+  date date
+  raw_ingested_at timestamp
+  campaign_count bigint
+  strategy_count bigint
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+}
+
+Table marts__io_kpis_daily_by_model_v2 {
+  Note: 'marts.io_kpis_daily_by_model_v2 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  proposal_month varchar
+  date date
+  buying_model varchar
+  deliverable_metric varchar
+  line_count bigint
+  budget_total decimal
+  planned_volume_total decimal
+  planned_budget_to_date decimal
+  planned_volume_to_date decimal
+  realized_metric bigint
+  realized_revenue_estimated float
+  client_cost decimal
+  pacing_ratio decimal
+}
+
+Table marts__io_kpis_daily_by_model_v3 {
+  Note: 'marts.io_kpis_daily_by_model_v3 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  proposal_month varchar
+  date date
+  buying_model varchar
+  deliverable_metric varchar
+  line_count bigint
+  budget_total decimal
+  planned_volume_total decimal
+  planned_budget_to_date decimal
+  planned_volume_to_date decimal
+  realized_metric bigint
+  realized_revenue_estimated float
+  client_revenue decimal
+  revenue_event3 decimal
+  revenue_event4 decimal
+  revenue_event5 decimal
+  pacing_ratio decimal
+  daily_roas float
+}
+
+Table marts__io_kpis_daily_by_model_v3_mat {
+  Note: 'marts.io_kpis_daily_by_model_v3_mat | TABLE | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  proposal_month varchar
+  date date
+  buying_model varchar
+  deliverable_metric varchar
+  line_count bigint
+  budget_total decimal
+  planned_volume_total decimal
+  planned_budget_to_date decimal
+  planned_volume_to_date decimal
+  realized_metric bigint
+  realized_revenue_estimated float
+  client_revenue decimal
+  revenue_event3 decimal
+  revenue_event4 decimal
+  revenue_event5 decimal
+  pacing_ratio decimal
+  daily_roas float
+}
+
+Table marts__io_kpis_daily_v2 {
+  Note: 'marts.io_kpis_daily_v2 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  proposal_month varchar
+  date date
+  line_count bigint
+  budget_total decimal
+  planned_budget_daily decimal
+  planned_budget_to_date decimal
+  client_cost decimal
+  realized_revenue_estimated float
+  client_revenue decimal
+  converted_client_revenue decimal
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+}
+
+Table marts__io_kpis_daily_v3 {
+  Note: 'marts.io_kpis_daily_v3 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  proposal_month varchar
+  date date
+  line_count bigint
+  budget_total decimal
+  planned_budget_daily decimal
+  planned_budget_to_date decimal
+  planned_volume_total decimal
+  planned_volume_to_date decimal
+  realized_metric bigint
+  realized_revenue_estimated float
+  client_revenue decimal
+  revenue_event3 decimal
+  revenue_event4 decimal
+  revenue_event5 decimal
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  pacing_ratio decimal
+  daily_roas float
+}
+
+Table marts__io_kpis_daily_v3_mat {
+  Note: 'marts.io_kpis_daily_v3_mat | TABLE | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  proposal_month varchar
+  date date
+  line_count bigint
+  budget_total decimal
+  planned_budget_daily decimal
+  planned_budget_to_date decimal
+  planned_volume_total decimal
+  planned_volume_to_date decimal
+  realized_metric bigint
+  realized_revenue_estimated float
+  client_revenue decimal
+  revenue_event3 decimal
+  revenue_event4 decimal
+  revenue_event5 decimal
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  pacing_ratio decimal
+  daily_roas float
+}
+
+Table marts__io_line_actual_daily_v2 {
+  Note: 'marts.io_line_actual_daily_v2 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_line varchar
+  platform varchar
+  proposal_month varchar
+  date date
+  bindings_count bigint
+  controlids_count bigint
+  strategy_count bigint
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25 bigint
+  video_50 bigint
+  video_75 bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  client_revenue decimal
+  converted_client_revenue decimal
+  client_cost decimal
+}
+
+Table marts__io_line_actual_daily_v3 {
+  Note: 'marts.io_line_actual_daily_v3 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_line varchar
+  platform varchar
+  proposal_month varchar
+  date date
+  bindings_count bigint
+  controlids_count bigint
+  strategy_count bigint
+  platform_campaign_name varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+}
+
+Table marts__io_line_kpis_daily_v2 {
+  Note: 'marts.io_line_kpis_daily_v2 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_name varchar
+  line_item varchar
+  line_status varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  platform varchar
+  platform_campaign_id varchar
+  start_date date
+  end_date date
+  proposal_month varchar
+  date date
+  active_days bigint
+  budget_total decimal
+  planned_volume_total decimal
+  planned_budget_daily decimal
+  planned_volume_daily decimal
+  planned_budget_to_date decimal
+  planned_volume_to_date decimal
+  bindings_count bigint
+  controlids_count bigint
+  strategy_count bigint
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25 bigint
+  video_50 bigint
+  video_75 bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  client_revenue decimal
+  converted_client_revenue decimal
+  client_cost decimal
+  realized_metric bigint
+  realized_revenue_estimated float
+  effective_platform_unit_cost decimal
+  pacing_ratio decimal
+}
+
+Table marts__io_line_kpis_daily_v3 {
+  Note: 'marts.io_line_kpis_daily_v3 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_name varchar
+  line_item varchar
+  line_status varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  platform varchar
+  platform_campaign_id varchar
+  start_date date
+  end_date date
+  proposal_month varchar
+  date date
+  active_days bigint
+  budget_total decimal
+  planned_volume_total decimal
+  planned_budget_daily decimal
+  planned_volume_daily decimal
+  planned_budget_to_date decimal
+  planned_volume_to_date decimal
+  bindings_count bigint
+  controlids_count bigint
+  strategy_count bigint
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  revenue_event1 decimal
+  revenue_event2 decimal
+  revenue_event3 decimal
+  revenue_event4 decimal
+  revenue_event5 decimal
+  client_revenue decimal
+  realized_metric bigint
+  realized_revenue_estimated float
+  pacing_ratio decimal
+  roas_event3 float
+  roas_event4 float
+  daily_roas float
+}
+
+Table marts__io_line_kpis_daily_v3_mat {
+  Note: 'marts.io_line_kpis_daily_v3_mat | TABLE | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_name varchar
+  line_item varchar
+  line_status varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  platform varchar
+  platform_campaign_id varchar
+  start_date date
+  end_date date
+  proposal_month varchar
+  date date
+  active_days bigint
+  budget_total decimal
+  planned_volume_total decimal
+  planned_budget_daily decimal
+  planned_volume_daily decimal
+  planned_budget_to_date decimal
+  planned_volume_to_date decimal
+  bindings_count bigint
+  controlids_count bigint
+  strategy_count bigint
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  revenue_event1 decimal
+  revenue_event2 decimal
+  revenue_event3 decimal
+  revenue_event4 decimal
+  revenue_event5 decimal
+  client_revenue decimal
+  realized_metric bigint
+  realized_revenue_estimated float
+  pacing_ratio decimal
+  roas_event3 float
+  roas_event4 float
+  daily_roas float
+}
+
+Table marts__io_line_plan_daily_v2 {
+  Note: 'marts.io_line_plan_daily_v2 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_name varchar
+  line_item varchar
+  line_status varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  deliverable_volume decimal
+  platform varchar
+  platform_campaign_id varchar
+  start_date date
+  end_date date
+  proposal_month varchar
+  date date
+  active_days bigint
+  budget_total decimal
+  planned_volume_total decimal
+  planned_budget_daily decimal
+  planned_volume_daily decimal
+  planned_budget_to_date decimal
+  planned_volume_to_date decimal
+}
+
+Table marts__io_line_plan_daily_v3 {
+  Note: 'marts.io_line_plan_daily_v3 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_name varchar
+  line_item varchar
+  line_status varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  deliverable_volume decimal
+  platform varchar
+  platform_campaign_id varchar
+  start_date date
+  end_date date
+  proposal_month varchar
+  date date
+  active_days bigint
+  budget_total decimal
+  planned_volume_total decimal
+  planned_budget_daily decimal
+  planned_volume_daily decimal
+  planned_budget_to_date decimal
+  planned_volume_to_date decimal
+}
+
+Table marts__io_line_revenue_daily_v3 {
+  Note: 'marts.io_line_revenue_daily_v3 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_line varchar
+  platform varchar
+  proposal_month varchar
+  date date
+  revenue_event1 decimal
+  revenue_event2 decimal
+  revenue_event3 decimal
+  revenue_event4 decimal
+  revenue_event5 decimal
+  client_revenue decimal
+}
+
+Table marts__io_plan_daily {
+  Note: 'marts.io_plan_daily | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  advertiser varchar
+  campaign_name varchar
+  line_item varchar
+  platform varchar
+  platform_campaign_id varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  deliverable_volume decimal
+  start_date date
+  end_date date
+  total_budget decimal
+  date date
+  days_scheduled bigint
+  daily_budget decimal
+  daily_volume decimal
+  planned_cost_to_date decimal
+  planned_volume_to_date decimal
+}
+
+Table marts__io_roas_daily_v3_mat {
+  Note: 'marts.io_roas_daily_v3_mat | TABLE | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_name varchar
+  line_item varchar
+  line_status varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  platform varchar
+  platform_campaign_id varchar
+  start_date date
+  end_date date
+  proposal_month varchar
+  date date
+  impressions bigint
+  clicks bigint
+  realized_metric bigint
+  total_investment float
+  revenue_event1 decimal
+  revenue_event2 decimal
+  revenue_event3 decimal
+  revenue_event4 decimal
+  revenue_event5 decimal
+  client_revenue decimal
+  roas_event3 float
+  roas_event4 float
+  daily_roas float
+}
+
+Table marts__io_schedule_daily_v4 {
+  Note: 'marts.io_schedule_daily_v4 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  nwd_adv_id varchar
+  nwd_agc_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  campaign_type varchar
+  campaign_name varchar
+  target varchar
+  interest varchar
+  funnel varchar
+  objective varchar
+  proposal_month varchar
+  line_id varchar [pk]
+  line_item varchar
+  line_number varchar
+  line_status varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  deliverable_volume decimal
+  platform varchar
+  platform_campaign_id varchar
+  platform_line_item_id varchar
+  start_date date
+  end_date date
+  date date
+  active_days bigint
+  budget_total decimal
+  planned_volume_total decimal
+  planned_budget_daily decimal
+  planned_volume_daily decimal
+  planned_budget_to_date decimal
+  planned_volume_to_date decimal
+}
+
+Table marts__kpi_daily {
+  Note: 'marts.kpi_daily | VIEW | 0 rows'
+  io_id varchar [pk]
+  line_id varchar [pk]
+  date date
+  platform varchar
+  platform_campaign_id varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  planned_cost decimal
+  planned_volume decimal
+  realized_cost decimal
+  realized_volume bigint
+  planned_rate decimal
+  realized_rate decimal
+}
+
+// ================================================
+// Layer: SHARE
+// ================================================
+
+Table share__admin_client_linking_options {
+  Note: 'share.admin_client_linking_options | VIEW | 0 rows'
+  platform varchar
+  advertiser_name varchar
+  campaign_line varchar
+  platform_campaign_id varchar
+  campaign_id varchar
+  last_date date
+}
+
+Table share__adops_mediasmart_bid_supply_daily {
+  Note: 'share.adops_mediasmart_bid_supply_daily | VIEW | 0 rows'
+  date date
+  event_id varchar
+  campaign_id varchar
+  campaign_name varchar
+  strategy_id varchar
+  iab_category varchar
+  iab_subcategory varchar
+  auction_type varchar
+  ad_exchange varchar
+  publisher_domain varchar
+  publisher_company varchar
+  publisher_id varchar
+  publisher_name varchar
+  publisher_url varchar
+  bid_offers bigint
+  bids bigint
+  bid_percent decimal
+  won bigint
+  won_percent decimal
+  usd_cost decimal
+  media_cost decimal
+  deal_charge decimal
+  total_bids_cost decimal
+  impressions bigint
+  clicks bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  ctr float
+  cpm decimal
+  cpc decimal
+  cvr_1 float
+  cvr_2 float
+  cvr_3 float
+  cvr_4 float
+  cvr_5 float
+  avg_bid_price decimal
+  avg_won_price decimal
+  win_rate float
+}
+
+Table share__adops_mediasmart_bid_supply_hourly {
+  Note: 'share.adops_mediasmart_bid_supply_hourly | VIEW | 0 rows'
+  date date
+  hour_of_day bigint
+  event_hour_utc timestamp
+  event_id varchar
+  campaign_id varchar
+  campaign_name varchar
+  strategy_id varchar
+  iab_category varchar
+  iab_subcategory varchar
+  auction_type varchar
+  ad_exchange varchar
+  publisher_domain varchar
+  publisher_company varchar
+  publisher_id varchar
+  publisher_name varchar
+  publisher_url varchar
+  bid_offers bigint
+  bids bigint
+  bid_percent decimal
+  won bigint
+  won_percent decimal
+  usd_cost decimal
+  media_cost decimal
+  deal_charge decimal
+  total_bids_cost decimal
+  impressions bigint
+  clicks bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  ctr float
+  cpm decimal
+  cpc decimal
+  cvr_1 float
+  cvr_2 float
+  cvr_3 float
+  cvr_4 float
+  cvr_5 float
+  avg_bid_price decimal
+  avg_won_price decimal
+  win_rate float
+}
+
+Table share__adops_mediasmart_bid_supply_monthly {
+  Note: 'share.adops_mediasmart_bid_supply_monthly | VIEW | 0 rows'
+  reference_month varchar
+  start_date date
+  end_date date
+  event_id varchar
+  campaign_id varchar
+  campaign_name varchar
+  strategy_id varchar
+  iab_category varchar
+  iab_subcategory varchar
+  auction_type varchar
+  ad_exchange varchar
+  publisher_domain varchar
+  publisher_company varchar
+  publisher_id varchar
+  publisher_name varchar
+  publisher_url varchar
+  bid_offers float
+  bids float
+  won float
+  usd_cost float
+  media_cost float
+  deal_charge float
+  total_bids_cost float
+  impressions float
+  clicks float
+  conversions_1 float
+  conversions_2 float
+  conversions_3 float
+  conversions_4 float
+  conversions_5 float
+  ctr float
+  bid_percent float
+  won_percent float
+  cpm decimal
+  cpc decimal
+  avg_bid_price decimal
+  avg_won_price decimal
+}
+
+Table share__dashboard_cards_campaign {
+  Note: 'share.dashboard_cards_campaign | VIEW | 0 rows'
+  date date
+  platform varchar
+  io_id varchar [pk]
+  io bigint
+  io_line varchar
+  strategy varchar
+  format varchar
+  campaign_id varchar
+  platform_campaign_id varchar
+  daily_budget decimal
+  daily_cost decimal
+  delivered_volume bigint
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25 bigint
+  video_50 bigint
+  video_75 bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  CPM decimal
+  CPC decimal
+  CPV decimal
+  CPCV decimal
+  CPA1 decimal
+  CPA2 decimal
+  CPA3 decimal
+  CPA4 decimal
+  CPA5 decimal
+  CTR decimal
+  VTR decimal
+  CVTR decimal
+  ConvRate1 decimal
+  ConvRate2 decimal
+  ConvRate3 decimal
+  ConvRate4 decimal
+  ConvRate5 decimal
+}
+
+Table share__dashboard_cards_detail {
+  Note: 'share.dashboard_cards_detail | VIEW | 0 rows'
+  date date
+  platform varchar
+  io_id varchar [pk]
+  io bigint
+  io_line varchar
+  strategy varchar
+  format varchar
+  conversion_source varchar
+  campaign_id varchar
+  platform_campaign_id varchar
+  daily_budget decimal
+  daily_cost decimal
+  delivered_volume bigint
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25 bigint
+  video_50 bigint
+  video_75 bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  CPM decimal
+  CPC decimal
+  CPV decimal
+  CPCV decimal
+  CPA1 decimal
+  CPA2 decimal
+  CPA3 decimal
+  CPA4 decimal
+  CPA5 decimal
+  CTR decimal
+  VTR decimal
+  CVTR decimal
+  ConvRate1 decimal
+  ConvRate2 decimal
+  ConvRate3 decimal
+  ConvRate4 decimal
+  ConvRate5 decimal
+}
+
+Table share__io_calc_daily_v4 {
+  Note: 'share.io_calc_daily_v4 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  nwd_adv_id varchar
+  nwd_agc_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  campaign_type varchar
+  campaign_name varchar
+  target varchar
+  interest varchar
+  funnel varchar
+  objective varchar
+  proposal_month varchar
+  line_id varchar [pk]
+  line_item varchar
+  line_number varchar
+  line_status varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  deliverable_volume decimal
+  platform varchar
+  platform_campaign_id varchar
+  platform_line_item_id varchar
+  start_date date
+  end_date date
+  date date
+  active_days bigint
+  budget_total decimal
+  planned_volume_total decimal
+  planned_budget_daily decimal
+  planned_volume_daily decimal
+  planned_budget_to_date decimal
+  planned_volume_to_date decimal
+  raw_ingested_at timestamp
+  binding_scope varchar
+  platform_campaign_name varchar
+  platform_strategy_name varchar
+  platform_strategy_id varchar
+  campaign_count bigint
+  strategy_count bigint
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  realized_volume bigint
+  realized_revenue_estimated float
+  pacing_ratio decimal
+}
+
+Table share__io_delivery_daily_v4 {
+  Note: 'share.io_delivery_daily_v4 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  nwd_adv_id varchar
+  nwd_agc_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_line varchar
+  platform varchar
+  binding_scope varchar
+  platform_campaign_id varchar
+  platform_campaign_name varchar
+  platform_strategy_name varchar
+  platform_strategy_id varchar
+  proposal_month varchar
+  date date
+  raw_ingested_at timestamp
+  campaign_count bigint
+  strategy_count bigint
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+}
+
+Table share__io_kpis_daily {
+  Note: 'share.io_kpis_daily | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  proposal_month varchar
+  date date
+  line_count bigint
+  budget_total decimal
+  planned_budget_daily decimal
+  planned_budget_to_date decimal
+  planned_volume_total decimal
+  planned_volume_to_date decimal
+  realized_metric bigint
+  realized_revenue_estimated float
+  client_revenue decimal
+  revenue_event3 decimal
+  revenue_event4 decimal
+  revenue_event5 decimal
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  pacing_ratio decimal
+  daily_roas float
+}
+
+Table share__io_kpis_daily_by_model {
+  Note: 'share.io_kpis_daily_by_model | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  proposal_month varchar
+  date date
+  buying_model varchar
+  deliverable_metric varchar
+  line_count bigint
+  budget_total decimal
+  planned_volume_total decimal
+  planned_budget_to_date decimal
+  planned_volume_to_date decimal
+  realized_metric bigint
+  realized_revenue_estimated float
+  client_revenue decimal
+  revenue_event3 decimal
+  revenue_event4 decimal
+  revenue_event5 decimal
+  pacing_ratio decimal
+  daily_roas float
+}
+
+Table share__io_kpis_daily_by_model_v2 {
+  Note: 'share.io_kpis_daily_by_model_v2 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  proposal_month varchar
+  date date
+  buying_model varchar
+  deliverable_metric varchar
+  line_count bigint
+  budget_total decimal
+  planned_volume_total decimal
+  planned_budget_to_date decimal
+  planned_volume_to_date decimal
+  realized_metric bigint
+  realized_revenue_estimated float
+  client_cost decimal
+  pacing_ratio decimal
+}
+
+Table share__io_kpis_daily_by_model_v3 {
+  Note: 'share.io_kpis_daily_by_model_v3 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  proposal_month varchar
+  date date
+  buying_model varchar
+  deliverable_metric varchar
+  line_count bigint
+  budget_total decimal
+  planned_volume_total decimal
+  planned_budget_to_date decimal
+  planned_volume_to_date decimal
+  realized_metric bigint
+  realized_revenue_estimated float
+  client_revenue decimal
+  revenue_event3 decimal
+  revenue_event4 decimal
+  revenue_event5 decimal
+  pacing_ratio decimal
+  daily_roas float
+}
+
+Table share__io_kpis_daily_v2 {
+  Note: 'share.io_kpis_daily_v2 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  proposal_month varchar
+  date date
+  line_count bigint
+  budget_total decimal
+  planned_budget_daily decimal
+  planned_budget_to_date decimal
+  client_cost decimal
+  realized_revenue_estimated float
+  client_revenue decimal
+  converted_client_revenue decimal
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+}
+
+Table share__io_kpis_daily_v3 {
+  Note: 'share.io_kpis_daily_v3 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  proposal_month varchar
+  date date
+  line_count bigint
+  budget_total decimal
+  planned_budget_daily decimal
+  planned_budget_to_date decimal
+  planned_volume_total decimal
+  planned_volume_to_date decimal
+  realized_metric bigint
+  realized_revenue_estimated float
+  client_revenue decimal
+  revenue_event3 decimal
+  revenue_event4 decimal
+  revenue_event5 decimal
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  pacing_ratio decimal
+  daily_roas float
+}
+
+Table share__io_line_actual_daily_v3 {
+  Note: 'share.io_line_actual_daily_v3 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_line varchar
+  platform varchar
+  proposal_month varchar
+  date date
+  bindings_count bigint
+  controlids_count bigint
+  strategy_count bigint
+  platform_campaign_name varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+}
+
+Table share__io_line_kpis_daily {
+  Note: 'share.io_line_kpis_daily | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_name varchar
+  line_item varchar
+  line_status varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  platform varchar
+  platform_campaign_id varchar
+  start_date date
+  end_date date
+  proposal_month varchar
+  date date
+  active_days bigint
+  budget_total decimal
+  planned_volume_total decimal
+  planned_budget_daily decimal
+  planned_volume_daily decimal
+  planned_budget_to_date decimal
+  planned_volume_to_date decimal
+  bindings_count bigint
+  controlids_count bigint
+  strategy_count bigint
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  revenue_event1 decimal
+  revenue_event2 decimal
+  revenue_event3 decimal
+  revenue_event4 decimal
+  revenue_event5 decimal
+  client_revenue decimal
+  realized_metric bigint
+  realized_revenue_estimated float
+  pacing_ratio decimal
+  roas_event3 float
+  roas_event4 float
+  daily_roas float
+}
+
+Table share__io_line_kpis_daily_v2 {
+  Note: 'share.io_line_kpis_daily_v2 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_name varchar
+  line_item varchar
+  line_status varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  platform varchar
+  platform_campaign_id varchar
+  start_date date
+  end_date date
+  proposal_month varchar
+  date date
+  active_days bigint
+  budget_total decimal
+  planned_volume_total decimal
+  planned_budget_daily decimal
+  planned_volume_daily decimal
+  planned_budget_to_date decimal
+  planned_volume_to_date decimal
+  bindings_count bigint
+  controlids_count bigint
+  strategy_count bigint
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25 bigint
+  video_50 bigint
+  video_75 bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  client_revenue decimal
+  converted_client_revenue decimal
+  client_cost decimal
+  realized_metric bigint
+  realized_revenue_estimated float
+  effective_platform_unit_cost decimal
+  pacing_ratio decimal
+}
+
+Table share__io_line_kpis_daily_v3 {
+  Note: 'share.io_line_kpis_daily_v3 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_name varchar
+  line_item varchar
+  line_status varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  platform varchar
+  platform_campaign_id varchar
+  start_date date
+  end_date date
+  proposal_month varchar
+  date date
+  active_days bigint
+  budget_total decimal
+  planned_volume_total decimal
+  planned_budget_daily decimal
+  planned_volume_daily decimal
+  planned_budget_to_date decimal
+  planned_volume_to_date decimal
+  bindings_count bigint
+  controlids_count bigint
+  strategy_count bigint
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  revenue_event1 decimal
+  revenue_event2 decimal
+  revenue_event3 decimal
+  revenue_event4 decimal
+  revenue_event5 decimal
+  client_revenue decimal
+  realized_metric bigint
+  realized_revenue_estimated float
+  pacing_ratio decimal
+  roas_event3 float
+  roas_event4 float
+  daily_roas float
+}
+
+Table share__io_line_plan_daily_v3 {
+  Note: 'share.io_line_plan_daily_v3 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_name varchar
+  line_item varchar
+  line_status varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  deliverable_volume decimal
+  platform varchar
+  platform_campaign_id varchar
+  start_date date
+  end_date date
+  proposal_month varchar
+  date date
+  active_days bigint
+  budget_total decimal
+  planned_volume_total decimal
+  planned_budget_daily decimal
+  planned_volume_daily decimal
+  planned_budget_to_date decimal
+  planned_volume_to_date decimal
+}
+
+Table share__io_line_revenue_daily_v3 {
+  Note: 'share.io_line_revenue_daily_v3 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_line varchar
+  platform varchar
+  proposal_month varchar
+  date date
+  revenue_event1 decimal
+  revenue_event2 decimal
+  revenue_event3 decimal
+  revenue_event4 decimal
+  revenue_event5 decimal
+  client_revenue decimal
+}
+
+Table share__io_roas_daily {
+  Note: 'share.io_roas_daily | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_name varchar
+  line_item varchar
+  line_status varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  platform varchar
+  platform_campaign_id varchar
+  start_date date
+  end_date date
+  proposal_month varchar
+  date date
+  impressions bigint
+  clicks bigint
+  realized_metric bigint
+  total_investment float
+  revenue_event1 decimal
+  revenue_event2 decimal
+  revenue_event3 decimal
+  revenue_event4 decimal
+  revenue_event5 decimal
+  client_revenue decimal
+  roas_event3 float
+  roas_event4 float
+  daily_roas float
+}
+
+Table share__io_schedule_daily_v4 {
+  Note: 'share.io_schedule_daily_v4 | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  nwd_adv_id varchar
+  nwd_agc_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  campaign_type varchar
+  campaign_name varchar
+  target varchar
+  interest varchar
+  funnel varchar
+  objective varchar
+  proposal_month varchar
+  line_id varchar [pk]
+  line_item varchar
+  line_number varchar
+  line_status varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  deliverable_volume decimal
+  platform varchar
+  platform_campaign_id varchar
+  platform_line_item_id varchar
+  start_date date
+  end_date date
+  date date
+  active_days bigint
+  budget_total decimal
+  planned_volume_total decimal
+  planned_budget_daily decimal
+  planned_volume_daily decimal
+  planned_budget_to_date decimal
+  planned_volume_to_date decimal
+}
+
+Table share__io_validation_full {
+  Note: 'share.io_validation_full | TABLE | 48 rows'
+  io_id varchar [pk]
+  line_id varchar [pk]
+  platform varchar
+  planned_cost decimal
+  daily_cost decimal
+  impressions float
+  effective_cpm decimal
+  effective_cpc decimal
+  effective_cpa decimal
+  start_date date
+  end_date date
+}
+
+Table share__kpi_daily {
+  Note: 'share.kpi_daily | VIEW | 0 rows'
+  io_id varchar [pk]
+  line_id varchar [pk]
+  date date
+  platform varchar
+  platform_campaign_id varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  planned_cost decimal
+  planned_volume decimal
+  realized_cost decimal
+  realized_volume bigint
+  planned_rate decimal
+  realized_rate decimal
+  planned_cpm decimal
+  realized_cpm decimal
+  planned_cpc decimal
+  realized_cpc decimal
+  planned_cpv decimal
+  realized_cpv decimal
+  planned_cpa decimal
+  realized_cpa decimal
+}
+
+Table share__luckbet_campaign_group_daily {
+  Note: 'share.luckbet_campaign_group_daily | VIEW | 0 rows'
+  date date
+  io_id varchar [pk]
+  campaign_group varchar
+  cadastros bigint
+  ftds bigint
+  depositos bigint
+  impressions bigint
+  clicks bigint
+  client_revenue decimal
+  tx_ftd float
+  tx_deposito float
+}
+
+Table share__luckbet_campaign_group_strategy_daily {
+  Note: 'share.luckbet_campaign_group_strategy_daily | VIEW | 0 rows'
+  date date
+  io_id varchar [pk]
+  campaign_group varchar
+  strategy_name varchar
+  is_strategy_fallback boolean
+  cadastros float
+  ftds float
+  depositos float
+  impressions float
+  clicks float
+  client_revenue float
+  revenue_ftd float
+  revenue_deposito float
+  revenue_total_est float
+  tx_ftd float
+  tx_deposito float
+}
+
+Table share__luckbet_campaign_strategy_daily {
+  Note: 'share.luckbet_campaign_strategy_daily | VIEW | 0 rows'
+  grain_level varchar
+  date date
+  io_id varchar [pk]
+  platform varchar
+  platform_campaign_id varchar
+  strategy_id varchar
+  strategy_name varchar
+  impressions bigint
+  clicks bigint
+  cadastros bigint
+  ftds bigint
+  depositos bigint
+  client_revenue decimal
+  converted_client_revenue decimal
+  ctr float
+  tx_ftd float
+  tx_deposito float
+}
+
+Table share__luckbet_io_line_daily {
+  Note: 'share.luckbet_io_line_daily | VIEW | 0 rows'
+  grain_level varchar
+  date date
+  io_id varchar [pk]
+  io_line varchar
+  line_id varchar [pk]
+  campaign_line varchar
+  platform varchar
+  strategy_id varchar
+  strategy_name varchar
+  cadastros bigint
+  ftds bigint
+  depositos bigint
+  impressions bigint
+  clicks bigint
+  client_revenue decimal
+  revenue_ftd decimal
+  revenue_deposito decimal
+  revenue_total_est float
+  has_strategy_scope bigint
+  cadastros_strategy_scope bigint
+  ftds_strategy_scope bigint
+  depositos_strategy_scope bigint
+  impressions_strategy_scope bigint
+  clicks_strategy_scope bigint
+  client_revenue_strategy_scope decimal
+  tx_ftd_strategy_scope float
+  tx_deposito_strategy_scope float
+  ctr_strategy_scope float
+  cadastros_campaign_total decimal
+  ftds_campaign_total decimal
+  depositos_campaign_total decimal
+  impressions_campaign_total decimal
+  clicks_campaign_total decimal
+  client_revenue_campaign_total decimal
+  revenue_ftd_campaign_total decimal
+  revenue_deposito_campaign_total decimal
+  revenue_total_est_campaign_total float
+  tx_ftd float
+  tx_deposito float
+  ctr float
+  campaign_group varchar
+}
+
+Table share__luckbet_io_line_strategy_daily {
+  Note: 'share.luckbet_io_line_strategy_daily | VIEW | 0 rows'
+  date date
+  io_id varchar [pk]
+  io_line varchar
+  line_id varchar [pk]
+  campaign_line varchar
+  platform varchar
+  strategy_id varchar
+  strategy_name varchar
+  cadastros float
+  ftds float
+  depositos float
+  impressions float
+  clicks float
+  client_revenue float
+  tx_ftd float
+  tx_deposito float
+  ctr float
+  cadastros_raw decimal
+  ftds_raw decimal
+  depositos_raw decimal
+  impressions_raw decimal
+  clicks_raw decimal
+  client_revenue_raw decimal
+  campaign_cadastros bigint
+  campaign_ftds bigint
+  campaign_depositos bigint
+  campaign_impressions bigint
+  campaign_clicks bigint
+  campaign_client_revenue decimal
+  campaign_revenue_ftd decimal
+  campaign_revenue_deposito decimal
+  campaign_revenue_total_est float
+  strategy_weight_impressions float
+  strategy_weight_clicks float
+  strategy_weight_ftds float
+  strategy_weight_depositos float
+  revenue_ftd_allocated float
+  revenue_deposito_allocated float
+  revenue_total_est_allocated float
+  campaign_group varchar
+}
+
+Table share__luckbet_io_line_strategy_daily_no_fallback {
+  Note: 'share.luckbet_io_line_strategy_daily_no_fallback | VIEW | 0 rows'
+  date date
+  io_id varchar [pk]
+  io_line varchar
+  line_id varchar [pk]
+  campaign_line varchar
+  platform varchar
+  strategy_id varchar
+  strategy_name varchar
+  cadastros float
+  ftds float
+  depositos float
+  impressions float
+  clicks float
+  client_revenue float
+  tx_ftd float
+  tx_deposito float
+  ctr float
+  cadastros_raw decimal
+  ftds_raw decimal
+  depositos_raw decimal
+  impressions_raw decimal
+  clicks_raw decimal
+  client_revenue_raw decimal
+  campaign_cadastros bigint
+  campaign_ftds bigint
+  campaign_depositos bigint
+  campaign_impressions bigint
+  campaign_clicks bigint
+  campaign_client_revenue decimal
+  campaign_revenue_ftd decimal
+  campaign_revenue_deposito decimal
+  campaign_revenue_total_est float
+  strategy_weight_impressions float
+  strategy_weight_clicks float
+  strategy_weight_ftds float
+  strategy_weight_depositos float
+  revenue_ftd_allocated float
+  revenue_deposito_allocated float
+  revenue_total_est_allocated float
+  campaign_group varchar
+}
+
+Table share__luckbet_sheet_campaign_daily {
+  Note: 'share.luckbet_sheet_campaign_daily | VIEW | 0 rows'
+  date date
+  business_date date
+  reference_month varchar
+  campaign_group varchar
+  timezone_grace_rows bigint
+  monthly_fallback_rows bigint
+  planned_day_rows bigint
+  planned_days_total bigint
+  planned_daily_volume float
+  planned_daily_investment float
+  planned_volume float
+  planned_investment float
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_complete bigint
+  cadastros bigint
+  ftds bigint
+  depositos bigint
+  client_revenue float
+  delivered_volume float
+  investment_delivered float
+  tx_ftd_cadastro float
+  tx_ftd_click float
+  tx_deposito_ftd float
+}
+
+Table share__luckbet_sheet_plan_map {
+  Note: 'share.luckbet_sheet_plan_map | VIEW | 0 rows'
+  legacy_io_number varchar
+  reference_month varchar
+  platform varchar
+  campaign_group varchar
+  format_name varchar
+  target_device varchar
+  start_date date
+  end_date date
+  planned_investment float
+  buying_model varchar
+  unit_value_planned float
+  delivery_type varchar
+  planned_volume float
+  platform_campaign_id varchar
+  platform_campaign_name varchar
+}
+
+Table share__luckbet_sheet_strategy_daily {
+  Note: 'share.luckbet_sheet_strategy_daily | VIEW | 0 rows'
+  date date
+  business_date date
+  reference_month varchar
+  platform varchar
+  campaign_group varchar
+  format_name varchar
+  target_device varchar
+  platform_campaign_id varchar
+  platform_campaign_name varchar
+  planned_investment float
+  buying_model varchar
+  unit_value_planned float
+  delivery_type varchar
+  planned_volume float
+  planned_days_total bigint
+  is_planned_day boolean
+  planned_daily_volume float
+  planned_daily_investment float
+  is_timezone_grace_day boolean
+  is_monthly_fallback_day boolean
+  strategy_id varchar
+  strategy_name varchar
+  creative_type varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_complete bigint
+  cadastros bigint
+  ftds bigint
+  depositos bigint
+  client_revenue float
+  delivered_volume float
+  investment_delivered float
+  tx_ftd_cadastro float
+  tx_ftd_click float
+  tx_deposito_ftd float
+}
+
+Table share__luckbet_strategy_daily {
+  Note: 'share.luckbet_strategy_daily | VIEW | 0 rows'
+  date date
+  io_id varchar [pk]
+  platform varchar
+  platform_campaign_id varchar
+  strategy_id varchar
+  strategy_name varchar
+  impressions bigint
+  clicks bigint
+  cadastros bigint
+  ftds bigint
+  depositos bigint
+  client_revenue decimal
+  converted_client_revenue decimal
+  ctr float
+  tx_ftd float
+  tx_deposito float
+}
+
+Table share__mediasmart_creative_daily {
+  Note: 'share.mediasmart_creative_daily | VIEW | 0 rows'
+  date date
+  platform varchar
+  platform_campaign_id varchar
+  creative_id varchar
+  creative_url varchar
+  creative_type varchar
+  strategy_id varchar
+  strategy_name varchar
+  native_size varchar
+  format varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25_viewed bigint
+  video_50_viewed bigint
+  video_75_viewed bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  raw_ingested_at timestamp
+}
+
+Table share__mediasmart_operational_daily {
+  Note: 'share.mediasmart_operational_daily | VIEW | 0 rows'
+  date date
+  platform varchar
+  platform_campaign_id varchar
+  event_id varchar
+  strategy_id varchar
+  strategy_name varchar
+  conversion_source varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  raw_ingested_at timestamp
+}
+
+Table share__mediasmart_postview_postclick {
+  Note: 'share.mediasmart_postview_postclick | VIEW | 0 rows'
+  data date
+  campanha_id varchar
+  campanha_nome varchar
+  conversao2_postview bigint
+  conversao2_postclick bigint
+  conversao3_postview bigint
+  conversao3_postclick bigint
+  conversao4_postview bigint
+  conversao4_postclick bigint
+}
+
+Table share__mediasmart_postview_postclick_luckbet {
+  Note: 'share.mediasmart_postview_postclick_luckbet | VIEW | 0 rows'
+  data date
+  campanha_id varchar
+  campanha_nome varchar
+  conversao2_postview bigint
+  conversao2_postclick bigint
+  conversao3_postview bigint
+  conversao3_postclick bigint
+  conversao4_postview bigint
+  conversao4_postclick bigint
+}
+
+Table share__mediasmart_revenue_daily {
+  Note: 'share.mediasmart_revenue_daily | VIEW | 0 rows'
+  date date
+  campaign_id varchar
+  campaign_name varchar
+  event_id varchar
+  strategy_id varchar
+  conversion_source varchar
+  revenue_source varchar
+  client_revenue decimal
+  platform varchar
+  report_name varchar
+  stg_ingested_at timestamp
+}
+
+Table share__newad_creative_daily {
+  Note: 'share.newad_creative_daily | VIEW | 0 rows'
+  date date
+  platform varchar
+  advertiser_platform_id varchar
+  platform_campaign_id varchar
+  platform_campaign_name varchar
+  platform_strategy_id varchar
+  platform_strategy_name varchar
+  creative_id varchar
+  creative_url varchar
+  creative_type varchar
+  native_size varchar
+  format varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  raw_ingested_at timestamp
+}
+
+Table share__newad_operational_daily {
+  Note: 'share.newad_operational_daily | VIEW | 0 rows'
+  date date
+  platform varchar
+  advertiser_platform_id varchar
+  platform_campaign_id varchar
+  platform_campaign_name varchar
+  platform_strategy_id varchar
+  platform_strategy_name varchar
+  conversion_source varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  raw_ingested_at timestamp
+}
+
+Table share__newad_operational_daily_v2 {
+  Note: 'share.newad_operational_daily_v2 | VIEW | 0 rows'
+  date date
+  platform varchar
+  advertiser_platform_id varchar
+  platform_campaign_id varchar
+  platform_strategy_id varchar
+  platform_strategy_name varchar
+  conversion_source varchar
+  operational_grain varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completion bigint
+  conversions_1 bigint
+  conversions_2 bigint
+  conversions_3 bigint
+  conversions_4 bigint
+  conversions_5 bigint
+  raw_ingested_at timestamp
+}
+
+Table share__newad_powerdata_daily {
+  Note: 'share.newad_powerdata_daily | VIEW | 0 rows'
+  date date
+  newad_advertiser_name varchar
+  newad_advertiser_id varchar
+  newad_campaign_id varchar
+  newad_campaign_name varchar
+  io_id varchar [pk]
+  io_line varchar
+  io_line_start date
+  io_line_end date
+  buying_type varchar
+  planned_unit_price decimal
+  planned_daily_budget decimal
+  deliverable_type varchar
+  planned_daily_volume decimal
+  realized_delivery_volume decimal
+  realized_unit_price decimal
+  creative_type varchar
+  platform_strategy varchar
+  creative_url varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25 bigint
+  video_50 bigint
+  video_75 bigint
+  video_completed bigint
+  conversions1_pv bigint
+  conversions1_pc bigint
+  conversions1_rv decimal
+  conversions2_pv bigint
+  conversions2_pc bigint
+  conversions2_rv decimal
+  conversions3_pv bigint
+  conversions3_pc bigint
+  conversions3_rv decimal
+  conversions4_pv bigint
+  conversions4_pc bigint
+  conversions4_rv decimal
+  conversions5_pv bigint
+  conversions5_pc bigint
+  conversions5_rv decimal
+  realized_daily_cost decimal
+}
+
+Table share__newad_revenue_daily {
+  Note: 'share.newad_revenue_daily | VIEW | 0 rows'
+  date date
+  platform varchar
+  advertiser_platform_id varchar
+  platform_campaign_id varchar
+  platform_campaign_name varchar
+  platform_strategy_id varchar
+  platform_strategy_name varchar
+  revenue_source varchar
+  client_revenue decimal
+  raw_ingested_at timestamp
+}
+
+Table share__pacing_cards {
+  Note: 'share.pacing_cards | VIEW | 0 rows'
+  date date
+  buying_type varchar
+  deliverable_type varchar
+  planned_daily_budget decimal
+  realized_daily_cost decimal
+  planned_daily_volume decimal
+  realized_daily_volume bigint
+  impressions bigint
+  clicks bigint
+  cpm_planned decimal
+  cpm_realized decimal
+  cpc_planned decimal
+  cpc_realized decimal
+  cpm_realized_num decimal
+  cpm_realized_den bigint
+  cpc_realized_num decimal
+  cpc_realized_den bigint
+}
+
+Table share__pacing_daily {
+  Note: 'share.pacing_daily | VIEW | 0 rows'
+  date date
+  buying_type varchar
+  deliverable_type varchar
+  planned_daily_value decimal
+  realized_daily_value decimal
+  planned_daily_volume decimal
+  impressions bigint
+  clicks bigint
+  realized_daily_volume bigint
+  planned_unit_rate decimal
+  realized_unit_rate decimal
+}
+
+Table share__pacing_daily_by_source {
+  Note: 'share.pacing_daily_by_source | VIEW | 0 rows'
+  date date
+  platform varchar
+  io_id varchar [pk]
+  io bigint
+  io_line varchar
+  advertiser_name varchar
+  funnel varchar
+  objective varchar
+  campaign_line varchar
+  io_creative_type varchar
+  target_device varchar
+  start_date date
+  end_date date
+  days_scheduled bigint
+  platform_campaign_id varchar
+  campaign_id varchar
+  strategy varchar
+  format varchar
+  conversion_source varchar
+  budget_total decimal
+  buying_type varchar
+  buying_unit_value decimal
+  deliverable_type varchar
+  deliverable_volume decimal
+  planned_daily_budget decimal
+  planned_daily_volume decimal
+  realized_daily_cost decimal
+  realized_daily_volume bigint
+  planned_cost_to_date decimal
+  planned_volume_to_date decimal
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25 bigint
+  video_50 bigint
+  video_75 bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  daily_budget_pacing decimal
+  daily_volume_pacing decimal
+  CPM_planned decimal
+  CPC_planned decimal
+  realized_delivery_volume bigint
+  cpm_realized_num decimal
+  cpm_realized_den bigint
+  cpc_realized_num decimal
+  cpc_realized_den bigint
+  CTR float
+}
+
+Table share__pacing_daily_cpc {
+  Note: 'share.pacing_daily_cpc | VIEW | 0 rows'
+  date date
+  buying_type varchar
+  deliverable_type varchar
+  planned_daily_value decimal
+  realized_daily_value decimal
+  planned_daily_volume decimal
+  realized_daily_volume bigint
+  impressions bigint
+  clicks bigint
+  cpc_planned decimal
+  cpc_realized decimal
+}
+
+Table share__pacing_daily_cpm {
+  Note: 'share.pacing_daily_cpm | VIEW | 0 rows'
+  date date
+  buying_type varchar
+  deliverable_type varchar
+  planned_daily_value decimal
+  realized_daily_value decimal
+  planned_daily_volume decimal
+  realized_daily_volume bigint
+  impressions bigint
+  clicks bigint
+  cpm_planned decimal
+  cpm_realized decimal
+}
+
+Table share__platform_campaign_catalog {
+  Note: 'share.platform_campaign_catalog | VIEW | 0 rows'
+  platform varchar
+  platform_advertiser_key varchar
+  newad_client_id varchar
+  advertiser_name varchar
+  advertiser_id varchar
+  reference_month varchar
+  platform_campaign_id varchar
+  platform_campaign_name varchar
+  start_date date
+  end_date date
+  last_date date
+  active_days bigint
+  impressions bigint
+  clicks bigint
+  client_cost decimal
+  source_granularity varchar
+  link_rule varchar
+}
+
+Table share__platform_creative_catalog {
+  Note: 'share.platform_creative_catalog | VIEW | 0 rows'
+  platform varchar
+  platform_advertiser_key varchar
+  reference_month varchar
+  platform_campaign_id varchar
+  platform_campaign_name varchar
+  platform_strategy_id varchar
+  platform_strategy_name varchar
+  creative_id varchar
+  creative_url varchar
+  creative_type varchar
+  native_size varchar
+  format varchar
+  start_date date
+  end_date date
+  active_days bigint
+  impressions bigint
+  clicks bigint
+}
+
+Table share__platform_daily_campaign {
+  Note: 'share.platform_daily_campaign | VIEW | 0 rows'
+  date date
+  platform varchar
+  advertiser_platform_id varchar
+  platform_campaign_id varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25 bigint
+  video_50 bigint
+  video_75 bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  client_revenue decimal
+  converted_client_revenue decimal
+  client_cost decimal
+  ctr float
+}
+
+Table share__platform_daily_creative {
+  Note: 'share.platform_daily_creative | VIEW | 0 rows'
+  date date
+  platform varchar
+  advertiser_platform_id varchar
+  platform_campaign_id varchar
+  strategy_id varchar
+  strategy_name varchar
+  creative_id varchar
+  creative_type varchar
+  native_size varchar
+  format varchar
+  device_type varchar
+  client_currency varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25 bigint
+  video_50 bigint
+  video_75 bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  client_revenue decimal
+  converted_client_revenue decimal
+  client_cost decimal
+  ctr float
+}
+
+Table share__platform_daily_detail {
+  Note: 'share.platform_daily_detail | VIEW | 0 rows'
+  date date
+  platform varchar
+  advertiser_platform_id varchar
+  platform_campaign_id varchar
+  strategy_id varchar
+  strategy_name varchar
+  creative_id varchar
+  creative_type varchar
+  native_size varchar
+  format varchar
+  device_type varchar
+  client_currency varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25 bigint
+  video_50 bigint
+  video_75 bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  client_revenue decimal
+  converted_client_revenue decimal
+  client_cost decimal
+  ctr float
+}
+
+Table share__platform_daily_strategy {
+  Note: 'share.platform_daily_strategy | VIEW | 0 rows'
+  date date
+  platform varchar
+  advertiser_platform_id varchar
+  platform_campaign_id varchar
+  strategy_id varchar
+  strategy_name varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25 bigint
+  video_50 bigint
+  video_75 bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  client_revenue decimal
+  converted_client_revenue decimal
+  client_cost decimal
+  ctr float
+}
+
+Table share__platform_strategy_catalog {
+  Note: 'share.platform_strategy_catalog | VIEW | 0 rows'
+  platform varchar
+  platform_advertiser_key varchar
+  newad_client_id varchar
+  advertiser_name varchar
+  advertiser_id varchar
+  reference_month varchar
+  platform_campaign_id varchar
+  platform_campaign_name varchar
+  platform_strategy_id varchar
+  platform_strategy_name varchar
+  start_date date
+  end_date date
+  active_days bigint
+  impressions bigint
+  clicks bigint
+}
+
+Table share__report_daily_campaign {
+  Note: 'share.report_daily_campaign | VIEW | 0 rows'
+  origem varchar
+  date date
+  io_id varchar [pk]
+  io bigint
+  io_line varchar
+  advertiser_name varchar
+  funnel varchar
+  objective varchar
+  campaign_line varchar
+  io_creative_type varchar
+  target_device varchar
+  start_date date
+  end_date date
+  days_scheduled bigint
+  platform varchar
+  strategy varchar
+  format varchar
+  strategy_id varchar
+  strategy_name varchar
+  native_size varchar
+  budget_total decimal
+  buying_type varchar
+  buying_unit_value decimal
+  deliverable_type varchar
+  deliverable_volume decimal
+  client_currency varchar
+  platform_campaign_id varchar
+  campaign_id varchar
+  daily_budget decimal
+  daily_volume decimal
+  planned_cost_to_date decimal
+  planned_volume_to_date decimal
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25 bigint
+  video_50 bigint
+  video_75 bigint
+  video_completed bigint
+  delivered_volume bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  client_revenue decimal
+  converted_client_revenue decimal
+  client_cost decimal
+  daily_cost decimal
+  daily_budget_pacing decimal
+  daily_volume_pacing decimal
+  CPM decimal
+  CPC decimal
+  CPV decimal
+  CPCV decimal
+  CPA1 decimal
+  CPA2 decimal
+  CPA3 decimal
+  CPA4 decimal
+  CPA5 decimal
+  CTR float
+  VTR float
+  CVTR float
+  ConvRate1 float
+  ConvRate2 float
+  ConvRate3 float
+  ConvRate4 float
+  ConvRate5 float
+}
+
+Table share__report_daily_campaign_by_source {
+  Note: 'share.report_daily_campaign_by_source | VIEW | 0 rows'
+  date date
+  platform varchar
+  io_id varchar [pk]
+  io bigint
+  io_line varchar
+  advertiser_name varchar
+  funnel varchar
+  objective varchar
+  campaign_line varchar
+  io_creative_type varchar
+  target_device varchar
+  start_date date
+  end_date date
+  days_scheduled bigint
+  budget_total decimal
+  buying_type varchar
+  buying_unit_value decimal
+  deliverable_type varchar
+  deliverable_volume decimal
+  strategy varchar
+  format varchar
+  strategy_id varchar
+  strategy_name varchar
+  native_size varchar
+  client_currency varchar
+  conversion_source varchar
+  campaign_id varchar
+  platform_campaign_id varchar
+  daily_budget decimal
+  daily_volume decimal
+  planned_cost_to_date decimal
+  planned_volume_to_date decimal
+  daily_cost decimal
+  delivered_volume bigint
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25 bigint
+  video_50 bigint
+  video_75 bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  client_revenue decimal
+  converted_client_revenue decimal
+  client_cost decimal
+  daily_budget_pacing decimal
+  daily_volume_pacing decimal
+  CPM decimal
+  CPC decimal
+  CPV decimal
+  CPCV decimal
+  CPA1 decimal
+  CPA2 decimal
+  CPA3 decimal
+  CPA4 decimal
+  CPA5 decimal
+  CTR float
+  VTR float
+  CVTR float
+  ConvRate1 float
+  ConvRate2 float
+  ConvRate3 float
+  ConvRate4 float
+  ConvRate5 float
+}
+
+Table share__report_daily_campaign_demo {
+  Note: 'share.report_daily_campaign_demo | TABLE | 6,039 rows'
+  date date
+  campaign_id varchar
+  campaign_line varchar
+  strategy varchar
+  platform varchar
+  format varchar
+  daily_cost decimal
+  impressions bigint
+  clicks bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  advertiser_name varchar
+  advertiser_id varchar
+  io_id varchar [pk]
+}
+
+Table share__report_daily_creative {
+  Note: 'share.report_daily_creative | VIEW | 0 rows'
+  date date
+  io_id varchar [pk]
+  io bigint
+  io_line varchar
+  advertiser_name varchar
+  platform varchar
+  strategy varchar
+  format varchar
+  delivery_device varchar
+  platform_campaign_id varchar
+  campaign_id varchar
+  creative_id varchar
+  creative_url varchar
+  platform_strategy_id varchar
+  platform_strategy varchar
+  planned_unit_price decimal
+  final_price float
+  buying_type varchar
+  deliverable_type varchar
+  planned_daily_budget decimal
+  media_cost float
+  realized_daily_cost decimal
+  planned_daily_volume decimal
+  realized_delivery_volume bigint
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25 bigint
+  video_50 bigint
+  video_75 bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  cpm_realized_num decimal
+  cpm_realized_den bigint
+  cpc_realized_num decimal
+  cpc_realized_den bigint
+}
+
+Table share__report_daily_creative_grouped {
+  Note: 'share.report_daily_creative_grouped | VIEW | 0 rows'
+  date date
+  io_id varchar [pk]
+  io bigint
+  io_line varchar
+  advertiser_name varchar
+  platform varchar
+  strategy varchar
+  format varchar
+  delivery_device varchar
+  platform_campaign_id varchar
+  campaign_id varchar
+  creative_group_id varchar
+  creative_url varchar
+  platform_strategy_id varchar
+  platform_strategy varchar
+  sample_creative_id varchar
+  creative_ids_in_group bigint
+  creative_ids_grouped varchar
+  buying_type varchar
+  deliverable_type varchar
+  planned_unit_price decimal
+  final_price decimal
+  planned_daily_budget decimal
+  media_cost decimal
+  realized_daily_cost decimal
+  planned_daily_volume decimal
+  realized_delivery_volume bigint
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25 bigint
+  video_50 bigint
+  video_75 bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  cpm_realized_num decimal
+  cpm_realized_den bigint
+  cpc_realized_num decimal
+  cpc_realized_den bigint
+}
+
+Table share__report_daily_detail {
+  Note: 'share.report_daily_detail | VIEW | 0 rows'
+  origem varchar
+  date date
+  io_id varchar [pk]
+  io bigint
+  io_line varchar
+  advertiser_name varchar
+  funnel varchar
+  objective varchar
+  campaign_line varchar
+  io_creative_type varchar
+  target_device varchar
+  start_date date
+  end_date date
+  days_scheduled bigint
+  platform varchar
+  strategy varchar
+  format varchar
+  strategy_id varchar
+  strategy_name varchar
+  native_size varchar
+  budget_total decimal
+  buying_type varchar
+  buying_unit_value decimal
+  deliverable_type varchar
+  deliverable_volume decimal
+  client_currency varchar
+  daily_budget decimal
+  daily_volume decimal
+  planned_cost_to_date decimal
+  planned_volume_to_date decimal
+  platform_campaign_id varchar
+  campaign_id varchar
+  creative_id varchar
+  creative_url varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25 bigint
+  video_50 bigint
+  video_75 bigint
+  video_completed bigint
+  conversion_source varchar
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  client_revenue decimal
+  converted_client_revenue decimal
+  client_cost decimal
+  delivered_volume bigint
+  daily_cost decimal
+  daily_budget_pacing decimal
+  daily_volume_pacing decimal
+  CPM decimal
+  CPC decimal
+  CPV decimal
+  CPCV decimal
+  CPA1 decimal
+  CPA2 decimal
+  CPA3 decimal
+  CPA4 decimal
+  CPA5 decimal
+  CTR decimal
+  VTR decimal
+  CVTR decimal
+  ConvRate1 decimal
+  ConvRate2 decimal
+  ConvRate3 decimal
+  ConvRate4 decimal
+  ConvRate5 decimal
+}
+
+Table share__report_daily_device {
+  Note: 'share.report_daily_device | VIEW | 0 rows'
+  date date
+  io_id varchar [pk]
+  io bigint
+  io_line varchar
+  advertiser_name varchar
+  platform varchar
+  strategy varchar
+  delivery_device varchar
+  buying_type varchar
+  deliverable_type varchar
+  planned_daily_budget decimal
+  realized_daily_cost decimal
+  planned_daily_volume decimal
+  realized_delivery_volume bigint
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25 bigint
+  video_50 bigint
+  video_75 bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  cpm_realized_num decimal
+  cpm_realized_den bigint
+  cpc_realized_num decimal
+  cpc_realized_den bigint
+}
+
+Table share__report_daily_format {
+  Note: 'share.report_daily_format | VIEW | 0 rows'
+  date date
+  io_id varchar [pk]
+  io bigint
+  io_line varchar
+  advertiser_name varchar
+  platform varchar
+  strategy varchar
+  format varchar
+  buying_type varchar
+  deliverable_type varchar
+  planned_daily_budget decimal
+  realized_daily_cost decimal
+  planned_daily_volume decimal
+  realized_delivery_volume bigint
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25 bigint
+  video_50 bigint
+  video_75 bigint
+  video_completed bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  cpm_realized_num decimal
+  cpm_realized_den bigint
+  cpc_realized_num decimal
+  cpc_realized_den bigint
+}
+
+Table share__report_daily_revenue {
+  Note: 'share.report_daily_revenue | VIEW | 0 rows'
+  date date
+  campaign_id varchar
+  campaign_name varchar
+  event_id varchar
+  strategy_id varchar
+  conversion_source varchar
+  revenue_source varchar
+  client_revenue decimal
+  platform varchar
+  report_name varchar
+  stg_ingested_at timestamp
+}
+
+Table share__report_daily_roas_campaign {
+  Note: 'share.report_daily_roas_campaign | VIEW | 0 rows'
+  date date
+  io_id varchar [pk]
+  io varchar
+  io_line varchar
+  advertiser_name varchar
+  platform varchar
+  campaign_id varchar
+  strategy_id varchar
+  event_id varchar
+  conversion_source varchar
+  revenue_source varchar
+  revenue_match_scope varchar
+  planned_investment decimal
+  billed_investment decimal
+  media_cost decimal
+  impressions bigint
+  clicks bigint
+  client_revenue float
+  roas_planned float
+  roas_billed float
+  roas_media_cost float
+}
+
+Table share__report_daily_roas_io {
+  Note: 'share.report_daily_roas_io | VIEW | 0 rows'
+  date date
+  io_id varchar [pk]
+  io varchar
+  advertiser_name varchar
+  conversion_source varchar
+  revenue_source varchar
+  planned_investment decimal
+  billed_investment decimal
+  media_cost decimal
+  client_revenue float
+  roas_planned float
+  roas_billed float
+  roas_media_cost float
+}
+
+Table share__report_daily_roas_line {
+  Note: 'share.report_daily_roas_line | VIEW | 0 rows'
+  date date
+  io_id varchar [pk]
+  io varchar
+  io_line varchar
+  advertiser_name varchar
+  platform varchar
+  campaign_id varchar
+  strategy_id varchar
+  event_id varchar
+  conversion_source varchar
+  revenue_source varchar
+  revenue_match_scope varchar
+  planned_investment decimal
+  billed_investment decimal
+  media_cost decimal
+  impressions bigint
+  clicks bigint
+  client_revenue float
+  roas_planned float
+  roas_billed float
+  roas_media_cost float
+}
+
+Table share__report_daily_roas_line_pivot {
+  Note: 'share.report_daily_roas_line_pivot | VIEW | 0 rows'
+  date date
+  io_id varchar [pk]
+  io_line_id varchar
+  io_line varchar
+  platform_campaign_id varchar
+  platform_campaign_name varchar
+  platform_strategy_id varchar
+  platform_strategy_name varchar
+  impressions bigint
+  clicks bigint
+  total_investment decimal
+  conversions1_pv bigint
+  conversions1_pc bigint
+  conversions2_pv bigint
+  conversions2_pc bigint
+  conversions3_pv bigint
+  conversions3_pc bigint
+  conversions3_rv decimal
+  conversions3_roas float
+  conversions4_pv bigint
+  conversions4_pc bigint
+  conversions4_rv decimal
+  conversions4_roas float
+  conversions5_pv bigint
+  conversions5_pc bigint
+  daily_roas float
+}
+
+Table share__report_daily_roas_line_pivot_reconciled {
+  Note: 'share.report_daily_roas_line_pivot_reconciled | VIEW | 0 rows'
+  date date
+  raw_revenue decimal
+  matched_revenue decimal
+  unmatched_revenue decimal
+  recomposed_revenue decimal
+  reconciliation_delta decimal
+}
+
+Table share__report_daily_roas_line_pivot_unmatched {
+  Note: 'share.report_daily_roas_line_pivot_unmatched | VIEW | 0 rows'
+  date date
+  platform_campaign_id varchar
+  platform_campaign_name varchar
+  platform_strategy_id varchar
+  platform_strategy_name varchar
+  conversions3_rv decimal
+  conversions4_rv decimal
+  unmatched_revenue decimal
+  revenue_source varchar
+}
+
+Table share__report_daily_roas_unmatched {
+  Note: 'share.report_daily_roas_unmatched | VIEW | 0 rows'
+  date date
+  campaign_id varchar
+  strategy_id varchar
+  event_id varchar
+  conversion_source varchar
+  revenue_source varchar
+  client_revenue decimal
+}
+
+Table share__validation_cpc {
+  Note: 'share.validation_cpc | VIEW | 0 rows'
+  month varchar
+  io_id varchar [pk]
+  io bigint
+  io_line varchar
+  platform varchar
+  strategy varchar
+  platform_campaign_id varchar
+  campaign_id varchar
+  planned_cost decimal
+  delivery_cost decimal
+  clicks bigint
+  impressions bigint
+  effective_cpc decimal
+  unitary_cpc decimal
+  ctr float
+}
+
+// ================================================
+// Layer: GOLD
+// ================================================
+
+Table gold__dim_client {
+  Note: 'gold.dim_client | VIEW | 0 rows'
+  newad_client_id varchar
+  client_name varchar
+  advertiser_id varchar
+}
+
+Table gold__dim_client_semantics {
+  Note: 'gold.dim_client_semantics | VIEW | 0 rows'
+  newad_client_id varchar
+  semantic_type varchar
+  field_key varchar
+  field_label varchar
+  scope varchar
+}
+
+Table gold__dim_creative {
+  Note: 'gold.dim_creative | VIEW | 0 rows'
+  creative_key varchar
+  platform_id varchar
+  creative_id varchar
+  platform_campaign_id varchar
+  creative_type varchar
+  creative_name varchar
+  image_url varchar
+}
+
+Table gold__dim_date {
+  Note: 'gold.dim_date | VIEW | 0 rows'
+  date_key date
+  date_id varchar
+  year bigint
+  month_number bigint
+  month_name varchar
+  month_name_short varchar
+  day bigint
+  weekday_name varchar
+  weekday_number bigint
+  quarter bigint
+  year_quarter varchar
+  year_month varchar
+  week_start date
+  month_start date
+  quarter_start date
+}
+
+Table gold__dim_io_line {
+  Note: 'gold.dim_io_line | VIEW | 0 rows'
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  nwd_adv_id varchar
+  nwd_agc_id varchar
+  client_name varchar
+  advertiser_id varchar
+  product varchar
+  campaign_type varchar
+  campaign_name varchar
+  target varchar
+  interest varchar
+  funnel varchar
+  objective varchar
+  proposal_month varchar
+  line_id varchar [pk]
+  line_item varchar
+  line_number varchar
+  line_status varchar
+  target_device varchar
+  creative_type varchar
+  buying_model varchar
+  buying_value decimal
+  deliverable_metric varchar
+  deliverable_volume decimal
+  platform varchar
+  platform_campaign_id varchar
+  platform_line_item_id varchar
+  start_date date
+  end_date date
+  budget_total decimal
+}
+
+Table gold__dim_platform {
+  Note: 'gold.dim_platform | VIEW | 0 rows'
+  platform_id varchar
+  platform_name varchar
+  platform_type varchar
+}
+
+Table gold__fct_creative_daily {
+  Note: 'gold.fct_creative_daily | VIEW | 0 rows'
+  date date
+  platform varchar
+  platform_campaign_id varchar
+  strategy_id varchar
+  strategy_name varchar
+  creative_id varchar
+  creative_type varchar
+  native_size varchar
+  format varchar
+  device_type varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_25 bigint
+  video_50 bigint
+  video_75 bigint
+  video_completed bigint
+  pageviews bigint
+  cadastros bigint
+  ftds bigint
+  depositos_recorrentes bigint
+  inicio_cadastro bigint
+  io_id varchar [pk]
+  newad_client_id varchar
+}
+
+Table gold__fct_delivery_daily {
+  Note: 'gold.fct_delivery_daily | VIEW | 0 rows'
+  date date
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  advertiser varchar
+  advertiser_id varchar
+  product varchar
+  line_id varchar [pk]
+  line_number varchar
+  campaign_line varchar
+  platform varchar
+  platform_campaign_id varchar
+  platform_campaign_name varchar
+  platform_strategy_id varchar
+  platform_strategy_name varchar
+  proposal_month varchar
+  buying_model varchar
+  impressions bigint
+  clicks bigint
+  video_start bigint
+  video_completion bigint
+  conversions1 bigint
+  conversions2 bigint
+  conversions3 bigint
+  conversions4 bigint
+  conversions5 bigint
+  cost_estimated decimal
+  dsp_revenue float
+  raw_ingested_at timestamp
+  gold_updated_at timestamp
+}
+
+Table gold__fct_io_plan_daily {
+  Note: 'gold.fct_io_plan_daily | VIEW | 0 rows'
+  date date
+  io_id varchar [pk]
+  proposal_id varchar [pk]
+  newad_client_id varchar
+  line_id varchar [pk]
+  line_number varchar
+  platform varchar
+  proposal_month varchar
+  planned_budget_daily decimal
+  planned_budget_to_date decimal
+  planned_volume_total decimal
+  planned_volume_daily decimal
+  planned_volume_to_date decimal
+  active_days bigint
+  gold_updated_at timestamp
+}
+
+Table gold__fct_luckbet_creative_daily {
+  Note: 'gold.fct_luckbet_creative_daily | VIEW | 0 rows'
+  date date
+  mes varchar
+  ano varchar
+  platform varchar
+  platform_campaign_id varchar
+  strategy_id varchar
+  estrategia varchar
+  creative_id varchar
+  formato_criativo varchar
+  tamanho varchar
+  formato varchar
+  device varchar
+  impressoes bigint
+  clicks bigint
+  video_inicio bigint
+  video_25pct bigint
+  video_50pct bigint
+  video_75pct bigint
+  video_conclusao bigint
+  pageviews bigint
+  cadastros bigint
+  ftds bigint
+  depositos_recorrentes bigint
+  inicio_cadastro bigint
+  ctr_pct float
+  taxa_conclusao_video_pct float
+  tx_ftd_cadastro_pct float
+  io_id varchar [pk]
+  newad_client_id varchar
+}
+
+Table gold__fct_luckbet_delivery_daily {
+  Note: 'gold.fct_luckbet_delivery_daily | VIEW | 0 rows'
+  date date
+  mes varchar
+  ano varchar
+  platform varchar
+  platform_campaign_id varchar
+  nome_campanha_plataforma varchar
+  platform_strategy_id varchar
+  estrategia_plataforma varchar
+  estrategia varchar
+  formato varchar
+  device varchar
+  modelo_compra varchar
+  valor_unitario_previsto decimal
+  tipo_entrega varchar
+  inicio_previsto date
+  fim_previsto date
+  investimento_previsto decimal
+  volume_previsto decimal
+  budget_diario_previsto decimal
+  budget_acumulado_previsto decimal
+  volume_diario_previsto decimal
+  volume_acumulado_previsto decimal
+  dias_ativos bigint
+  impressoes bigint
+  clicks bigint
+  video_inicio bigint
+  video_conclusao bigint
+  pageviews bigint
+  cadastros bigint
+  ftds bigint
+  depositos_recorrentes bigint
+  inicio_cadastro bigint
+  custo_estimado decimal
+  receita_dsp float
+  ctr_pct float
+  cpm_realizado float
+  cpc_realizado float
+  taxa_conclusao_video_pct float
+  tx_ftd_cadastro_pct float
+  tx_ftd_click_pct float
+  tx_deposito_ftd_pct float
+  pacing_pct float
+  io_id varchar [pk]
+  line_id varchar [pk]
+  line_number varchar
+  io_proposal_month varchar
+  raw_ingested_at timestamp
+  gold_updated_at timestamp
+}
+
+Table gold__fct_newad_bet_daily {
+  Note: 'gold.fct_newad_bet_daily | VIEW | 0 rows'
+  vertical varchar
+  date date
+  mes varchar
+  ano varchar
+  platform varchar
+  modelo_compra varchar
+  estrategia varchar
+  formato varchar
+  device varchar
+  inicio_previsto date
+  fim_previsto date
+  investimento_previsto decimal
+  budget_diario_previsto decimal
+  budget_acumulado_previsto decimal
+  volume_previsto decimal
+  impressoes bigint
+  clicks bigint
+  video_inicio bigint
+  video_conclusao bigint
+  pageviews bigint
+  cadastros bigint
+  ftds bigint
+  depositos_recorrentes bigint
+  inicio_cadastro bigint
+  custo_estimado decimal
+  receita_dsp float
+  ctr_pct float
+  cpm_realizado float
+  cpc_realizado float
+  taxa_conclusao_video_pct float
+  tx_ftd_cadastro_pct float
+  tx_ftd_click_pct float
+  tx_deposito_ftd_pct float
+  pacing_pct float
+  io_id varchar [pk]
+  line_id varchar [pk]
+  line_number varchar
+  io_mes_referencia varchar
+  gold_updated_at timestamp
+}
+
+Table gold__fct_newad_fintech_daily {
+  Note: 'gold.fct_newad_fintech_daily | VIEW | 0 rows'
+  vertical varchar
+  date date
+  mes varchar
+  ano varchar
+  platform varchar
+  modelo_compra varchar
+  estrategia varchar
+  formato varchar
+  device varchar
+  inicio_previsto date
+  fim_previsto date
+  investimento_previsto decimal
+  budget_diario_previsto decimal
+  budget_acumulado_previsto decimal
+  volume_previsto decimal
+  impressoes bigint
+  clicks bigint
+  video_inicio bigint
+  video_conclusao bigint
+  pageviews bigint
+  leads bigint
+  contas_abertas bigint
+  ativacoes bigint
+  inicio_cadastro bigint
+  custo_estimado decimal
+  receita_dsp float
+  ctr_pct float
+  cpm_realizado float
+  cpc_realizado float
+  taxa_conclusao_video_pct float
+  tx_ftd_cadastro_pct float
+  tx_ftd_click_pct float
+  tx_deposito_ftd_pct float
+  pacing_pct float
+  io_id varchar [pk]
+  line_id varchar [pk]
+  line_number varchar
+  io_mes_referencia varchar
+  gold_updated_at timestamp
+}
+
+
+// ------------------------------------------------------------
+// Cross-layer references inferred from shared ID column names
+// ------------------------------------------------------------
+
+Ref: raw__mediasmart_daily.controlid > stg__mediasmart_daily.controlid
+Ref: raw__mediasmart_daily.eventid > stg__mediasmart_daily.eventid
+Ref: raw__mediasmart_daily.strategyid > stg__mediasmart_daily.strategyid
+Ref: raw__mgid_daily.campaignid > stg__mgid_daily.campaignid
+Ref: raw__siprocal_daily_materialized.campaign_id > stg__siprocal_daily.campaign_id
+Ref: raw_newadframework__io_line_bindings_v2.line_id > stg__io_lines_v4.line_id
+Ref: raw_newadframework__io_manager_v2.io_id > stg__io_lines_v4.io_id
+Ref: raw_newadframework__io_manager_v2.proposal_id > raw_newadframework__proposals.proposal_id
+Ref: raw_newadframework__platform_client_links.newad_client_id > core__platform_client_links.newad_client_id
+Ref: stg__io_lines_v4.io_id > core__io_registry_v4.io_id
+Ref: stg__io_lines_v4.line_id > core__io_binding_registry_v4.line_id
+Ref: stg__io_lines_v4.proposal_id > core__io_registry_v4.proposal_id
+Ref: stg__mediasmart_daily.platform_campaign_id > core__io_line_bindings_v2.platform_campaign_id
+Ref: stg__mediasmart_daily.event_id > stg__mediasmart_operational_v2.event_id
+Ref: stg__mediasmart_operational_v2.advertiser_platform_id > share__platform_daily_detail.advertiser_platform_id
+Ref: stg__mediasmart_operational_v2.platform_strategy_id > share__platform_daily_detail.platform_strategy_id
+Ref: stg__mgid_daily.platform_campaign_id > core__io_line_bindings_v2.platform_campaign_id
+Ref: core__io_binding_registry_v4.binding_id > marts__io_delivery_daily_v4.binding_id
+Ref: core__platform_client_links.newad_client_id > gold__dim_client.newad_client_id
+Ref: marts__io_calc_daily_v4.io_id > share__io_calc_daily_v4.io_id
+Ref: marts__io_delivery_daily_v4.io_id > marts__io_calc_daily_v4.io_id
+Ref: share__io_calc_daily_v4.io_id > gold__fct_delivery_daily.io_id
+Ref: share__platform_daily_detail.advertiser_platform_id > core__platform_client_links.advertiser_platform_id
+Ref: gold__fct_delivery_daily.newad_client_id > gold__dim_client.newad_client_id
+
+// ------------------------------------------------------------
+// References inferred from view DDL JOIN patterns
+// ------------------------------------------------------------
+
+Ref: core__platform_client_links.id - raw_newadframework__platform_client_links.id // view join
+Ref: core__proposal_lines.id - raw_newadframework__proposal_lines.id // view join
+Ref: core__proposals.id - raw_newadframework__proposals.id // view join
+Ref: core__io_registry_v4.id - stg__io_lines_v4.id // view join
+Ref: raw__mediasmart_bid_supply_daily.id - stg__mediasmart_bid_supply_daily.id // view join
+Ref: raw__mediasmart_daily_creative.id - stg__mediasmart_creative_daily.id // view join
+Ref: raw__mediasmart_daily.id - stg__mediasmart_creative_daily.id // view join
+Ref: raw__mediasmart_creatives.id - stg__mediasmart_creative_daily.id // view join
+Ref: raw__mediasmart_daily.id - stg__mediasmart_daily.id // view join
+Ref: raw__mediasmart_creatives.id - stg__mediasmart_daily.id // view join
+Ref: raw__mediasmart_revenue_daily.id - stg__mediasmart_revenue_daily.id // view join
+Ref: raw__mgid_daily.id - stg__mgid_daily.id // view join
+Ref: raw__mgid_creatives.id - stg__mgid_daily.id // view join
+Ref: raw__mediasmart_campaigns.id - stg__newad_creative_daily.id // view join
+Ref: raw__mgid_campaigns.id - stg__newad_creative_daily.id // view join
+Ref: stg__mediasmart_creative_daily.id - stg__newad_creative_daily.id // view join
+Ref: stg__mgid_daily.id - stg__newad_creative_daily.id // view join
+Ref: raw__siprocal_daily_materialized.id - stg__newad_creative_daily.id // view join
+Ref: stg__mediasmart_daily.id - stg__newad_daily.id // view join
+Ref: stg__mgid_daily.id - stg__newad_daily.id // view join
+Ref: stg__siprocal_daily.id - stg__newad_daily.id // view join
+Ref: raw__mediasmart_campaigns.id - stg__newad_revenue_daily.id // view join
+Ref: stg__mediasmart_creative_daily.id - stg__newad_revenue_daily.id // view join
+Ref: stg__mediasmart_revenue_daily.id - stg__newad_revenue_daily.id // view join
+Ref: raw__siprocal_daily_materialized.id - stg__siprocal_daily.id // view join
+Ref: marts__io_schedule_daily_v4.id - marts__io_calc_daily_v4.id // view join
+Ref: marts__io_delivery_daily_v4.id - marts__io_calc_daily_v4.id // view join
+Ref: share__platform_campaign_catalog.id - marts__io_delivery_daily_v4.id // view join
+Ref: core__io_binding_registry_v4.id - marts__io_delivery_daily_v4.id // view join
+Ref: core__platform_client_links.id - marts__io_delivery_daily_v4.id // view join
+Ref: share__platform_campaign_catalog.id - marts__io_schedule_daily_v4.id // view join
+Ref: stg__io_lines_v4.id - marts__io_schedule_daily_v4.id // view join
+Ref: marts__io_plan_daily.id - marts__kpi_daily.id // view join
+Ref: marts__fact_daily_io.id - marts__kpi_daily.id // view join
+Ref: raw__mediasmart_daily.id - share__admin_client_linking_options.id // view join
+Ref: raw__mgid_daily.id - share__admin_client_linking_options.id // view join
+Ref: raw__mgid_creatives.id - share__admin_client_linking_options.id // view join
+Ref: raw__siprocal_daily_materialized.id - share__admin_client_linking_options.id // view join
+Ref: raw__mediasmart_campaigns.id - share__adops_mediasmart_bid_supply_daily.id // view join
+Ref: stg__mediasmart_bid_supply_daily.id - share__adops_mediasmart_bid_supply_daily.id // view join
+Ref: raw__mediasmart_campaigns.id - share__adops_mediasmart_bid_supply_hourly.id // view join
+Ref: stg__mediasmart_bid_supply_daily.id - share__adops_mediasmart_bid_supply_hourly.id // view join
+Ref: share__adops_mediasmart_bid_supply_daily.id - share__adops_mediasmart_bid_supply_monthly.id // view join
+Ref: marts__io_calc_daily_v4.id - share__io_calc_daily_v4.id // view join
+Ref: marts__io_delivery_daily_v4.id - share__io_delivery_daily_v4.id // view join
+Ref: marts__io_kpis_daily_v3_mat.id - share__io_kpis_daily.id // view join
+Ref: marts__io_kpis_daily_by_model_v3_mat.id - share__io_kpis_daily_by_model.id // view join
+Ref: marts__io_line_kpis_daily_v3_mat.id - share__io_line_kpis_daily.id // view join
+Ref: marts__io_roas_daily_v3_mat.id - share__io_roas_daily.id // view join
+Ref: marts__io_schedule_daily_v4.id - share__io_schedule_daily_v4.id // view join
+Ref: marts__kpi_daily.id - share__kpi_daily.id // view join
+Ref: share__luckbet_io_line_daily.id - share__luckbet_campaign_group_daily.id // view join
+Ref: share__luckbet_io_line_strategy_daily.id - share__luckbet_campaign_group_strategy_daily.id // view join
+Ref: share__platform_daily_strategy.id - share__luckbet_campaign_group_strategy_daily.id // view join
+Ref: share__platform_campaign_catalog.id - share__luckbet_campaign_group_strategy_daily.id // view join
+Ref: share__platform_daily_strategy.id - share__luckbet_campaign_strategy_daily.id // view join
+Ref: share__platform_daily_strategy.id - share__luckbet_io_line_daily.id // view join
+Ref: share__platform_daily_strategy.id - share__luckbet_io_line_strategy_daily.id // view join
+Ref: share__luckbet_io_line_strategy_daily.id - share__luckbet_io_line_strategy_daily_no_fallback.id // view join
+Ref: share__luckbet_sheet_strategy_daily.id - share__luckbet_sheet_campaign_daily.id // view join
+Ref: share__platform_campaign_catalog.id - share__luckbet_sheet_plan_map.id // view join
+Ref: share__platform_campaign_catalog.id - share__luckbet_sheet_strategy_daily.id // view join
+Ref: share__platform_daily_strategy.id - share__luckbet_sheet_strategy_daily.id // view join
+Ref: share__platform_daily_campaign.id - share__luckbet_sheet_strategy_daily.id // view join
+Ref: share__mediasmart_creative_daily.id - share__luckbet_sheet_strategy_daily.id // view join
+Ref: share__platform_daily_strategy.id - share__luckbet_strategy_daily.id // view join
+Ref: stg__mediasmart_creative_daily.id - share__mediasmart_creative_daily.id // view join
+Ref: stg__newad_creative_daily.id - share__newad_creative_daily.id // view join
+Ref: stg__newad_revenue_daily.id - share__newad_revenue_daily.id // view join
+Ref: core__platform_client_links.id - share__platform_campaign_catalog.id // view join
+Ref: raw__mediasmart_campaigns.id - share__platform_campaign_catalog.id // view join
+Ref: stg__mediasmart_daily.id - share__platform_campaign_catalog.id // view join
+Ref: raw__mgid_campaigns.id - share__platform_campaign_catalog.id // view join
+Ref: stg__mgid_daily.id - share__platform_campaign_catalog.id // view join
+Ref: raw__siprocal_daily_materialized.id - share__platform_campaign_catalog.id // view join
+Ref: raw__mediasmart_campaigns.id - share__platform_creative_catalog.id // view join
+Ref: stg__mediasmart_daily.id - share__platform_creative_catalog.id // view join
+Ref: raw__mgid_campaigns.id - share__platform_creative_catalog.id // view join
+Ref: stg__mgid_daily.id - share__platform_creative_catalog.id // view join
+Ref: core__platform_client_links.id - share__platform_strategy_catalog.id // view join
+Ref: stg__mediasmart_daily.id - share__platform_strategy_catalog.id // view join
+Ref: raw__mediasmart_campaigns.id - share__platform_strategy_catalog.id // view join
+Ref: stg__io_lines_v4.id - gold__dim_client.id // view join
+Ref: share__newad_creative_daily.id - gold__dim_creative.id // view join
+Ref: stg__io_lines_v4.id - gold__dim_io_line.id // view join
+Ref: stg__io_lines_v4.id - gold__dim_platform.id // view join
+Ref: stg__io_lines_v4.id - gold__fct_creative_daily.id // view join
+Ref: share__io_calc_daily_v4.id - gold__fct_delivery_daily.id // view join
+Ref: share__newad_revenue_daily.id - gold__fct_delivery_daily.id // view join
+Ref: marts__io_schedule_daily_v4.id - gold__fct_io_plan_daily.id // view join
+Ref: share__io_calc_daily_v4.id - gold__fct_luckbet_delivery_daily.id // view join
+Ref: share__newad_revenue_daily.id - gold__fct_luckbet_delivery_daily.id // view join
