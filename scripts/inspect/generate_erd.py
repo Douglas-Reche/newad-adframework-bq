@@ -185,19 +185,26 @@ for ds in DATASET_ORDER:
         if not cols:
             lines.append("  // (no column metadata available)")
         else:
+            pk_cols = {"id", "binding_id", "io_id", "line_id", "proposal_id"}
+            # Only mark pk if exactly ONE pk-candidate column exists in this table
+            col_names_lower = [c["column_name"].lower() for c in cols]
+            pk_candidates = [n for n in col_names_lower if n in pk_cols]
+            sole_pk = pk_candidates[0] if len(pk_candidates) == 1 else None
+
             for col in sorted(cols, key=lambda c: int(c.get("ordinal_position", 0))):
                 cname = col["column_name"]
                 dtype = bq_type(col.get("data_type", "varchar"))
                 nullable = col.get("is_nullable", "YES")
                 flags = []
                 cl = cname.lower()
-                # Mark obvious PKs
-                if cl in ("id", "binding_id", "io_id", "line_id", "proposal_id"):
+                if sole_pk and cl == sole_pk:
                     flags.append("pk")
                 if nullable == "NO":
                     flags.append("not null")
                 flag_str = f" [{', '.join(flags)}]" if flags else ""
-                lines.append(f"  {safe(cname)} {dtype}{flag_str}")
+                # Quote column names that are invalid DBML identifiers
+                safe_cname = f'"{cname}"' if re.search(r"[^a-zA-Z0-9_]|^[0-9]|_$", cname) else cname
+                lines.append(f"  {safe_cname} {dtype}{flag_str}")
         lines.append("}")
         lines.append("")
 
@@ -223,7 +230,21 @@ lines.append("")
 for src_ds, src_tbl, vds, vtbl in sorted(view_refs, key=lambda r: (DATASET_ORDER.index(r[2]) if r[2] in DATASET_ORDER else 99, r[3])):
     n_src = f"{src_ds}__{src_tbl}"
     n_view = f"{vds}__{vtbl}"
-    lines.append(f"Ref: {safe(n_src)}.id - {safe(n_view)}.id // view join")
+    # Find a shared column to anchor the ref; fall back to first col of the source
+    src_cols = {c["column_name"].lower() for c in columns.get(f"{src_ds}.{src_tbl}", [])}
+    view_cols = {c["column_name"].lower() for c in columns.get(f"{vds}.{vtbl}", [])}
+    shared = src_cols & view_cols
+    # Prefer ID columns as anchor
+    anchor = None
+    for candidate in ["io_id", "line_id", "binding_id", "newad_client_id",
+                       "platform_campaign_id", "date", "id"]:
+        if candidate in shared:
+            anchor = candidate
+            break
+    if not anchor and shared:
+        anchor = sorted(shared)[0]
+    if anchor:
+        lines.append(f"Ref: {safe(n_src)}.{anchor} - {safe(n_view)}.{anchor} // view join")
 
 with open(DBML_OUT, "w", encoding="utf-8") as f:
     f.write("\n".join(lines))

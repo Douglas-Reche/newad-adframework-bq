@@ -44,10 +44,10 @@ Table raw__mediasmart_bid_supply_daily {
   offers varchar
   bids varchar
   bid_percent varchar
-  bid_ varchar
+  "bid_" varchar
   won varchar
   won_percent varchar
-  won_ varchar
+  "won_" varchar
   media_cost varchar
   wonprice varchar
   total_bids_cost varchar
@@ -515,14 +515,14 @@ Table raw__siprocal_daily_native {
 
 Table raw_newadframework__io_line_bindings_v2 {
   Note: 'raw_newadframework.io_line_bindings_v2 | VIEW | 0 rows'
-  binding_id varchar [pk]
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  binding_id varchar
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_line varchar
   platform varchar
@@ -548,8 +548,8 @@ Table raw_newadframework__io_line_bindings_v2 {
 
 Table raw_newadframework__io_manager_v2 {
   Note: 'raw_newadframework.io_manager_v2 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   advertiser varchar
   product varchar
   campaign_type varchar
@@ -576,7 +576,7 @@ Table raw_newadframework__io_manager_v2 {
   updated_at timestamp
   newad_client_id varchar
   advertiser_id varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   line_status varchar
 }
@@ -641,8 +641,8 @@ Table raw_newadframework__proposals {
 
 Table stg__io_lines_v4 {
   Note: 'stg.io_lines_v4 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   nwd_adv_id varchar
   nwd_agc_id varchar
@@ -656,7 +656,7 @@ Table stg__io_lines_v4 {
   funnel varchar
   objective varchar
   proposal_month varchar
-  line_id varchar [pk]
+  line_id varchar
   line_item varchar
   line_number varchar
   line_status varchar
@@ -1167,16 +1167,16 @@ Table stg__siprocal_operational_v2 {
 
 Table core__io_binding_registry_v4 {
   Note: 'core.io_binding_registry_v4 | VIEW | 0 rows'
-  binding_id varchar [pk]
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  binding_id varchar
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   nwd_adv_id varchar
   nwd_agc_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_line varchar
   platform varchar
@@ -1199,14 +1199,14 @@ Table core__io_binding_registry_v4 {
 
 Table core__io_line_bindings_enriched_v2 {
   Note: 'core.io_line_bindings_enriched_v2 | VIEW | 0 rows'
-  binding_id varchar [pk]
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  binding_id varchar
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_line varchar
   platform varchar
@@ -1229,14 +1229,14 @@ Table core__io_line_bindings_enriched_v2 {
 
 Table core__io_line_bindings_v2 {
   Note: 'core.io_line_bindings_v2 | TABLE | 170 rows'
-  binding_id varchar [pk]
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  binding_id varchar
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_line varchar
   platform varchar
@@ -1262,10 +1262,10 @@ Table core__io_line_bindings_v2 {
 
 Table core__io_manager {
   Note: 'core.io_manager | EXTERNAL | 0 rows'
-  id varchar [pk]
+  id varchar
   advertiser varchar
   product varchar
-  proposal_id varchar [pk]
+  proposal_id varchar
   campaign_type varchar
   campaign_name varchar
   target varchar
@@ -1284,9 +1284,9 @@ Table core__io_manager {
   deliverable_volume varchar
   platform varchar
   platform_campaign_id varchar
-  io_id varchar [pk]
+  io_id varchar
   io_number varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   advertiser_id varchar
   advertiser_name varchar
@@ -1297,8 +1297,8 @@ Table core__io_manager {
 
 Table core__io_manager_enriched {
   Note: 'core.io_manager_enriched | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   advertiser varchar
   product varchar
   campaign_type varchar
@@ -1325,8 +1325,8 @@ Table core__io_manager_enriched {
 
 Table core__io_manager_enriched_v2 {
   Note: 'core.io_manager_enriched_v2 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
@@ -1340,7 +1340,7 @@ Table core__io_manager_enriched_v2 {
   total_budget decimal
   funnel varchar
   objective varchar
-  line_id varchar [pk]
+  line_id varchar
   line_item varchar
   line_number varchar
   line_status varchar
@@ -1358,10 +1358,10 @@ Table core__io_manager_enriched_v2 {
 
 Table core__io_manager_legacy_cache {
   Note: 'core.io_manager_legacy_cache | TABLE | 62 rows'
-  id varchar [pk]
+  id varchar
   advertiser varchar
   product varchar
-  proposal_id varchar [pk]
+  proposal_id varchar
   campaign_type varchar
   campaign_name varchar
   target varchar
@@ -1380,9 +1380,9 @@ Table core__io_manager_legacy_cache {
   deliverable_volume varchar
   platform varchar
   platform_campaign_id varchar
-  io_id varchar [pk]
+  io_id varchar
   io_number varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   advertiser_id varchar
   advertiser_name varchar
@@ -1394,8 +1394,8 @@ Table core__io_manager_legacy_cache {
 
 Table core__io_manager_v2 {
   Note: 'core.io_manager_v2 | TABLE | 229 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   advertiser varchar
   product varchar
   campaign_type varchar
@@ -1422,15 +1422,15 @@ Table core__io_manager_v2 {
   updated_at timestamp
   newad_client_id varchar
   advertiser_id varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   line_status varchar
 }
 
 Table core__io_registry_v4 {
   Note: 'core.io_registry_v4 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   nwd_adv_id varchar
   nwd_agc_id varchar
@@ -1447,7 +1447,7 @@ Table core__io_registry_v4 {
   end_date date
   total_budget decimal
   proposal_month varchar
-  line_id varchar [pk]
+  line_id varchar
   line_item varchar
   line_number varchar
   line_status varchar
@@ -1550,9 +1550,9 @@ Table marts__fact_daily_detail {
   client_revenue decimal
   converted_client_revenue decimal
   client_cost decimal
-  io_id varchar [pk]
+  io_id varchar
   io_number bigint
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   advertiser_id bigint
   advertiser_name varchar
@@ -1579,9 +1579,9 @@ Table marts__fact_daily_io {
   Note: 'marts.fact_daily_io | VIEW | 0 rows'
   date date
   io_line_uid varchar
-  io_id varchar [pk]
+  io_id varchar
   io_number bigint
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   advertiser_id bigint
   advertiser_name varchar
@@ -1657,8 +1657,8 @@ Table marts__fact_daily_io {
 
 Table marts__io_calc_daily_v4 {
   Note: 'marts.io_calc_daily_v4 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   nwd_adv_id varchar
   nwd_agc_id varchar
@@ -1672,7 +1672,7 @@ Table marts__io_calc_daily_v4 {
   funnel varchar
   objective varchar
   proposal_month varchar
-  line_id varchar [pk]
+  line_id varchar
   line_item varchar
   line_number varchar
   line_status varchar
@@ -1718,15 +1718,15 @@ Table marts__io_calc_daily_v4 {
 
 Table marts__io_delivery_daily_v4 {
   Note: 'marts.io_delivery_daily_v4 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   nwd_adv_id varchar
   nwd_agc_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_line varchar
   platform varchar
@@ -1753,8 +1753,8 @@ Table marts__io_delivery_daily_v4 {
 
 Table marts__io_kpis_daily_by_model_v2 {
   Note: 'marts.io_kpis_daily_by_model_v2 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
@@ -1776,8 +1776,8 @@ Table marts__io_kpis_daily_by_model_v2 {
 
 Table marts__io_kpis_daily_by_model_v3 {
   Note: 'marts.io_kpis_daily_by_model_v3 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
@@ -1803,8 +1803,8 @@ Table marts__io_kpis_daily_by_model_v3 {
 
 Table marts__io_kpis_daily_by_model_v3_mat {
   Note: 'marts.io_kpis_daily_by_model_v3_mat | TABLE | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
@@ -1830,8 +1830,8 @@ Table marts__io_kpis_daily_by_model_v3_mat {
 
 Table marts__io_kpis_daily_v2 {
   Note: 'marts.io_kpis_daily_v2 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
@@ -1859,8 +1859,8 @@ Table marts__io_kpis_daily_v2 {
 
 Table marts__io_kpis_daily_v3 {
   Note: 'marts.io_kpis_daily_v3 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
@@ -1894,8 +1894,8 @@ Table marts__io_kpis_daily_v3 {
 
 Table marts__io_kpis_daily_v3_mat {
   Note: 'marts.io_kpis_daily_v3_mat | TABLE | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
@@ -1929,13 +1929,13 @@ Table marts__io_kpis_daily_v3_mat {
 
 Table marts__io_line_actual_daily_v2 {
   Note: 'marts.io_line_actual_daily_v2 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_line varchar
   platform varchar
@@ -1963,13 +1963,13 @@ Table marts__io_line_actual_daily_v2 {
 
 Table marts__io_line_actual_daily_v3 {
   Note: 'marts.io_line_actual_daily_v3 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_line varchar
   platform varchar
@@ -1992,13 +1992,13 @@ Table marts__io_line_actual_daily_v3 {
 
 Table marts__io_line_kpis_daily_v2 {
   Note: 'marts.io_line_kpis_daily_v2 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_name varchar
   line_item varchar
@@ -2047,13 +2047,13 @@ Table marts__io_line_kpis_daily_v2 {
 
 Table marts__io_line_kpis_daily_v3 {
   Note: 'marts.io_line_kpis_daily_v3 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_name varchar
   line_item varchar
@@ -2104,13 +2104,13 @@ Table marts__io_line_kpis_daily_v3 {
 
 Table marts__io_line_kpis_daily_v3_mat {
   Note: 'marts.io_line_kpis_daily_v3_mat | TABLE | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_name varchar
   line_item varchar
@@ -2161,13 +2161,13 @@ Table marts__io_line_kpis_daily_v3_mat {
 
 Table marts__io_line_plan_daily_v2 {
   Note: 'marts.io_line_plan_daily_v2 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_name varchar
   line_item varchar
@@ -2195,13 +2195,13 @@ Table marts__io_line_plan_daily_v2 {
 
 Table marts__io_line_plan_daily_v3 {
   Note: 'marts.io_line_plan_daily_v3 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_name varchar
   line_item varchar
@@ -2229,13 +2229,13 @@ Table marts__io_line_plan_daily_v3 {
 
 Table marts__io_line_revenue_daily_v3 {
   Note: 'marts.io_line_revenue_daily_v3 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_line varchar
   platform varchar
@@ -2251,8 +2251,8 @@ Table marts__io_line_revenue_daily_v3 {
 
 Table marts__io_plan_daily {
   Note: 'marts.io_plan_daily | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   advertiser varchar
   campaign_name varchar
   line_item varchar
@@ -2275,13 +2275,13 @@ Table marts__io_plan_daily {
 
 Table marts__io_roas_daily_v3_mat {
   Note: 'marts.io_roas_daily_v3_mat | TABLE | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_name varchar
   line_item varchar
@@ -2312,8 +2312,8 @@ Table marts__io_roas_daily_v3_mat {
 
 Table marts__io_schedule_daily_v4 {
   Note: 'marts.io_schedule_daily_v4 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   nwd_adv_id varchar
   nwd_agc_id varchar
@@ -2327,7 +2327,7 @@ Table marts__io_schedule_daily_v4 {
   funnel varchar
   objective varchar
   proposal_month varchar
-  line_id varchar [pk]
+  line_id varchar
   line_item varchar
   line_number varchar
   line_status varchar
@@ -2354,8 +2354,8 @@ Table marts__io_schedule_daily_v4 {
 
 Table marts__kpi_daily {
   Note: 'marts.kpi_daily | VIEW | 0 rows'
-  io_id varchar [pk]
-  line_id varchar [pk]
+  io_id varchar
+  line_id varchar
   date date
   platform varchar
   platform_campaign_id varchar
@@ -2610,8 +2610,8 @@ Table share__dashboard_cards_detail {
 
 Table share__io_calc_daily_v4 {
   Note: 'share.io_calc_daily_v4 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   nwd_adv_id varchar
   nwd_agc_id varchar
@@ -2625,7 +2625,7 @@ Table share__io_calc_daily_v4 {
   funnel varchar
   objective varchar
   proposal_month varchar
-  line_id varchar [pk]
+  line_id varchar
   line_item varchar
   line_number varchar
   line_status varchar
@@ -2671,15 +2671,15 @@ Table share__io_calc_daily_v4 {
 
 Table share__io_delivery_daily_v4 {
   Note: 'share.io_delivery_daily_v4 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   nwd_adv_id varchar
   nwd_agc_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_line varchar
   platform varchar
@@ -2706,8 +2706,8 @@ Table share__io_delivery_daily_v4 {
 
 Table share__io_kpis_daily {
   Note: 'share.io_kpis_daily | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
@@ -2741,8 +2741,8 @@ Table share__io_kpis_daily {
 
 Table share__io_kpis_daily_by_model {
   Note: 'share.io_kpis_daily_by_model | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
@@ -2768,8 +2768,8 @@ Table share__io_kpis_daily_by_model {
 
 Table share__io_kpis_daily_by_model_v2 {
   Note: 'share.io_kpis_daily_by_model_v2 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
@@ -2791,8 +2791,8 @@ Table share__io_kpis_daily_by_model_v2 {
 
 Table share__io_kpis_daily_by_model_v3 {
   Note: 'share.io_kpis_daily_by_model_v3 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
@@ -2818,8 +2818,8 @@ Table share__io_kpis_daily_by_model_v3 {
 
 Table share__io_kpis_daily_v2 {
   Note: 'share.io_kpis_daily_v2 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
@@ -2847,8 +2847,8 @@ Table share__io_kpis_daily_v2 {
 
 Table share__io_kpis_daily_v3 {
   Note: 'share.io_kpis_daily_v3 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
@@ -2882,13 +2882,13 @@ Table share__io_kpis_daily_v3 {
 
 Table share__io_line_actual_daily_v3 {
   Note: 'share.io_line_actual_daily_v3 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_line varchar
   platform varchar
@@ -2911,13 +2911,13 @@ Table share__io_line_actual_daily_v3 {
 
 Table share__io_line_kpis_daily {
   Note: 'share.io_line_kpis_daily | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_name varchar
   line_item varchar
@@ -2968,13 +2968,13 @@ Table share__io_line_kpis_daily {
 
 Table share__io_line_kpis_daily_v2 {
   Note: 'share.io_line_kpis_daily_v2 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_name varchar
   line_item varchar
@@ -3023,13 +3023,13 @@ Table share__io_line_kpis_daily_v2 {
 
 Table share__io_line_kpis_daily_v3 {
   Note: 'share.io_line_kpis_daily_v3 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_name varchar
   line_item varchar
@@ -3080,13 +3080,13 @@ Table share__io_line_kpis_daily_v3 {
 
 Table share__io_line_plan_daily_v3 {
   Note: 'share.io_line_plan_daily_v3 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_name varchar
   line_item varchar
@@ -3114,13 +3114,13 @@ Table share__io_line_plan_daily_v3 {
 
 Table share__io_line_revenue_daily_v3 {
   Note: 'share.io_line_revenue_daily_v3 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_line varchar
   platform varchar
@@ -3136,13 +3136,13 @@ Table share__io_line_revenue_daily_v3 {
 
 Table share__io_roas_daily {
   Note: 'share.io_roas_daily | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_name varchar
   line_item varchar
@@ -3173,8 +3173,8 @@ Table share__io_roas_daily {
 
 Table share__io_schedule_daily_v4 {
   Note: 'share.io_schedule_daily_v4 | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   nwd_adv_id varchar
   nwd_agc_id varchar
@@ -3188,7 +3188,7 @@ Table share__io_schedule_daily_v4 {
   funnel varchar
   objective varchar
   proposal_month varchar
-  line_id varchar [pk]
+  line_id varchar
   line_item varchar
   line_number varchar
   line_status varchar
@@ -3215,8 +3215,8 @@ Table share__io_schedule_daily_v4 {
 
 Table share__io_validation_full {
   Note: 'share.io_validation_full | TABLE | 48 rows'
-  io_id varchar [pk]
-  line_id varchar [pk]
+  io_id varchar
+  line_id varchar
   platform varchar
   planned_cost decimal
   daily_cost decimal
@@ -3230,8 +3230,8 @@ Table share__io_validation_full {
 
 Table share__kpi_daily {
   Note: 'share.kpi_daily | VIEW | 0 rows'
-  io_id varchar [pk]
-  line_id varchar [pk]
+  io_id varchar
+  line_id varchar
   date date
   platform varchar
   platform_campaign_id varchar
@@ -3314,9 +3314,9 @@ Table share__luckbet_io_line_daily {
   Note: 'share.luckbet_io_line_daily | VIEW | 0 rows'
   grain_level varchar
   date date
-  io_id varchar [pk]
+  io_id varchar
   io_line varchar
-  line_id varchar [pk]
+  line_id varchar
   campaign_line varchar
   platform varchar
   strategy_id varchar
@@ -3358,9 +3358,9 @@ Table share__luckbet_io_line_daily {
 Table share__luckbet_io_line_strategy_daily {
   Note: 'share.luckbet_io_line_strategy_daily | VIEW | 0 rows'
   date date
-  io_id varchar [pk]
+  io_id varchar
   io_line varchar
-  line_id varchar [pk]
+  line_id varchar
   campaign_line varchar
   platform varchar
   strategy_id varchar
@@ -3402,9 +3402,9 @@ Table share__luckbet_io_line_strategy_daily {
 Table share__luckbet_io_line_strategy_daily_no_fallback {
   Note: 'share.luckbet_io_line_strategy_daily_no_fallback | VIEW | 0 rows'
   date date
-  io_id varchar [pk]
+  io_id varchar
   io_line varchar
-  line_id varchar [pk]
+  line_id varchar
   campaign_line varchar
   platform varchar
   strategy_id varchar
@@ -4683,8 +4683,8 @@ Table gold__dim_date {
 
 Table gold__dim_io_line {
   Note: 'gold.dim_io_line | VIEW | 0 rows'
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   nwd_adv_id varchar
   nwd_agc_id varchar
@@ -4698,7 +4698,7 @@ Table gold__dim_io_line {
   funnel varchar
   objective varchar
   proposal_month varchar
-  line_id varchar [pk]
+  line_id varchar
   line_item varchar
   line_number varchar
   line_status varchar
@@ -4754,13 +4754,13 @@ Table gold__fct_creative_daily {
 Table gold__fct_delivery_daily {
   Note: 'gold.fct_delivery_daily | VIEW | 0 rows'
   date date
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
   advertiser varchar
   advertiser_id varchar
   product varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   campaign_line varchar
   platform varchar
@@ -4788,10 +4788,10 @@ Table gold__fct_delivery_daily {
 Table gold__fct_io_plan_daily {
   Note: 'gold.fct_io_plan_daily | VIEW | 0 rows'
   date date
-  io_id varchar [pk]
-  proposal_id varchar [pk]
+  io_id varchar
+  proposal_id varchar
   newad_client_id varchar
-  line_id varchar [pk]
+  line_id varchar
   line_number varchar
   platform varchar
   proposal_month varchar
@@ -4881,8 +4881,8 @@ Table gold__fct_luckbet_delivery_daily {
   tx_ftd_click_pct float
   tx_deposito_ftd_pct float
   pacing_pct float
-  io_id varchar [pk]
-  line_id varchar [pk]
+  io_id varchar
+  line_id varchar
   line_number varchar
   io_proposal_month varchar
   raw_ingested_at timestamp
@@ -4925,8 +4925,8 @@ Table gold__fct_newad_bet_daily {
   tx_ftd_click_pct float
   tx_deposito_ftd_pct float
   pacing_pct float
-  io_id varchar [pk]
-  line_id varchar [pk]
+  io_id varchar
+  line_id varchar
   line_number varchar
   io_mes_referencia varchar
   gold_updated_at timestamp
@@ -4968,8 +4968,8 @@ Table gold__fct_newad_fintech_daily {
   tx_ftd_click_pct float
   tx_deposito_ftd_pct float
   pacing_pct float
-  io_id varchar [pk]
-  line_id varchar [pk]
+  io_id varchar
+  line_id varchar
   line_number varchar
   io_mes_referencia varchar
   gold_updated_at timestamp
@@ -5009,95 +5009,82 @@ Ref: gold__fct_delivery_daily.newad_client_id > gold__dim_client.newad_client_id
 // References inferred from view DDL JOIN patterns
 // ------------------------------------------------------------
 
-Ref: core__platform_client_links.id - raw_newadframework__platform_client_links.id // view join
-Ref: core__proposal_lines.id - raw_newadframework__proposal_lines.id // view join
-Ref: core__proposals.id - raw_newadframework__proposals.id // view join
-Ref: core__io_registry_v4.id - stg__io_lines_v4.id // view join
-Ref: raw__mediasmart_bid_supply_daily.id - stg__mediasmart_bid_supply_daily.id // view join
-Ref: raw__mediasmart_daily_creative.id - stg__mediasmart_creative_daily.id // view join
-Ref: raw__mediasmart_daily.id - stg__mediasmart_creative_daily.id // view join
-Ref: raw__mediasmart_creatives.id - stg__mediasmart_creative_daily.id // view join
-Ref: raw__mediasmart_daily.id - stg__mediasmart_daily.id // view join
-Ref: raw__mediasmart_creatives.id - stg__mediasmart_daily.id // view join
-Ref: raw__mediasmart_revenue_daily.id - stg__mediasmart_revenue_daily.id // view join
-Ref: raw__mgid_daily.id - stg__mgid_daily.id // view join
-Ref: raw__mgid_creatives.id - stg__mgid_daily.id // view join
-Ref: raw__mediasmart_campaigns.id - stg__newad_creative_daily.id // view join
-Ref: raw__mgid_campaigns.id - stg__newad_creative_daily.id // view join
-Ref: stg__mediasmart_creative_daily.id - stg__newad_creative_daily.id // view join
-Ref: stg__mgid_daily.id - stg__newad_creative_daily.id // view join
-Ref: raw__siprocal_daily_materialized.id - stg__newad_creative_daily.id // view join
-Ref: stg__mediasmart_daily.id - stg__newad_daily.id // view join
-Ref: stg__mgid_daily.id - stg__newad_daily.id // view join
-Ref: stg__siprocal_daily.id - stg__newad_daily.id // view join
-Ref: raw__mediasmart_campaigns.id - stg__newad_revenue_daily.id // view join
-Ref: stg__mediasmart_creative_daily.id - stg__newad_revenue_daily.id // view join
-Ref: stg__mediasmart_revenue_daily.id - stg__newad_revenue_daily.id // view join
-Ref: raw__siprocal_daily_materialized.id - stg__siprocal_daily.id // view join
-Ref: marts__io_schedule_daily_v4.id - marts__io_calc_daily_v4.id // view join
-Ref: marts__io_delivery_daily_v4.id - marts__io_calc_daily_v4.id // view join
-Ref: share__platform_campaign_catalog.id - marts__io_delivery_daily_v4.id // view join
-Ref: core__io_binding_registry_v4.id - marts__io_delivery_daily_v4.id // view join
-Ref: core__platform_client_links.id - marts__io_delivery_daily_v4.id // view join
-Ref: share__platform_campaign_catalog.id - marts__io_schedule_daily_v4.id // view join
-Ref: stg__io_lines_v4.id - marts__io_schedule_daily_v4.id // view join
-Ref: marts__io_plan_daily.id - marts__kpi_daily.id // view join
-Ref: marts__fact_daily_io.id - marts__kpi_daily.id // view join
-Ref: raw__mediasmart_daily.id - share__admin_client_linking_options.id // view join
-Ref: raw__mgid_daily.id - share__admin_client_linking_options.id // view join
-Ref: raw__mgid_creatives.id - share__admin_client_linking_options.id // view join
-Ref: raw__siprocal_daily_materialized.id - share__admin_client_linking_options.id // view join
-Ref: raw__mediasmart_campaigns.id - share__adops_mediasmart_bid_supply_daily.id // view join
-Ref: stg__mediasmart_bid_supply_daily.id - share__adops_mediasmart_bid_supply_daily.id // view join
-Ref: raw__mediasmart_campaigns.id - share__adops_mediasmart_bid_supply_hourly.id // view join
-Ref: stg__mediasmart_bid_supply_daily.id - share__adops_mediasmart_bid_supply_hourly.id // view join
-Ref: share__adops_mediasmart_bid_supply_daily.id - share__adops_mediasmart_bid_supply_monthly.id // view join
-Ref: marts__io_calc_daily_v4.id - share__io_calc_daily_v4.id // view join
-Ref: marts__io_delivery_daily_v4.id - share__io_delivery_daily_v4.id // view join
-Ref: marts__io_kpis_daily_v3_mat.id - share__io_kpis_daily.id // view join
-Ref: marts__io_kpis_daily_by_model_v3_mat.id - share__io_kpis_daily_by_model.id // view join
-Ref: marts__io_line_kpis_daily_v3_mat.id - share__io_line_kpis_daily.id // view join
-Ref: marts__io_roas_daily_v3_mat.id - share__io_roas_daily.id // view join
-Ref: marts__io_schedule_daily_v4.id - share__io_schedule_daily_v4.id // view join
-Ref: marts__kpi_daily.id - share__kpi_daily.id // view join
-Ref: share__luckbet_io_line_daily.id - share__luckbet_campaign_group_daily.id // view join
-Ref: share__luckbet_io_line_strategy_daily.id - share__luckbet_campaign_group_strategy_daily.id // view join
-Ref: share__platform_daily_strategy.id - share__luckbet_campaign_group_strategy_daily.id // view join
-Ref: share__platform_campaign_catalog.id - share__luckbet_campaign_group_strategy_daily.id // view join
-Ref: share__platform_daily_strategy.id - share__luckbet_campaign_strategy_daily.id // view join
-Ref: share__platform_daily_strategy.id - share__luckbet_io_line_daily.id // view join
-Ref: share__platform_daily_strategy.id - share__luckbet_io_line_strategy_daily.id // view join
-Ref: share__luckbet_io_line_strategy_daily.id - share__luckbet_io_line_strategy_daily_no_fallback.id // view join
-Ref: share__luckbet_sheet_strategy_daily.id - share__luckbet_sheet_campaign_daily.id // view join
-Ref: share__platform_campaign_catalog.id - share__luckbet_sheet_plan_map.id // view join
-Ref: share__platform_campaign_catalog.id - share__luckbet_sheet_strategy_daily.id // view join
-Ref: share__platform_daily_strategy.id - share__luckbet_sheet_strategy_daily.id // view join
-Ref: share__platform_daily_campaign.id - share__luckbet_sheet_strategy_daily.id // view join
-Ref: share__mediasmart_creative_daily.id - share__luckbet_sheet_strategy_daily.id // view join
-Ref: share__platform_daily_strategy.id - share__luckbet_strategy_daily.id // view join
-Ref: stg__mediasmart_creative_daily.id - share__mediasmart_creative_daily.id // view join
-Ref: stg__newad_creative_daily.id - share__newad_creative_daily.id // view join
-Ref: stg__newad_revenue_daily.id - share__newad_revenue_daily.id // view join
-Ref: core__platform_client_links.id - share__platform_campaign_catalog.id // view join
-Ref: raw__mediasmart_campaigns.id - share__platform_campaign_catalog.id // view join
-Ref: stg__mediasmart_daily.id - share__platform_campaign_catalog.id // view join
-Ref: raw__mgid_campaigns.id - share__platform_campaign_catalog.id // view join
-Ref: stg__mgid_daily.id - share__platform_campaign_catalog.id // view join
-Ref: raw__siprocal_daily_materialized.id - share__platform_campaign_catalog.id // view join
-Ref: raw__mediasmart_campaigns.id - share__platform_creative_catalog.id // view join
-Ref: stg__mediasmart_daily.id - share__platform_creative_catalog.id // view join
-Ref: raw__mgid_campaigns.id - share__platform_creative_catalog.id // view join
-Ref: stg__mgid_daily.id - share__platform_creative_catalog.id // view join
-Ref: core__platform_client_links.id - share__platform_strategy_catalog.id // view join
-Ref: stg__mediasmart_daily.id - share__platform_strategy_catalog.id // view join
-Ref: raw__mediasmart_campaigns.id - share__platform_strategy_catalog.id // view join
-Ref: stg__io_lines_v4.id - gold__dim_client.id // view join
-Ref: share__newad_creative_daily.id - gold__dim_creative.id // view join
-Ref: stg__io_lines_v4.id - gold__dim_io_line.id // view join
-Ref: stg__io_lines_v4.id - gold__dim_platform.id // view join
-Ref: stg__io_lines_v4.id - gold__fct_creative_daily.id // view join
-Ref: share__io_calc_daily_v4.id - gold__fct_delivery_daily.id // view join
-Ref: share__newad_revenue_daily.id - gold__fct_delivery_daily.id // view join
-Ref: marts__io_schedule_daily_v4.id - gold__fct_io_plan_daily.id // view join
-Ref: share__io_calc_daily_v4.id - gold__fct_luckbet_delivery_daily.id // view join
-Ref: share__newad_revenue_daily.id - gold__fct_luckbet_delivery_daily.id // view join
+Ref: core__platform_client_links.newad_client_id - raw_newadframework__platform_client_links.newad_client_id // view join
+Ref: core__proposal_lines.budget_sold - raw_newadframework__proposal_lines.budget_sold // view join
+Ref: core__proposals.advertiser_id - raw_newadframework__proposals.advertiser_id // view join
+Ref: core__io_registry_v4.io_id - stg__io_lines_v4.io_id // view join
+Ref: raw__mediasmart_bid_supply_daily.ad_exchange - stg__mediasmart_bid_supply_daily.ad_exchange // view join
+Ref: raw__mediasmart_daily_creative.clicks - stg__mediasmart_creative_daily.clicks // view join
+Ref: raw__mediasmart_daily.clicks - stg__mediasmart_creative_daily.clicks // view join
+Ref: raw__mediasmart_creatives.creative_id - stg__mediasmart_creative_daily.creative_id // view join
+Ref: raw__mediasmart_daily.clicks - stg__mediasmart_daily.clicks // view join
+Ref: raw__mediasmart_creatives.creative_id - stg__mediasmart_daily.creative_id // view join
+Ref: raw__mediasmart_revenue_daily.campaign_id - stg__mediasmart_revenue_daily.campaign_id // view join
+Ref: raw__mgid_daily.clicks - stg__mgid_daily.clicks // view join
+Ref: stg__mediasmart_creative_daily.platform_campaign_id - stg__newad_creative_daily.platform_campaign_id // view join
+Ref: stg__mgid_daily.platform_campaign_id - stg__newad_creative_daily.platform_campaign_id // view join
+Ref: raw__siprocal_daily_materialized.clicks - stg__newad_creative_daily.clicks // view join
+Ref: stg__mediasmart_daily.platform_campaign_id - stg__newad_daily.platform_campaign_id // view join
+Ref: stg__mgid_daily.platform_campaign_id - stg__newad_daily.platform_campaign_id // view join
+Ref: stg__siprocal_daily.platform_campaign_id - stg__newad_daily.platform_campaign_id // view join
+Ref: stg__mediasmart_creative_daily.platform_campaign_id - stg__newad_revenue_daily.platform_campaign_id // view join
+Ref: stg__mediasmart_revenue_daily.date - stg__newad_revenue_daily.date // view join
+Ref: raw__siprocal_daily_materialized.clicks - stg__siprocal_daily.clicks // view join
+Ref: marts__io_schedule_daily_v4.io_id - marts__io_calc_daily_v4.io_id // view join
+Ref: marts__io_delivery_daily_v4.io_id - marts__io_calc_daily_v4.io_id // view join
+Ref: share__platform_campaign_catalog.newad_client_id - marts__io_delivery_daily_v4.newad_client_id // view join
+Ref: core__io_binding_registry_v4.io_id - marts__io_delivery_daily_v4.io_id // view join
+Ref: core__platform_client_links.newad_client_id - marts__io_delivery_daily_v4.newad_client_id // view join
+Ref: share__platform_campaign_catalog.newad_client_id - marts__io_schedule_daily_v4.newad_client_id // view join
+Ref: stg__io_lines_v4.io_id - marts__io_schedule_daily_v4.io_id // view join
+Ref: marts__io_plan_daily.io_id - marts__kpi_daily.io_id // view join
+Ref: marts__fact_daily_io.io_id - marts__kpi_daily.io_id // view join
+Ref: raw__mediasmart_daily.platform - share__admin_client_linking_options.platform // view join
+Ref: raw__mgid_daily.platform - share__admin_client_linking_options.platform // view join
+Ref: raw__siprocal_daily_materialized.campaign_id - share__admin_client_linking_options.campaign_id // view join
+Ref: stg__mediasmart_bid_supply_daily.date - share__adops_mediasmart_bid_supply_daily.date // view join
+Ref: stg__mediasmart_bid_supply_daily.date - share__adops_mediasmart_bid_supply_hourly.date // view join
+Ref: share__adops_mediasmart_bid_supply_daily.ad_exchange - share__adops_mediasmart_bid_supply_monthly.ad_exchange // view join
+Ref: marts__io_calc_daily_v4.io_id - share__io_calc_daily_v4.io_id // view join
+Ref: marts__io_delivery_daily_v4.io_id - share__io_delivery_daily_v4.io_id // view join
+Ref: marts__io_kpis_daily_v3_mat.io_id - share__io_kpis_daily.io_id // view join
+Ref: marts__io_kpis_daily_by_model_v3_mat.io_id - share__io_kpis_daily_by_model.io_id // view join
+Ref: marts__io_line_kpis_daily_v3_mat.io_id - share__io_line_kpis_daily.io_id // view join
+Ref: marts__io_roas_daily_v3_mat.io_id - share__io_roas_daily.io_id // view join
+Ref: marts__io_schedule_daily_v4.io_id - share__io_schedule_daily_v4.io_id // view join
+Ref: marts__kpi_daily.io_id - share__kpi_daily.io_id // view join
+Ref: share__luckbet_io_line_daily.io_id - share__luckbet_campaign_group_daily.io_id // view join
+Ref: share__luckbet_io_line_strategy_daily.io_id - share__luckbet_campaign_group_strategy_daily.io_id // view join
+Ref: share__platform_daily_strategy.date - share__luckbet_campaign_group_strategy_daily.date // view join
+Ref: share__platform_campaign_catalog.clicks - share__luckbet_campaign_group_strategy_daily.clicks // view join
+Ref: share__platform_daily_strategy.platform_campaign_id - share__luckbet_campaign_strategy_daily.platform_campaign_id // view join
+Ref: share__platform_daily_strategy.date - share__luckbet_io_line_daily.date // view join
+Ref: share__platform_daily_strategy.date - share__luckbet_io_line_strategy_daily.date // view join
+Ref: share__luckbet_io_line_strategy_daily.io_id - share__luckbet_io_line_strategy_daily_no_fallback.io_id // view join
+Ref: share__luckbet_sheet_strategy_daily.date - share__luckbet_sheet_campaign_daily.date // view join
+Ref: share__platform_campaign_catalog.platform_campaign_id - share__luckbet_sheet_plan_map.platform_campaign_id // view join
+Ref: share__platform_campaign_catalog.platform_campaign_id - share__luckbet_sheet_strategy_daily.platform_campaign_id // view join
+Ref: share__platform_daily_strategy.platform_campaign_id - share__luckbet_sheet_strategy_daily.platform_campaign_id // view join
+Ref: share__platform_daily_campaign.platform_campaign_id - share__luckbet_sheet_strategy_daily.platform_campaign_id // view join
+Ref: share__mediasmart_creative_daily.platform_campaign_id - share__luckbet_sheet_strategy_daily.platform_campaign_id // view join
+Ref: share__platform_daily_strategy.platform_campaign_id - share__luckbet_strategy_daily.platform_campaign_id // view join
+Ref: stg__mediasmart_creative_daily.platform_campaign_id - share__mediasmart_creative_daily.platform_campaign_id // view join
+Ref: stg__newad_creative_daily.platform_campaign_id - share__newad_creative_daily.platform_campaign_id // view join
+Ref: stg__newad_revenue_daily.platform_campaign_id - share__newad_revenue_daily.platform_campaign_id // view join
+Ref: core__platform_client_links.newad_client_id - share__platform_campaign_catalog.newad_client_id // view join
+Ref: stg__mediasmart_daily.platform_campaign_id - share__platform_campaign_catalog.platform_campaign_id // view join
+Ref: stg__mgid_daily.platform_campaign_id - share__platform_campaign_catalog.platform_campaign_id // view join
+Ref: raw__siprocal_daily_materialized.clicks - share__platform_campaign_catalog.clicks // view join
+Ref: stg__mediasmart_daily.platform_campaign_id - share__platform_creative_catalog.platform_campaign_id // view join
+Ref: stg__mgid_daily.platform_campaign_id - share__platform_creative_catalog.platform_campaign_id // view join
+Ref: core__platform_client_links.newad_client_id - share__platform_strategy_catalog.newad_client_id // view join
+Ref: stg__mediasmart_daily.platform_campaign_id - share__platform_strategy_catalog.platform_campaign_id // view join
+Ref: stg__io_lines_v4.newad_client_id - gold__dim_client.newad_client_id // view join
+Ref: share__newad_creative_daily.platform_campaign_id - gold__dim_creative.platform_campaign_id // view join
+Ref: stg__io_lines_v4.io_id - gold__dim_io_line.io_id // view join
+Ref: stg__io_lines_v4.io_id - gold__fct_creative_daily.io_id // view join
+Ref: share__io_calc_daily_v4.io_id - gold__fct_delivery_daily.io_id // view join
+Ref: share__newad_revenue_daily.platform_campaign_id - gold__fct_delivery_daily.platform_campaign_id // view join
+Ref: marts__io_schedule_daily_v4.io_id - gold__fct_io_plan_daily.io_id // view join
+Ref: share__io_calc_daily_v4.io_id - gold__fct_luckbet_delivery_daily.io_id // view join
+Ref: share__newad_revenue_daily.platform_campaign_id - gold__fct_luckbet_delivery_daily.platform_campaign_id // view join
