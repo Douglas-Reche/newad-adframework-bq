@@ -1,0 +1,47 @@
+name: Cora Sheets → BigQuery Sync
+
+on:
+  # Run every weekday at 07:00 BRT (10:00 UTC)
+  schedule:
+    - cron: "0 10 * * 1-5"
+
+  # Allow manual trigger from GitHub Actions tab
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Reason for manual sync"
+        required: false
+        default: "Manual update"
+
+jobs:
+  sync:
+    name: Sync Google Sheet to BigQuery
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install gspread google-cloud-bigquery google-auth
+
+      - name: Write GCP service account key
+        run: echo '${{ secrets.GCP_SA_KEY }}' > /tmp/sa.json
+
+      - name: Run sync
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
+          SPREADSHEET_ID: "1Y94CavDyMXnIy9sLyqcTP8yKdANiQ1j1RzZBzHi7YHk"
+          GCP_PROJECT: "striped-bonfire-489318-t9"
+          BQ_DATASET: "gold_cora"
+        run: python scripts/etl/cora_sheets_sync.py
+
+      - name: Clean up key
+        if: always()
+        run: rm -f /tmp/sa.json
