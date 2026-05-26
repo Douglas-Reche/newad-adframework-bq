@@ -1,0 +1,22 @@
+client_id,slug,name,sector,status,created_at,notes
+luckbet_bea15ebc,luckbet,LuckBet,apostas,active,2026-05-26,
+banco_cora_fe13d78a,banco_cora,Banco Cora,fintech,active,2026-05-26,
+aperam_14d1f27e,aperam,Aperam,industria,active,2026-05-26,
+einstein_6b33a588,einstein,Einstein,saude_educacao,active,2026-05-26,
+mrv_f19a2136,mrv,MRV,imobiliario,active,2026-05-26,
+fox_lux_55ed8992,fox_lux,Fox Lux,unknown,active,2026-05-26,
+efi_bank_ee79e91b,efi_bank,Efi Bank,fintech,active,2026-05-26,
+pardini_60395024,pardini,Pardini,saude_labs,active,2026-05-26,
+casa_construtor_adf15c2c,casa_construtor,Casa do Construtor,construcao,active,2026-05-26,
+dooing_994db77e,dooing,Dooing,imobiliario,active,2026-05-26,
+senar_105bd174,senar,Senar,unknown,active,2026-05-26,
+mopar_a47949f4,mopar,Mopar,automotivo,active,2026-05-26,
+patio_medeiros_874a0358,patio_medeiros,Patio Medeiros,unknown,active,2026-05-26,
+townhouses_bc40f009,townhouses,TownHouses,imobiliario,active,2026-05-26,
+ocupacional_98c851f5,ocupacional,Ocupacional,saude_ocupacional,active,2026-05-26,
+dr_consulta_215378ef,dr_consulta,Dr. Consulta,saude,active,2026-05-26,
+amigo_db1c2f0c,amigo,Amigo,unknown,pending_confirmation,2026-05-26,aguardando confirmacao comercial
+tecpar_edfcc744,tecpar,TecPar,unknown,pending_confirmation,2026-05-26,aguardando confirmacao comercial
+stocco_b712c66e,stocco,Stocco,unknown,pending_confirmation,2026-05-26,aguardando confirmacao comercial
+stoquinho_56a6ee2a,stoquinho,Stoquinho,educacao,pending_confirmation,2026-05-26,aguardando confirmacao comercial
+dr_consulta_rj_11040bf9,dr_consulta_rj,Dr. Consulta RJ,saude,pending_confirmation,2026-05-26,aguardando confirmacao comercial

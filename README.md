@@ -1,13 +1,29 @@
-# NewAD AdFramework — BigQuery SQL & Documentação
+# newad-adframework-bq
 
-Repositório pessoal de SQL, scripts de inspeção e documentação de arquitetura do **AdFramework NewAD**.
+Repositório de SQL, DDLs e seeds do **BigQuery AdFramework NewAD**.
+Mantido por Douglas Reche — fonte da verdade para schema, migrações e IDs canônicos.
 
-**Projeto GCP:** `striped-bonfire-489318` (alias: `adframework`)
-**Stack:** BigQuery · Firebase · FastAPI
-**Maintainer:** Douglas Reche
+**Projeto GCP:** `adframework`
+**Stack:** BigQuery · Firestore · Firebase · FastAPI (repo Shiro)
+**Maintainers:** Douglas Reche, Shiro
 
-> Estrutura extraída diretamente do BigQuery em 2026-05-12 via `scripts/inspect/`.
-> Para atualizar, rode `01_all_tables_overview.sql` e `04_row_counts_and_dates.sql`.
+---
+
+## Arquitetura — 4 camadas
+
+```
+RAW  →  STG  →  CORE  →  GOLD
+```
+
+| Camada | Tipo | Responsabilidade |
+|--------|------|-----------------|
+| **RAW** | Tabelas físicas particionadas | Ingestão crua do ETL — tudo STRING, grain original |
+| **STG** | Views | Typing correto (DATE, INT64, FLOAT64), normalização por plataforma |
+| **CORE** | Tabelas + Views | Atribuição de `client_id`, IO binding, regras de negócio |
+| **GOLD** | Views | Output analítico por cliente — consumido pelo dashboard |
+
+> Datasets `pixel`, `adtracking`, `analytics`, `finops_billing` são geridos por serviços
+> externos e **nunca devem ser modificados** neste repositório.
 
 ---
 
@@ -15,177 +31,120 @@ Repositório pessoal de SQL, scripts de inspeção e documentação de arquitetu
 
 ```
 /
-├── scripts/
-│   ├── inspect/        # Extrai estrutura real do BigQuery (INFORMATION_SCHEMA)
-│   └── data_quality/   # Verifica integridade: duplicação, orphans, volume
-├── gold/
-│   ├── delivery/       # Views de entrega diária
-│   ├── creative/       # Views de criativo diário
-│   └── dimensions/     # Dimensões semânticas
-├── audit/
-│   ├── client_analysis/
-│   └── raw_layer/
-└── docs/               # Contexto de negócio (não deriva do código)
+├── raw/
+│   ├── ddl/            # DDL das 10 tabelas canônicas RAW
+│   └── migration/      # Scripts de migração executados (histórico)
+│
+├── stg/
+│   └── ddl/            # DDL das 5 views STG (1 por plataforma/entrega)
+│
+├── core/
+│   ├── seeds/          # clients.csv — fonte da verdade dos IDs de cliente
+│   ├── ddl/            # DDL das tabelas CORE (dim_client, platform_client_links...)
+│   └── migration/      # Scripts de carga inicial
+│
+├── gold/               # (em reconstrução — ver roadmap abaixo)
+│   └── ...
+│
+├── audit/              # SQLs de auditoria e análise one-off
+├── scripts/            # Scripts operacionais (ETL, inspecção, DQ)
+└── docs/               # Decisões arquiteturais e contexto de negócio
 ```
 
 ---
 
-## Camadas BigQuery — estado real
+## RAW — Tabelas canônicas
 
-### `raw` — Dados brutos das plataformas (tabelas físicas)
+Executado em 2026-05-26. Todas as tabelas são particionadas por `DATE(raw_ingested_at)`.
 
-| Tabela | Linhas | Tamanho | Última atualização |
-|---|---|---|---|
-| `mediasmart_daily` | 640.438 | 140,7 MB | 2026-05-12 |
-| `mediasmart_bid_supply_daily` | 602.179 | 161,8 MB | 2026-03-21 |
-| `mediasmart_creatives` | 24.932 | 6,6 MB | 2026-05-12 |
-| `mediasmart_revenue_daily` | 8.840 | 1,0 MB | 2026-05-12 |
-| `mediasmart_campaigns` | 2.116 | 2,7 MB | 2026-05-12 |
-| `mediasmart_advertisers` | 746 | 0,1 MB | 2026-05-12 |
-| `mgid_daily` | 4.154 | 0,3 MB | 2026-05-12 |
-| `mgid_campaigns` | 15.070 | 24,9 MB | 2026-05-12 |
-| `mgid_creatives` | 9.858 | 18,6 MB | 2026-05-12 |
-| `mgid_daily_device` | 803 | — | 2026-04-14 |
-| `siprocal_daily_materialized` | 706 | 0,1 MB | 2026-05-12 |
-| `siprocal_daily_native` | 706 | — | 2026-03-09 |
-| `siprocal_daily` | — | — | externa (GCS) |
-| `mediasmart_daily_operational` | **0** | — | ⚠️ vazia |
-| `mediasmart_daily_creative` | **0** | — | ⚠️ vazia |
+| Tabela | Substitui | Linhas | Período |
+|--------|-----------|--------|---------|
+| `mediasmart_delivery` | `mediasmart_daily` | 641.798 | ago/25 → mai/26 |
+| `mediasmart_revenue` | `mediasmart_revenue_daily` | 9.247 | mar/26 → mai/26 |
+| `mediasmart_bid_supply` | `mediasmart_bid_supply_daily` | 602.179 | mar/26 → mar/26 |
+| `mgid_delivery` | `mgid_daily` | 4.239 | ago/25 → mai/26 |
+| `siprocal_delivery` | `siprocal_daily_materialized` | 706 | ago/25 → mar/26 |
+| `mediasmart_advertisers` | — | — | ref. (ETL repopula) |
+| `mediasmart_campaigns` | — | 2.116+ | ref. |
+| `mediasmart_creatives` | — | 24.932+ | ref. |
+| `mgid_campaigns` | — | 15.070+ | ref. |
+| `mgid_creatives` | — | 9.858+ | ref. |
 
-**Backups antigos (fev/26) — candidatos a drop:**
-- `mediasmart_daily_backup_20260227_111821` (595k linhas)
-- `mediasmart_daily_legacy_20260227_061441` (626k linhas)
-- `mediasmart_daily_legacy_20260227_065635` (626k linhas)
-- `mgid_daily_legacy_20260227_061627` / `mgid_daily_legacy_20260227_065913`
-
-### `raw_newadframework` — Admin UI via Firebase (todas views)
-
-| View | Descrição |
-|---|---|
-| `platform_client_links` | Mapeamento newad_client_id → conta de plataforma |
-| `io_manager_v2` | IOs criados no Admin UI |
-| `io_line_bindings_v2` | Bindings campaign/strategy → IO line |
-| `proposal_lines` | Linhas de proposta |
-| `proposals` | Cabeçalhos de proposta |
-
-### `stg` — Staging (normalização e tipagem, todas views)
-
-| View | Descrição |
-|---|---|
-| `mediasmart_daily_std` | `raw.mediasmart_daily` normalizada |
-| `mediasmart_operational_daily` | Entrega operacional MediaSmart |
-| `mediasmart_operational_v2` | Entrega operacional MediaSmart v2 |
-| `mediasmart_revenue_daily` | Receita DSP MediaSmart |
-| `mediasmart_creative_daily` | Criativo MediaSmart |
-| `mediasmart_bid_supply_daily` | Bid supply MediaSmart |
-| `mgid_daily_std` | `raw.mgid_daily` normalizada |
-| `mgid_operational_v2` | Entrega operacional MGID |
-| `siprocal_daily_std` | `raw.siprocal_daily_materialized` normalizada |
-| `siprocal_operational_v2` | Entrega operacional Siprocal |
-| `newad_operational_daily` | Consolidado das 3 plataformas |
-| `newad_operational_daily_v2` | Consolidado v2 |
-| `newad_creative_daily` | Criativo consolidado |
-| `newad_revenue_daily` | Receita consolidada |
-| `io_lines_v4` | IO lines enriquecidas com contexto de IO |
-
-### `core` — Registros operacionais (tabelas físicas + views)
-
-| Objeto | Tipo | Linhas | Descrição |
-|---|---|---|---|
-| `io_manager_v2` | tabela | 229 | IOs (espelho Firebase) |
-| `io_line_bindings_v2` | tabela | 170 | Bindings campaign/strategy |
-| `platform_client_links` | tabela | 27 | Links cliente-plataforma |
-| `io_manager_legacy_cache` | tabela | 62 | Cache de IOs legados |
-| `proposal_lines` | tabela | **0** | ⚠️ vazia |
-| `proposals` | tabela | **0** | ⚠️ vazia |
-| `io_manager` | externa | — | Planilha Google Sheets |
-| `io_binding_registry_v4` | view | — | Registro de bindings v4 |
-| `io_line_bindings_enriched_v2` | view | — | Bindings com contexto |
-| `io_registry_v4` | view | — | Registry de IOs v4 |
-| `io_manager_enriched` / `_v2` | view | — | IO manager enriquecido |
-
-### `marts` — Cálculo intermediário (todas views em uso; tabelas físicas vazias)
-
-| View | Descrição |
-|---|---|
-| `io_calc_daily_v4` | Delivery + planejamento por IO line (schedule-driven) |
-| `io_delivery_daily_v4` | Join delivery × bindings × datas do IO |
-| `io_schedule_daily_v4` | Calendário de dias úteis do IO |
-| `io_line_plan_daily_v3` | Budget diário previsto |
-| `io_line_actual_daily_v3` | Budget realizado diário |
-| `io_line_kpis_daily_v3` | KPIs por linha de IO |
-| `io_line_revenue_daily_v3` | Receita por linha de IO |
-| `io_kpis_daily_v3` | KPIs agregados por IO |
-| `io_kpis_daily_by_model_v3` | KPIs por modelo de compra |
-| `fact_daily_detail` / `fact_daily_io` | Fatos intermediários |
-
-⚠️ Tabelas físicas `io_kpis_daily_*_mat` e `io_roas_daily_v3_mat` estão vazias — descontinuadas.
-
-### `share` — Dados consolidados (acesso cross-layer)
-
-| Objeto | Tipo | Linhas | Descrição |
-|---|---|---|---|
-| `io_calc_daily_v4` | view | — | Espelho de `marts.io_calc_daily_v4` |
-| `io_delivery_daily_v4` | view | — | Espelho de `marts.io_delivery_daily_v4` |
-| `newad_operational_daily` | view | — | Entrega consolidada 3 plataformas |
-| `platform_daily_detail` | view | — | Detalhe por campaign/strategy/criativo |
-| `newad_revenue_daily` | view | — | Receita DSP consolidada |
-| `io_kpis_daily_v3` | view | — | KPIs por IO |
-| `admin_client_linking_options` | view | — | Opções de linking para Admin UI |
-| `dashboard_cards_campaign` / `_detail` | view | — | Cards dashboard interno |
-| `adops_mediasmart_bid_supply_*` | views | — | Supply para adops |
-| `report_daily_campaign_demo` | **tabela** | 6.039 | Dados de demo comercial |
-| `io_validation_full` | **tabela** | 48 | Validação antiga (fev/26) |
-
-### `gold` — Camada analítica final (Power BI conecta aqui)
-
-Todas são views. Nenhuma tabela física.
-
-| View | Descrição |
-|---|---|
-| `fct_delivery_daily` | Entrega diária — todos os clientes |
-| `fct_luckbet_delivery_daily` | Entrega Luckbet com semântica de bet |
-| `fct_newad_bet_daily` | MVP dashboard vertical Bet (anônimo) |
-| `fct_newad_fintech_daily` | MVP dashboard vertical Fintech (anônimo) |
-| `fct_creative_daily` | Criativo diário — todos os clientes |
-| `fct_luckbet_creative_daily` | Criativo Luckbet |
-| `fct_io_plan_daily` | Planejamento de IO diário |
-| `dim_client` | Dimensão de clientes |
-| `dim_client_semantics` | Mapeamento semântico conv1-5 por cliente |
-| `dim_creative` | Dimensão de criativos |
-| `dim_date` | Dimensão de calendário |
-| `dim_io_line` | Dimensão de linhas de IO |
-| `dim_platform` | Dimensão de plataformas |
+O ETL (repo Shiro) escreve nos novos nomes via `bq_destiny` no Firestore — sem alteração de código.
 
 ---
 
-## Problemas conhecidos
+## STG — Views de normalização
 
-Ver [`docs/known_issues.md`](docs/known_issues.md) para detalhes com causa raiz e ação necessária.
+Views criadas em 2026-05-26. Tipagem via `SAFE_CAST` — nunca quebra por dado sujo na RAW.
 
-1. **Duplicação Luckbet** — `nwd_luckbet_69e72f18` (legacy) referencia os mesmos campaigns que `nwd_luckbet_a485d6bc` (canônico)
-2. **nwd_internal_newad** — aponta para a mesma conta MediaSmart da Luckbet, contamina a gold
-3. **Campanhas órfãs** — 2 campaigns MediaSmart com entrega real sem IO binding
-4. **Cora histórico** — dados ago/25–fev/26 existem na raw mas não chegam à gold via io_calc (workaround em `fct_newad_fintech_daily`)
-5. **Siprocal** — atribuição por nome, não por ID — risco de colisão entre client IDs
+| View | Base RAW |
+|------|----------|
+| `stg.mediasmart_delivery` | `raw.mediasmart_delivery` |
+| `stg.mediasmart_revenue` | `raw.mediasmart_revenue` |
+| `stg.mediasmart_bid_supply` | `raw.mediasmart_bid_supply` |
+| `stg.mgid_delivery` | `raw.mgid_delivery` |
+| `stg.siprocal_delivery` | `raw.siprocal_delivery` — `advertiser` normalizado com `UPPER(TRIM())` |
 
 ---
 
-## Como inspecionar o estado atual
+## CORE — IDs canônicos e atribuição
 
-```bash
-# O que existe em cada camada (sem custo de processamento)
-bq query --use_legacy_sql=false < scripts/inspect/01_all_tables_overview.sql
+### Sistema de IDs de cliente
 
-# Schema completo de colunas
-bq query --use_legacy_sql=false < scripts/inspect/02_columns_by_layer.sql
+Formato: `{slug}_{8hex}` — imutável após geração.
+Fonte da verdade: [`core/seeds/clients.csv`](core/seeds/clients.csv)
 
-# DDL real das views gold (fonte de verdade)
-bq query --use_legacy_sql=false < scripts/inspect/03_gold_view_definitions.sql
+Este ID é o **ID oficial da empresa** — adframework, pixel e analytics serão
+migrados para usar estes IDs.
 
-# Volume por tabela (sem custo — usa metadados)
-bq query --use_legacy_sql=false < scripts/inspect/04_row_counts_and_dates.sql
+**Regra:** nunca gerar IDs fora do `clients.csv`. Para adicionar cliente: editar o CSV
+e executar `core/migration/01_load_dim_client.sql`.
 
-# Intervalo de datas por tabela de fato (processa dados)
-bq query --use_legacy_sql=false < scripts/inspect/05_date_ranges_per_table.sql
-```
+| client_id | Nome | Setor | Status |
+|-----------|------|-------|--------|
+| `luckbet_bea15ebc` | LuckBet | apostas | active |
+| `banco_cora_fe13d78a` | Banco Cora | fintech | active |
+| `aperam_14d1f27e` | Aperam | industria | active |
+| `einstein_6b33a588` | Einstein | saude_educacao | active |
+| `mrv_f19a2136` | MRV | imobiliario | active |
+| `efi_bank_ee79e91b` | Efi Bank | fintech | active |
+| `pardini_60395024` | Pardini | saude_labs | active |
+| `casa_construtor_adf15c2c` | Casa do Construtor | construcao | active |
+| `fox_lux_55ed8992` | Fox Lux | unknown | active |
+| `dooing_994db77e` | Dooing | imobiliario | active |
+| `senar_105bd174` | Senar | unknown | active |
+| `mopar_a47949f4` | Mopar | automotivo | active |
+| `patio_medeiros_874a0358` | Patio Medeiros | unknown | active |
+| `townhouses_bc40f009` | TownHouses | imobiliario | active |
+| `ocupacional_98c851f5` | Ocupacional | saude_ocupacional | active |
+| `dr_consulta_215378ef` | Dr. Consulta | saude | active |
+| `amigo_db1c2f0c` | Amigo | unknown | pending_confirmation |
+| `tecpar_edfcc744` | TecPar | unknown | pending_confirmation |
+| `stocco_b712c66e` | Stocco | unknown | pending_confirmation |
+| `stoquinho_56a6ee2a` | Stoquinho | educacao | pending_confirmation |
+| `dr_consulta_rj_11040bf9` | Dr. Consulta RJ | saude | pending_confirmation |
+
+> 5 clientes `pending_confirmation` — aguardando confirmação do time comercial
+> sobre separação Amigo/TecPar, Dr. Consulta/RJ e Stocco/Stoquinho.
+
+---
+
+## Roadmap
+
+- [x] RAW — DDL canônico + migração executada
+- [x] STG — 5 views de normalização
+- [x] CORE — `dim_client` com 21 clientes e IDs canônicos
+- [ ] CORE — `platform_client_links` (eventid/campaignid/advertiser → client_id)
+- [ ] GOLD — views por cliente (entrega, receita, bid supply)
+- [ ] Migrar adframework para usar novos client_ids
+- [ ] Deletar `raw_siprocal` dataset (replica cross-region — requer console BQ)
+
+---
+
+## Projetos GCP
+
+| Projeto | Uso |
+|---------|-----|
+| `adframework` | Produção — BQ principal, Firestore, Firebase Auth |
+| `striped-bonfire-489318-t9` | Dashboard emergencial temporário — não modificar |
