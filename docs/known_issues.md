@@ -1,7 +1,37 @@
 # Problemas Conhecidos — AdFramework BigQuery
 
-> Última atualização: 2026-05-12
+> Última atualização: 2026-06-08
 > Autor: Douglas Reche
+
+---
+
+## ✅ Resolvidos em 2026-06-08
+
+| # | Problema | Resolução |
+|---|---|---|
+| R1 | **Amigo (`amigo_db1c2f0c`) com 39 links `pending_confirmation`** — 1 eventid MediaSmart + 38 campaignids MGID criados em 2026-05-26 nunca foram ativados, zerando a entrega de Amigo na gold. | `core/migration/05_activate_amigo_links.sql` rodado em prod — 39 linhas promovidas para `active`. Verificado: 40 links ativos totais (1 MS + 38 MGID + 1 Siprocal pré-existente). |
+| R2 | **`gold.fact_delivery` com dados de MediaSmart parados em 2026-05-24** — ETL do orchestrator com timeout, 12 dias de gap. | `stg.mediasmart_delivery` atualizado para incluir `raw.mediasmart_daily` (tabela staging do orchestrator) como fonte complementar. `gold.fact_delivery` reconstruída em 2026-06-08 com dados até 2026-06-07. Root cause (timeout no orchestrator) ainda pendente — ver issue #8. |
+
+---
+
+---
+
+## 0. Separação de responsabilidades no dataset `core`
+
+**Contexto:** O dataset `core` no BigQuery contém tabelas de dois sistemas diferentes que coexistem durante a transição.
+
+**Tabelas do NOSSO pipeline** (usar livremente):
+- `core.dim_client` — cadastro de clientes
+- `core.platform_client_links` — atribuição plataforma → cliente (usado em `gold.fact_delivery`)
+- `core.campaign_format_map` — mapeamento formato de campanha (Display, Native, Push, Retargeting, Video)
+
+**Tabelas do Admin UI do Shiro** (NÃO referenciar no pipeline gold):
+- `core.io_manager_v2` — escrito pelo Admin UI via `adops/io_bq_sync.py`
+- `core.io_line_bindings_v2` — escrito pelo Admin UI
+- `core.proposals` / `core.proposal_lines` — módulo de planning do Admin UI
+- `core.io_manager_enriched_v2`, `core.io_registry_v4`, `core.io_binding_registry_v4`, `core.io_line_bindings_enriched_v2` — views do sistema do Shiro
+
+**Por que não conectar:** O `io_manager_v2.newad_client_id` usa formato `nwd_banco-cora_acfae3ab` (prefixo `nwd_` + hifens) enquanto o `dim_client.client_id` usa `banco_cora_fe13d78a` (sem prefixo, underscores). JOINs entre os dois sistemas nunca funcionam.
 
 ---
 
@@ -71,6 +101,77 @@ Existe apenas um IO para Cora (`io_202603_nwd-banco-cora-acfae3ab_001`). O `io_c
 `platform_client_links` para Siprocal usa `link_value = 'luckbet'` tanto para `nwd_luckbet_69e72f18` quanto `nwd_luckbet_a485d6bc`. A tabela raw `siprocal_daily_materialized` tem o campo `advertiser` como nome (ex: `LUCKBET`), não um ID estruturado.
 
 **Solução necessária:** Definir qual client ID é canônico para Siprocal e desativar o link do legacy.
+
+---
+
+## 7. Filtros removidos da camada RAW — pendente revisão no STG
+
+**Data:** 2026-06-03  
+**Contexto:** Auditoria da camada raw identificou filtragens acontecendo antes/durante a ingestão, violando o princípio medallion (RAW = tudo sem filtro).
+
+### 7.1 `mediasmart_revenue_daily` — rules removido
+
+**Filtro que existia (removido em 2026-06-03):**
+```json
+"rules": "revenuesource=[event1,event2,event3,event4,event5,2,3,4,5]"
+"from": "2026-03-06"
+```
+
+**O que esse filtro fazia:**
+- Limitava os `revenuesource` aceitos — qualquer outro tipo de receita era descartado antes de chegar ao BQ
+- Limitava o backfill a partir de 2026-03-06
+
+**Pendente no STG:** `stg.mediasmart_revenue` precisa ser revisada para aplicar o filtro de `revenuesource` se necessário para análise (ex: excluir fontes irrelevantes para o negócio).
+
+### 7.2 `mediasmart_daily_daily` — drilldown limitado
+
+**Configuração atual (não alterada ainda — pendente aprovação Shiro):**
+```json
+"drilldown": "day,eventid,controlid,strategyid,strategyname,convsource"
+"kpis": "impressions,clicks,video_start,video_completion,conversions_1-5"
+```
+
+**Colunas que a API retorna mas NÃO chegam à `raw.mediasmart_delivery`:**
+`creative_id`, `creative_type`, `id_type`, `mediasmart_id`, `nativesize`, `size`, `client_currency`, `clientrevenue`, `convertedclientrevenue`, `client_cost`
+
+**Ação necessária (requer Shiro):**
+1. Ampliar `drilldown` para incluir dimensões de criativo (`creativeid`, `creativetype`, `size`, etc.)
+2. Ampliar `kpis` para incluir `clientrevenue`, `clientcost`, `clientcurrency`
+3. Adicionar colunas correspondentes ao schema de `raw.mediasmart_delivery`
+
+### 7.3 `raw.mediasmart_revenue` — colunas perdidas no merge
+
+**Colunas que chegam no staging mas NÃO chegam ao final:**
+`eventid`, `revenue_source` (renomeado para `revenuesource`), `conversion_source`
+
+**Pendente:** Adicionar essas colunas ao schema de `raw.mediasmart_revenue` para não perder granularidade.
+
+---
+
+## 8. `gold.fact_io_plan` — view quebrada, zero linhas
+
+**Data identificado:** 2026-06-08
+**Impacto:** Todos os KPIs "Projetado" e de Pacing estão indisponíveis no dashboard — Investimento Projetado, Impressões Projetadas, Cliques Projetados, CTR Projetado, Pacing %, CPC/CPM Projetado.
+
+**Causa raiz:**
+A view `gold.fact_io_plan` lê `stg.luckbet_io_plan` → `raw.luckbet_io_plan_snapshot`. A tabela `raw.luckbet_io_plan_snapshot` foi **dropada** — a chain está morta. Toda query retorna 0 linhas.
+
+**Solução necessária:**
+Identificar a fonte atual de IO plan no sistema do Shiro (Admin UI) e reconectar a view. Os dados de planejamento (investimento previsto, impressões previstas, cliques previstos por campanha) provavelmente existem em `core.io_manager_v2` ou similar. Requer alinhamento com Shiro.
+
+---
+
+## 9. MediaSmart ETL — timeout no orchestrator (root cause aberta)
+
+**Data identificado:** ~2026-06-01 (job parou de atualizar)
+**Impacto:** `raw.mediasmart_delivery` parado em 2026-05-24. Workaround aplicado em `stg.mediasmart_delivery` cobre até 2026-06-07 via `raw.mediasmart_daily`.
+
+**Causa raiz:**
+Job `mediasmart_daily_daily` no orchestrator (Shiro) retorna `error:Timeout` desde ~01/jun. O `raw.mediasmart_daily` ainda é alimentado (é a tabela staging intermediária do mesmo job), mas os dados não chegam ao destino final `raw.mediasmart_delivery`.
+
+**Workaround atual:** `stg.mediasmart_delivery` faz UNION com `raw.mediasmart_daily` para cobrir o gap.
+
+**Solução necessária:** Shiro investigar e corrigir timeout no job `mediasmart_daily_daily`. Provável causa: janela de datas muito longa na query de API. Ver `docs/etl_expansion_plan.md` para proposta de refatoração.
 
 ---
 
