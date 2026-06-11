@@ -1,6 +1,6 @@
 # Problemas Conhecidos — AdFramework BigQuery
 
-> Última atualização: 2026-06-11 (automação completa Siprocal via BQ External Table)
+> Última atualização: 2026-06-11 (pipeline Siprocal restaurado e funcionando)
 > Autor: Douglas Reche
 
 ---
@@ -104,39 +104,43 @@ Existe apenas um IO para Cora (`io_202603_nwd-banco-cora-acfae3ab_001`). O `io_c
 
 ---
 
-## ✅ RESOLVIDO — 10. Siprocal: pipeline fragmentado, dados parados em 2026-05-26
+## ✅ RESOLVIDO — 10. Siprocal: pipeline quebrado, dados parados em 2026-05-26
 
 **Data identificado:** 2026-06-10  
-**Data resolvido:** 2026-06-11 (automação completa)
+**Data resolvido:** 2026-06-11
 
 **Causa raiz:**  
-Pipeline Siprocal tinha 3 caminhos de ingestão paralelos e conflitantes:
-1. `siprocal_full_reload.py` — WRITE_TRUNCATE da planilha (perigoso, apaga histórico)
-2. `siprocal_backfill_from_sheets.py` — WRITE_APPEND incremental (scope OAuth insuficiente)
-3. Job ETL `siprocal_daily:Daily` — lia de `raw.siprocal_daily_native` (tabela deletada durante migração → 404)
+A tabela `raw.siprocal_daily_native` (fonte original do ETL job) foi deletada entre 01/06 e 05/06, provavelmente durante uma limpeza. O ETL job `siprocal_daily:Daily` continuou tentando ler dela e falhando com 404 todos os dias.
 
-**Resolução (2026-06-10/11):**
+**Diagnóstico (2026-06-11):**
+- Automação ETL **sempre existiu**: Cloud Scheduler `adframework-etl-daily` (05:00 UTC) → job `siprocal_daily:Daily`
+- Job lia de `platform_endpoints/siprocal_ep_external_daily.path_template` = `external://bq/raw.siprocal_daily_native`
+- `siprocal_daily_native` sumiu → 404 a partir de ~02/06. Não existe Cloud Run Job ou outro scheduler que a populava.
+
+**Resolução (2026-06-11):**
 - Scripts redundantes deletados: `siprocal_full_reload.py`, `siprocal_backfill_from_sheets.py`, `siprocal_reconnect_etl.py`, `siprocal_sheet_meta.py`
-- `raw.siprocal_raw_sheet` TABLE dropada e substituída por **VIEW** sobre `raw.siprocal_sheet_ext`
-- `raw.siprocal_sheet_ext` criada como **BQ External Table** apontando para Google Sheet `1HaGrxaU-nt3fvqxaJ1CSlABYJGNY28rhQC49dcGzLWs` (tab `raw_daily`)
-- Sheet compartilhada com `adframework-etl@adframework.iam.gserviceaccount.com` (Viewer)
-- VIEW `siprocal_raw_sheet` normaliza colunas (PT→EN) e converte datas DD/MM/YYYY → YYYY-MM-DD
-- `scripts/siprocal/sync_sheet.py` mantido como fallback manual; não é mais necessário para automação
+- `raw.siprocal_sheet_ext` criada como BQ External Table (auxiliar, para inspeção via SQL)
+- `raw.siprocal_raw_sheet` recriada como **TABLE nativa** com 1.078 linhas (ago/25 → 09/06/26)
+- Firestore `platform_endpoints/siprocal_ep_external_daily.path_template` corrigido para `external://bq/adframework.raw.siprocal_raw_sheet`
+- **ETL job rodou com sucesso às 12:01 UTC de 11/06** — `siprocal_delivery` com 1.078 linhas até 09/06
 
-**Arquitetura final:**
+**Arquitetura atual (funcionando):**
 ```
 Google Sheet (raw_daily)
-  └─ raw.siprocal_sheet_ext   [BQ External Table — auxiliar]
-  └─ scripts/siprocal/sync_sheet.py  [sincronização manual ou agendada]
-       └─ raw.siprocal_raw_sheet  [TABLE nativa — única fonte válida para o orchestrator]
-            └─ ETL job siprocal_daily:Daily  [Cloud Run, 05:00 UTC — automático]
-                 └─ raw.siprocal_delivery  [tabela física]
+  └─ scripts/siprocal/sync_sheet.py  [WRITE_APPEND incremental — rodar quando sheet atualizar]
+       └─ raw.siprocal_raw_sheet  [TABLE nativa BQ — fonte do ETL]
+            └─ ETL job siprocal_daily:Daily  [Cloud Scheduler 05:00 UTC — automático]
+                 └─ raw.siprocal_delivery  [CREATE OR REPLACE diário]
                       └─ stg.siprocal_delivery → gold.fact_delivery
+
+raw.siprocal_sheet_ext  [BQ External Table → Sheet — auxiliar para inspeção]
 ```
 
-**Nota:** O orchestrator do Shiro valida que a fonte seja uma tabela/view BQ nativa e rejeita External Tables com fonte Google Sheets. Por isso `siprocal_raw_sheet` deve ser TABLE nativa. A External Table `siprocal_sheet_ext` existe como auxiliar para inspeção e backfill manual via `sync_sheet.py`.
+**Restrição do orchestrator:** rejeita External Tables com fonte Google Sheets como source do ETL.  
+`siprocal_raw_sheet` deve ser sempre TABLE nativa; nunca substituir por VIEW sobre `siprocal_sheet_ext`.
 
-**Para automação completa zero-touch:** Criar Cloud Run Job que rode `sync_sheet.py` às 04:45 UTC via Cloud Scheduler — requer deploy por Shiro.
+**Passo manual restante:** rodar `sync_sheet.py` quando a Siprocal atualizar a planilha (antes das 05:00 UTC).  
+Para automação zero-touch: Cloud Run Job agendado às 04:45 UTC — requer Shiro.
 
 ---
 
@@ -241,21 +245,19 @@ O segundo a rodar substitui completamente o primeiro. Sem mecanismo de merge.
 
 ---
 
-## 12. raw.siprocal_daily_materialized — tabela órfã potencial
+## ✅ RESOLVIDO — 12. raw.siprocal_daily_materialized — tabela órfã
 
-**Identificado:** 2026-06-10 (auditoria Shiro)
+**Identificado:** 2026-06-10 | **Resolvido:** 2026-06-11 (auditoria BQ confirmou: tabela não existe)
 
-O código do `orchestrator.py` do Shiro referencia `raw.siprocal_daily_materialized` como target histórico do job Siprocal. A config Firestore atual aponta para `raw.siprocal_delivery`, mas a tabela `siprocal_daily_materialized` pode ainda existir como órfã no BQ.
-
-**Ação:** Verificar se `raw.siprocal_daily_materialized` existe e se tem dados. Se sim, avaliar se está sendo lida por alguma view downstream (seria uma fonte paralela não intencional).
+Auditoria de 11/06 listou todos os objetos `siprocal_*` no dataset `raw`: apenas `siprocal_delivery`, `siprocal_raw_sheet` e `siprocal_sheet_ext` existem. `siprocal_daily_materialized` não existe — sem risco de fonte paralela.
 
 ---
 
-## ✅ RESOLVIDO — 13. Siprocal — ingestão automática inexistente (caminho manual)
+## ✅ RESOLVIDO — 13. Siprocal — ingestão automática quebrada
 
 **Identificado:** 2026-06-10 | **Resolvido:** 2026-06-11
 
-O job ETL `siprocal_daily:Daily` agora lê de `raw.siprocal_raw_sheet` (VIEW sobre BQ External Table → Google Sheet live). Automação completa sem passo manual. Ver resolução do issue #10.
+A automação ETL sempre existiu. O problema era a tabela fonte `siprocal_daily_native` deletada. Ver resolução do issue #10.
 
 ---
 
