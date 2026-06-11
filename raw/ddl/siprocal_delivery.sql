@@ -1,11 +1,21 @@
 -- raw.siprocal_delivery
--- Entrega diária da Siprocal — materialização do export BQ-para-BQ da plataforma.
+-- Entrega diária da Siprocal. Fonte de verdade para dados Siprocal no pipeline.
 -- Grain: day + advertiser + campaign_id + creative_type + creative
--- IMPORTANTE: O campo `advertiser` é texto livre enviado pela Siprocal.
---   A atribuição de cliente é feita por LOWER(advertiser) = LOWER(link_value) em core.platform_client_links.
+--
+-- PIPELINE DE INGESTÃO:
+--   1. Google Sheet (raw_daily) → scripts/siprocal/sync_sheet.py → raw.siprocal_raw_sheet (TABLE nativa)
+--   2. ETL job siprocal_daily_external (Cloud Run, Firestore: platform_reports/siprocal_daily_external)
+--      lê de raw.siprocal_raw_sheet → sobrescreve esta tabela (CREATE OR REPLACE, diário 05:00 UTC)
+--      Endpoint lido de: Firestore platform_endpoints/siprocal_ep_external_daily (path_template)
+--
+-- IMPORTANTE: raw.siprocal_raw_sheet DEVE ser TABLE nativa BQ.
+--   O orchestrator valida o tipo da tabela e rejeita External Tables com fonte Google Sheets.
+--   raw.siprocal_sheet_ext (External Table) existe como auxiliar para inspeção; nunca usá-la diretamente.
+--   Para automação completa: agendar sync_sheet.py às 04:45 UTC via Cloud Run Job (pendente Shiro).
+--
+-- IMPORTANTE: O campo `advertiser` segue o padrão NEWAD_{CLIENTE}_BR_{MES}{ANO}.
+--   stg.siprocal_delivery extrai o {CLIENTE} via regex e faz join com core.platform_client_links.
 --   Qualquer variação de escrita pelo lado da Siprocal quebra a atribuição silenciosamente.
--- Fonte: job siprocal_daily_external (orchestrator) — materialização de tabela BQ externa da Siprocal
--- Atualização: conforme disponibilidade da Siprocal (não controlada pela Newad)
 
 CREATE OR REPLACE TABLE `adframework.raw.siprocal_delivery`
 (
