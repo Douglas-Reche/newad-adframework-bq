@@ -6,6 +6,42 @@
 
 ---
 
+## 2026-06-12 — MediaSmart: backfill 2026 Grupo A — CONCLUÍDO ✅ + fix timeout ETL 10s→60s
+
+**Autor:** Douglas Reche | **Resultado:** todas as 6 tabelas RAW Grupo A com histórico completo 2026.
+
+### Estado final
+
+| Tabela | Rows | Período | Obs |
+|---|---|---|---|
+| `raw.mediasmart_delivery_by_device` | 206.541 | 2026-01-01 → 2026-06-11 | ✅ |
+| `raw.mediasmart_delivery_by_os` | 273.799 | 2026-01-01 → 2026-06-11 | ✅ |
+| `raw.mediasmart_delivery_by_hour` | 5.430 | 2026-05-28 → 2026-06-11 | ✅ — sem dados no MS antes de Mai/28 |
+| `raw.mediasmart_delivery_by_geo` | 8.417.374 | 2026-01-01 → 2026-06-11 | ✅ — dedup necessário (ver abaixo) |
+| `raw.mediasmart_creative_daily` | 394.347 | 2026-01-01 → 2026-06-11 | ✅ |
+| `raw.mediasmart_delivery_by_publisher` | 9.804.184 | 2026-01-01 → 2026-06-11 | ✅ |
+
+### Fix: REQUEST_TIMEOUT_SECONDS 10s → 60s
+
+Drilldowns de alta cardinalidade (`geo`: country+area+city, `publisher`: company+url+exchange) geravam relatórios na API que excediam o timeout de 10s. Fix: `adframework_python/src/connectors/mediasmart.py` linha 16 — `REQUEST_TIMEOUT_SECONDS = 60`. Commit `7bee5f9`. Deploy: Cloud Run revision `adframework-etl-00238-n4h`.
+
+### Problemas enfrentados durante o backfill
+
+1. **Cloud Run timeout (30 min)**: tabelas de alto volume (`geo`, `publisher`) precisaram de múltiplos triggers sequenciais — o ETL carrega dia a dia e 162 dias de geo levam ~43 min. Estratégia: atualizar `force_from_date` no Firestore a cada parada e retrigger.
+
+2. **Duplicatas em delivery_by_geo**: segundo trigger com `force_from_date=2026-04-14` sobrepôs dados do primeiro trigger (Jan-Apr 13). Detectadas via `COUNT(*) vs COUNT(DISTINCT combos)`. Fix: `CREATE OR REPLACE TABLE ... AS SELECT DISTINCT *` → deduplication bem-sucedida.
+
+3. **HTTP 503 MediaSmart**: servidor da MediaSmart retornou `Login failed: HTTP 503 - Under maintenance` durante publisher backfill. Transiente — retrigger após 30s resolveu.
+
+4. **delivery_by_hour sem dados antes de Mai/28**: confirmado que MediaSmart não tem dados hourly antes de 2026-05-28 para as contas monitoradas. Dados corretos e completos para o período disponível.
+
+### Arquivos tocados
+- `adframework_python/src/connectors/mediasmart.py` ← timeout 10→60s (commit 7bee5f9)
+- Firestore `platform_reports`: todos os `force_from_date` removidos de 6 docs
+- `raw.mediasmart_delivery_by_geo` ← deduplicada com `SELECT DISTINCT *`
+
+---
+
 ## 2026-06-12 — MediaSmart: backfill 2026 Grupo A — estado, problemas de API timeout e Firestore corrigidos
 
 **Autor:** Douglas Reche | **Contexto:** executar backfill desde 2026-01-01 das 6 tabelas Grupo A criadas na sessão anterior. ETL disparado via HTTP API sequencialmente.
