@@ -1,9 +1,20 @@
 # Problemas Conhecidos — AdFramework BigQuery
 
-> Última atualização: 2026-06-11 (pipeline Siprocal restaurado e funcionando)
+> Última atualização: 2026-06-11 sessão 2 (issue #16 resolvido — schema Grupo A corrigido, ETL API documentada, mapeamento completo API→BQ)
 > Autor: Douglas Reche
 
 ---
+
+## ✅ Resolvidos em 2026-06-11
+
+| # | Problema | Resolução |
+|---|---|---|
+| 16 | **MediaSmart Grupo A (6 tabelas) — dimensões sem labels** — `operating_system`, `device_type`, `country`, `city`, `publisher_company`, etc. ausentes nas 6 tabelas recém-criadas, impossibilitando STG. | Causa: tabelas pré-criadas por processo do Shiro com schema antigo (`eventid`/`controlid`); `bigquery.py:load_data` dropou colunas não reconhecidas. Fix: DROP nas 6 tabelas + re-trigger via ETL HTTP API. Tabelas recriadas com schema nativo da API (`event_id`, `campaign_id`, `operating_system`, etc.). Ver CHANGELOG 2026-06-11 sessão 2. |
+| 15 | **MediaSmart conector — sleep insuficiente, risco de rate limit** — `time.sleep(0.15)` = 400 req/min, 3× acima do limite de 128. | Commit `4d1662f`: `RATE_LIMIT_DELAY` 0.3 → 0.6, sleeps 0.15/0.3 → 0.6. Deploy Cloud Run revision `adframework-etl-00237-v88`. |
+| D1 | **`raw.mediasmart_campaigns` com 39× duplicação** — WRITE_APPEND acumulou 5.451 linhas para 140 IDs únicos. | Firestore `write_mode: WRITE_TRUNCATE` + dedup BQ: `CREATE OR REPLACE TABLE ... WHERE rn = 1`. Resultado: 140 linhas. |
+| D2 | **`raw.mediasmart_daily` — gap 25–26/mai/2026** — transição entre job antigo e novo deixou 2 dias sem dados. | `force_from_date` implementado em `_get_date_range` (orchestrator.py, commit `4d1662f`). Job temporário `mediasmart_backfill_may2526` carregou 26 linhas (13/dia). |
+| 9 | **`raw.mediasmart_delivery` parado em 2026-05-24** — entendimento incorreto de que era timeout do Shiro. | Investigação confirmou: tabela ativa é `raw.mediasmart_daily` (usa campo `table_name`, não `bq_destiny`). Sem ação necessária. |
+| 7.2 | **Colunas extras ausentes em `raw.mediasmart_delivery`** — baseado em tabela legada (24 cols). | `raw.mediasmart_daily` (ativa) já tem 31 cols incluindo `creative_type`, `id_type`, `client_currency`, etc. |
 
 ## ✅ Resolvidos em 2026-06-08
 
@@ -163,21 +174,16 @@ Para automação zero-touch: Cloud Run Job agendado às 04:45 UTC — requer Shi
 
 **Pendente no STG:** `stg.mediasmart_revenue` precisa ser revisada para aplicar o filtro de `revenuesource` se necessário para análise (ex: excluir fontes irrelevantes para o negócio).
 
-### 7.2 `mediasmart_daily_daily` — drilldown limitado
+### 7.2 `mediasmart_daily_daily` — colunas extras na tabela ATIVA ✅ RESOLVIDO (2026-06-11)
 
-**Configuração atual (não alterada ainda — pendente aprovação Shiro):**
-```json
-"drilldown": "day,eventid,controlid,strategyid,strategyname,convsource"
-"kpis": "impressions,clicks,video_start,video_completion,conversions_1-5"
-```
+**Investigação 2026-06-11 revelou que:**
+- A tabela ativa é `raw.mediasmart_daily` (31 cols, desde 2026-05-25), NÃO `raw.mediasmart_delivery`
+- `raw.mediasmart_daily` já inclui `creative_type`, `creative_id`, `id_type`, `mediasmart_id`, `nativesize`, `size`, `client_currency` — vindas do schema fixo da API
+- Esses campos vêm vazios/NULL quando o drilldown não inclui dimensão de criativo
+- `clientrevenue`, `convertedclientrevenue`, `client_cost` também já estão presentes (31 cols)
 
-**Colunas que a API retorna mas NÃO chegam à `raw.mediasmart_delivery`:**
-`creative_id`, `creative_type`, `id_type`, `mediasmart_id`, `nativesize`, `size`, `client_currency`, `clientrevenue`, `convertedclientrevenue`, `client_cost`
-
-**Ação necessária (requer Shiro):**
-1. Ampliar `drilldown` para incluir dimensões de criativo (`creativeid`, `creativetype`, `size`, etc.)
-2. Ampliar `kpis` para incluir `clientrevenue`, `clientcost`, `clientcurrency`
-3. Adicionar colunas correspondentes ao schema de `raw.mediasmart_delivery`
+**Status:** as colunas "ausentes" já existem em `raw.mediasmart_daily`. O issue era baseado em
+inspeção da tabela legada `raw.mediasmart_delivery` (24 cols). Sem ação necessária.
 
 ### 7.3 `raw.mediasmart_revenue` — colunas perdidas no merge
 
@@ -212,17 +218,25 @@ Pipeline IO Plan completamente reconstruído (ver `docs/io_plan_pipeline.md`):
 
 ---
 
-## 9. MediaSmart ETL — timeout no orchestrator (root cause aberta)
+## ✅ RESOLVIDO — 9. MediaSmart ETL — raw.mediasmart_delivery parado em 2026-05-24
 
-**Data identificado:** ~2026-06-01 (job parou de atualizar)
-**Impacto:** `raw.mediasmart_delivery` parado em 2026-05-24. Workaround aplicado em `stg.mediasmart_delivery` cobre até 2026-06-07 via `raw.mediasmart_daily`.
+**Data identificado:** ~2026-06-01 | **Data resolvido:** 2026-06-11 (investigação confirmou)
 
-**Causa raiz:**
-Job `mediasmart_daily_daily` no orchestrator (Shiro) retorna `error:Timeout` desde ~01/jun. O `raw.mediasmart_daily` ainda é alimentado (é a tabela staging intermediária do mesmo job), mas os dados não chegam ao destino final `raw.mediasmart_delivery`.
+**Causa raiz (atualizada após investigação 2026-06-11):**
+O job `mediasmart_daily_daily` NUNCA escreveu em `raw.mediasmart_delivery` após 2026-05-24 —
+porque o orchestrator usa `table_name = "mediasmart_daily"` + `dataset_id = "raw"` como destino
+real (não o campo `bq_destiny = "raw.mediasmart_delivery"` que é legado e ignorado).
 
-**Workaround atual:** `stg.mediasmart_delivery` faz UNION com `raw.mediasmart_daily` para cobrir o gap.
+`raw.mediasmart_daily` é a tabela ATIVA desde 2026-05-25 (criada com schema 31 cols quando a
+API MediaSmart ampliou sua resposta). `raw.mediasmart_delivery` (24 cols) era o destino antigo.
 
-**Solução necessária:** Shiro investigar e corrigir timeout no job `mediasmart_daily_daily`. Provável causa: janela de datas muito longa na query de API. Ver `docs/etl_expansion_plan.md` para proposta de refatoração.
+**Estado atual (2026-06-11):**
+- `raw.mediasmart_daily`: 170 linhas, 2026-05-25 → 2026-06-10, `last_status: ok`
+- Job roda diariamente às 03:20 UTC via Cloud Scheduler
+- `stg.mediasmart_delivery`: UNION de `raw.mediasmart_delivery` (histórico) + `raw.mediasmart_daily` (ativo) — cobertura completa ago/25 → hoje
+
+**Nota:** o `bq_destiny` legado pode ser removido do Firestore para evitar confusão futura.
+Ver `mediasmart_stg_design.md` seção "Descobertas sobre delivery vs daily".
 
 ---
 
@@ -271,6 +285,64 @@ A automação ETL sempre existiu. O problema era a tabela fonte `siprocal_daily_
 `gold.fact_delivery` tem `client_id + day + platform` — o JOIN só funciona no nível total do cliente.
 
 **Solução proposta:** Adicionar coluna `platform` a `core.io_plan_manual` e mudar grain de `rebuild_core_for_client` para `client × flight × platform`. Requer: ALTER TABLE + update do script + re-sync dos dados DRIVE-SYNC existentes. DRIVE-SYNC rows ganham platform automaticamente (já existe em `raw.io_plan_drive_snapshot`). Rows manuais (Jan-Abr) ficam com `platform = NULL`.
+
+---
+
+## 15. MediaSmart conector — sleep insuficiente, risco de rate limit (iteração)
+
+**Identificado:** 2026-06-11
+**Impacto:** Jobs de iteração (creatives hoje, strategies_detail e unique_users futuros) podem receber rejeição temporária da API MediaSmart ao exceder 128 req/min.
+
+**Causa raiz:**
+```python
+time.sleep(0.15)   # _fetch_mediasmart_creatives_iter → 400 req/min (3× acima do limite)
+RATE_LIMIT_DELAY = 0.3  # fetch_json_paginated → 200 req/min (ainda acima)
+```
+Limite oficial da API: 128 req/min e 10 concurrent requests.
+
+**Solução necessária (antes de criar Jobs 7 e 8):**
+- `_fetch_mediasmart_creatives_iter`: alterar `time.sleep(0.15)` → `time.sleep(0.6)`
+- `RATE_LIMIT_DELAY`: alterar `0.3` → `0.6`
+- Com 0.6s entre calls = 100 req/min — margem segura de 22% abaixo do limite
+
+**Escopo:**
+- Jobs bulk (1–6, `/api/analytics/custom-report`): 1 call/dia cada — **sem risco, não precisam de ajuste**
+- Jobs de iteração 7 (strategies_detail) e 8 (unique_users): ~140 calls cada — **aguardar fix antes de criar**
+- Job de creatives (já em produção): também está em risco com 0.15s — corrigir junto
+
+---
+
+---
+
+## ✅ RESOLVIDO — 16. MediaSmart Grupo A (6 tabelas) — dimensões sem labels de dimensão
+
+**Data identificado:** 2026-06-11 (sessão 1) | **Data resolvido:** 2026-06-11 (sessão 2)
+
+**Sintoma inicial:** `raw.mediasmart_delivery_by_os` ingerindo com granularidade correta (52 linhas vs 7 sem drilldown) mas sem coluna `operating_system` — impossível identificar qual linha é Android, iOS, etc.
+
+**Investigação completa realizada (todos os paths confirmados):**
+- ✅ `base.py:normalize_data` — apenas normalização BQ-safe, sem renomeação semântica
+- ✅ `orchestrator.py:_run_mediasmart_daily` — sem schema enforcement ou adição de colunas
+- ✅ `bigquery.py:load_data` — para tabelas EXISTENTES: dropa todas as colunas não presentes no schema BQ existente (linha chave: `dropped = [c for c in incoming_names if c not in existing_names]`)
+- ✅ Código Shiro (Admin UI) — sem DDL pré-criado para as 6 tabelas Grupo A
+- ✅ Firestore `iter_params`/`field_var` — metadados do Admin UI, ignorados pelo ETL pipeline
+- ✅ API MediaSmart `custom-report` — **FLEXÍVEL** (não fixo), retorna headers human-readable conforme drilldown solicitado. Confirmado via test direto em 2026-06-10.
+- ✅ `_resolve_bq_target()` — usa `table_name`+`dataset_id`, sem template de schema
+
+**Root cause real:**
+As 6 tabelas foram criadas ANTES pelo ETL do Shiro (`aat-console`) que usa um mapeamento inverso: `"Event ID"` → `eventid`, `"Campaign ID"` → `controlid`, `"Strategy ID"` → `strategyid`. Quando nosso ETL rodou e encontrou as tabelas existentes com schema antigo, `bigquery.py:load_data` jogou fora todas as colunas não reconhecidas (`event_id`, `campaign_id`, `operating_system`, etc.) — porque só mantém colunas que estão no schema BQ existente.
+
+**Decisão de design (confirmada):**
+Não adicionar dicionário de mapeamento ao ETL raw. `normalize_data` deve permanecer normalização pura. Mapeamento semântico pertence ao STG SQL. Ver CHANGELOG 2026-06-11 sessão 2 seção "Decisão de design".
+
+**Resolução:**
+1. DROP das 6 tabelas via BQ Python client
+2. Re-trigger dos jobs via ETL HTTP API `POST /jobs/{job_name}/run` (endpoint descoberto nesta sessão)
+3. Tabelas recriadas com schema nativo: `event_id`, `campaign_id`, `strategy_id`, `operating_system`, `device_type`, `country`, `area_name`, `city`, `publisher_company`, `publisher_url`, `ad_exchange`, `hour`, `creative_id`, `creative_type`, `size`, `app_vs_web` — todos confirmados nos schemas BQ
+
+**Estado atual (2026-06-11):**
+Todas as 6 STG (T7, T9, T10, by_os, by_hour, by_publisher) estão **DESBLOQUEADAS**.
+Tabelas têm 1 dia de dados (2026-06-10). Backfill histórico de 2026 está pendente — ver `mediasmart_stg_design.md` seção "Plano de Backfill Grupo A".
 
 ---
 

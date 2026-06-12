@@ -6,6 +6,255 @@
 
 ---
 
+## 2026-06-11 (sessão 2) — MediaSmart: correção de schema das 6 tabelas RAW Grupo A + investigação de ingestão
+
+**Autor:** Douglas Reche | **Contexto:** investigação de `delivery_by_os` sem coluna `os` → revelou problema sistêmico de schema em todas as 6 tabelas Grupo A → diagnóstico, fix e verificação completa.
+
+### Problema identificado e resolvido
+
+**Sintoma inicial:** `raw.mediasmart_delivery_by_os` ingerindo dados (52 linhas/dia, granularidade correta) mas sem coluna `operating_system` — impossível saber qual OS corresponde a cada linha.
+
+**Investigação (todos os paths verificados):**
+- ✅ Código ETL `base.py` `normalize_data` — sem column mapping, apenas normalização BQ-safe
+- ✅ Código ETL `orchestrator.py` `_run_mediasmart_daily` — sem schema enforcement
+- ✅ Código ETL `bigquery.py` `load_data` — para tabelas EXISTENTES: mantém só colunas do schema existente
+- ✅ Código Shiro (Admin UI `rshiro-newad/adframework`) — sem DDL pré-criado para as 6 tabelas
+- ✅ Firestore `iter_params`/`field_var` — metadados do Admin UI, ignorados pelo ETL
+- ✅ API MediaSmart — endpoint `/api/analytics/custom-report` é **FLEXÍVEL** (não fixo), retorna headers human-readable por drilldown
+- ✅ API confirmada via test direto (2026-06-10): `"Event ID"` → `event_id`, `"Operating system"` → `operating_system`, `"Device type"` → `device_type`, etc.
+
+**Root cause real:**
+As 6 tabelas tinham sido criadas previamente por outro processo (ETL Shiro `aat-console`) que usa um **dicionário de mapeamento inverso**: `"Event ID"` → `eventid`, `"Campaign ID"` → `controlid`, `"Strategy ID"` → `strategyid`. Quando nosso ETL rodou pela primeira vez e encontrou as tabelas existentes, `bigquery.py:load_data` chamou o caminho "EXISTENTE" → dropped todas as colunas que não estavam no schema antigo (`event_id`, `operating_system`, `device_type`, etc.). Resultado: dimensões ingeridas com granularidade correta mas labels completamente perdidas.
+
+**Fix executado:**
+1. Todas as 6 tabelas dropadas via BQ Python client
+2. Jobs re-trigados via ETL HTTP API `POST /jobs/{job_name}/run` (endpoint descoberto nesta sessão)
+3. Tabelas recriadas do zero pelo ETL com schema nativo da API após `normalize_data`
+
+**ETL HTTP API — endpoint descoberto (não estava documentado):**
+```
+Base URL: https://adframework-etl-911847757485.us-central1.run.app
+GET  /jobs                      → lista todos os jobs enabled
+POST /jobs/{job_name}/run       → dispara job específico (síncrono, Cloud Run-safe)
+POST /run-all                   → dispara todos os jobs enabled
+POST /scheduler/run-due         → dispara jobs cujo schedule_cron é due agora
+
+Formato job_name: {platform_id}_{update_type}:{name}
+Exemplos:
+  mediasmart_daily:delivery_by_device
+  mediasmart_daily:creative_daily
+  mediasmart_firstlevel:campaigns
+  mgid_daily:daily
+  siprocal_daily:Daily
+
+Autenticação: Bearer token (gcloud auth print-identity-token)
+```
+
+### Schemas verificados (tabelas recriadas com nomes nativos da API)
+
+| Tabela | Cols | IDs | Dimensão | KPIs | Financeiro |
+|---|---|---|---|---|---|
+| `mediasmart_delivery_by_device` | 21 | `event_id, campaign_id, strategy_id` | `device_type, app_vs_web` | impressions…conv5 + video | `final_price, media_cost__brl` |
+| `mediasmart_delivery_by_geo` | 22 | `event_id, campaign_id, strategy_id` | `country, area_name, city` | impressions…conv5 + video | `final_price, media_cost__brl` |
+| `mediasmart_delivery_by_os` | 20 | `event_id, campaign_id, strategy_id` | `operating_system` | impressions…conv5 + video | `final_price, media_cost__brl` |
+| `mediasmart_delivery_by_hour` | 20 | `event_id, campaign_id, strategy_id` | `hour` | impressions…conv5 + video | `final_price, media_cost__brl` |
+| `mediasmart_delivery_by_publisher` | 12 | `event_id, campaign_id, strategy_id` | `publisher_company, publisher_url, ad_exchange` | impressions, clicks | `final_price, media_cost__brl` |
+| `mediasmart_creative_daily` | 23 | `event_id, campaign_id, strategy_id` | `creative_id, creative_type, size, app_vs_web` | impressions…conv5 + video | `final_price, media_cost__brl` |
+
+### Mapeamento completo API → BQ (confirmado por test direto 2026-06-10)
+
+```
+Drilldown param → API CSV header    → normalize_data (base.py) → BQ column
+day             → "Day"              → day
+eventid         → "Event ID"         → event_id
+controlid       → "Campaign ID"      → campaign_id
+strategyid      → "Strategy ID"      → strategy_id
+strategyname    → "Strategy"         → strategy
+convsource      → "Conversion source"→ conversion_source
+devicetype      → "Device type"      → device_type
+os              → "Operating system" → operating_system
+source          → "App vs. Web"      → app_vs_web
+countrycode     → "Country"          → country
+georegion_areaname → "Area Name"     → area_name
+city            → "City"             → city
+publishercompany→ "Publisher Company"→ publisher_company
+publisherurl    → "Publisher URL"    → publisher_url
+exchange        → "Ad Exchange"      → ad_exchange
+hour            → "Hour"             → hour
+creativeid      → "Creative ID"      → creative_id
+creativetype    → "Creative Type"    → creative_type
+size            → "Size"             → size
+
+KPIs (API header → BQ):
+clientrevenue   → "Event revenue"    → event_revenue
+convertedclientrevenue → "Final Price" → final_price
+client_cost     → "Media Cost - BRL" → media_cost__brl   ← nota: double underscore (espaço + hífen)
+```
+
+### Decisão de design documentada
+
+**Princípio: NO mapping dictionary no ETL raw layer.**
+
+O `normalize_data` em `base.py` faz apenas normalização BQ-safe (lowercase, spaces→_, remove chars especiais). NÃO faz renomeação semântica. Motivação:
+
+> "pois se adicionarmos no dicionário toda vez que tivermos um novo temos que mudar novamente não?" — Douglas, 2026-06-11
+
+Com mapping dict: cada nova dimensão da API requer mudança de código. Com normalize puro: nova dimensão aparece automaticamente no RAW com nome derivado do header da API. O STG SQL é onde aplicamos renomeação semântica explícita via SELECT col AS alias.
+
+Shiro fez o mapeamento no ETL dele provavelmente para padronizar todas as plataformas em uma nomenclatura comum — mas o lugar correto é o STG layer, não o RAW.
+
+### Inconsistência de nomes entre fontes RAW (importante para STG)
+
+| Tabela RAW | ID columns | Origem |
+|---|---|---|
+| `raw.mediasmart_delivery` | `eventid, controlid, strategyid, strategyname` | Schema antigo (Shiro mapping) |
+| `raw.mediasmart_daily` | `eventid, controlid, strategyid, strategyname` | Schema antigo (Shiro/aat-console ainda popula) |
+| `raw.mediasmart_delivery_by_*` | `event_id, campaign_id, strategy_id` | Schema novo (normalize_data puro) |
+| `raw.mediasmart_creative_daily` | `event_id, campaign_id, strategy_id, creative_id` | Schema novo (normalize_data puro) |
+
+**Impacto no STG:** T6 (`stg.ms_delivery`) usa `controlid`/`strategyid` das fontes antigas. T7/T9/T10/os/hour/publisher usam `campaign_id`/`strategy_id` das fontes novas. Ambos são o mesmo valor — nomes diferentes, mesma chave.
+
+### Repositório e caminhos dos arquivos-chave
+
+```
+Repo: rshiro-newad/adframework  (local: c:\Users\dougl\OneDrive\Área de Trabalho\NEWAD PROJECT\DATASETS\adframework)
+Branch ativa: chore/machine-restore-org
+
+Arquivos do ETL Python:
+  adframework_python/src/base.py           → normalize_data (normalização BQ-safe, sem mapping)
+  adframework_python/src/connectors/mediasmart.py → RATE_LIMIT_DELAY=0.6, fetch_data, _build_url
+  adframework_python/src/bigquery.py       → load_data (lógica NEW vs EXISTING table + column drop)
+  adframework_python/src/orchestrator.py   → _resolve_bq_target, _get_date_range, _run_mediasmart_daily
+  adframework_python/main.py               → FastAPI routes: /jobs, /jobs/{job_name}/run, /run-all
+
+GCP:
+  Cloud Run service: adframework-etl-911847757485.us-central1.run.app
+  Firestore collection: platform_reports (doc_id = mediasmart_delivery_by_device etc.)
+  BigQuery: adframework.raw.mediasmart_delivery_by_*  adframework.raw.mediasmart_creative_daily
+```
+
+### Linhas de dados carregadas após fix (2026-06-10 only — backfill pendente)
+
+| Job | Linhas D-1 (2026-06-10) |
+|---|---|
+| `mediasmart_daily:delivery_by_device` | 31 |
+| `mediasmart_daily:delivery_by_geo` | 728 |
+| `mediasmart_daily:delivery_by_os` | 51 |
+| `mediasmart_daily:delivery_by_hour` | 107 |
+| `mediasmart_daily:delivery_by_publisher` | 9.820 |
+| `mediasmart_daily:creative_daily` | 606 |
+
+### Próximos passos documentados (backfill + STG)
+
+Ver seção "Plano de Backfill Grupo A" em `mediasmart_stg_design.md`.
+
+### Arquivos tocados (este repo — newad-adframework-bq)
+- `docs/known_issues.md` ← issue #16 marcada como ✅ resolvida
+- `docs/mediasmart_stg_design.md` ← Group A atualizado, schemas corretos, colnames, backfill plan
+- `docs/CHANGELOG.md` ← este
+
+---
+
+## 2026-06-11 — MediaSmart: 6 novos jobs RAW, fixes Grupo D, rate limit fix, backfill
+
+**Autor:** Douglas Reche | **Contexto:** expansão da ingestão MediaSmart — novos drilldowns e correções estruturais
+
+### O que mudou
+
+**1. Grupo A — 6 jobs bulk criados no Firestore e testados via Cloud Run**
+
+| Job (Firestore doc id) | Tabela RAW | Drilldown principal | Schedule | Linhas D-1 |
+|---|---|---|---|---|
+| `mediasmart_creative_daily` | `raw.mediasmart_creative_daily` | creativeid, creativetype, size, source | 03:30 UTC | 12 |
+| `mediasmart_delivery_by_device` | `raw.mediasmart_delivery_by_device` | devicetype, source | 03:35 UTC | 12 |
+| `mediasmart_delivery_by_geo` | `raw.mediasmart_delivery_by_geo` | countrycode, georegion_areaname, city | 03:40 UTC | 739 |
+| `mediasmart_delivery_by_publisher` | `raw.mediasmart_delivery_by_publisher` | publishercompany, publisherurl, exchange | 03:45 UTC | 10.735 |
+| `mediasmart_delivery_by_os` | `raw.mediasmart_delivery_by_os` | os | 03:50 UTC | 52 |
+| `mediasmart_delivery_by_hour` | `raw.mediasmart_delivery_by_hour` | hour | 03:55 UTC | 147 |
+
+Todos usam `endpoint_id: mediasmart_ep_api-analytics-custom-report`, `update_type: daily`.
+`convsource` adicionado ao drilldown de cada job (não é KPI — confirmado em produção com erro 400).
+Schema do CSV é fixo (31 colunas) independente do drilldown — o drilldown controla granularidade.
+
+**2. Grupo B — Rate limit fix (pré-requisito para Jobs 7-8)**
+
+Commit `4d1662f` em `rshiro-newad/adframework`, branch `chore/machine-restore-org`:
+- `adframework_python/src/connectors/mediasmart.py` — `RATE_LIMIT_DELAY` 0.3 → 0.6
+- `adframework_python/src/orchestrator.py` — `time.sleep(0.3/0.15)` → 0.6 nos loops de iteração
+- Deployado em Cloud Run revision `adframework-etl-00237-v88`
+
+**3. Grupo D — Fixes em jobs existentes**
+
+- `mediasmart_firstlevel_advertisers` → Firestore `write_mode: WRITE_TRUNCATE`
+- `mediasmart_firstlevel_creatives` → Firestore `write_mode: WRITE_TRUNCATE`
+- `mediasmart_firstlevel_campaigns` → Firestore `write_mode: WRITE_TRUNCATE` + BQ dedup: `CREATE OR REPLACE TABLE raw.mediasmart_campaigns ... WHERE rn = 1` (5.451 → 140 linhas)
+- Gap 25–26/mai/2026 em `raw.mediasmart_daily` → `force_from_date` implementado em `_get_date_range` (orchestrator.py, mesmo commit `4d1662f`), job temporário `mediasmart_backfill_may2526` rodado e deletado, 26 linhas carregadas
+
+**4. Descobertas documentadas**
+
+- `convsource` é dimensão de drilldown, não KPI (API retorna 400 se colocado em `kpis`)
+- `/api/analytics/custom-report` retorna schema fixo de 31 colunas; drilldown afeta agrupamento, não schema
+- `os` como drilldown gera granularidade (52 linhas vs 7 do job principal) mas coluna `os` não aparece no CSV fixo — pendente investigar nome correto
+- `force_from_date` em `params_json` permite backfills pontuais em qualquer job `update_type: daily`
+
+**Arquivos tocados (este repo):**
+- `docs/mediasmart_stg_design.md` ← atualizado (jobs 1-6 como ✅, Grupo D como ✅, pré-req B como ✅)
+- `docs/known_issues.md` ← atualizado (issues 15, D1, D2 como resolvidas)
+- `docs/INDEX.md` ← atualizado
+- `CHANGELOG.md` ← este
+
+**Arquivos tocados (repo `rshiro-newad/adframework`, commit `4d1662f`):**
+- `adframework_python/src/connectors/mediasmart.py`
+- `adframework_python/src/orchestrator.py`
+
+---
+
+## 2026-06-11 — Mapa de atribuição de IDs RAW→client_id + auditoria de cobertura
+
+**Autor:** Douglas Reche | **Contexto:** auditoria de IDs antes de expandir o GOLD
+
+### O que mudou
+
+**1. `docs/id_attribution_map.md` — criado**
+- Mapa completo da cadeia de atribuição para cada plataforma (MediaSmart, MGID, Siprocal, IO Plan)
+- Tabela de cobertura de vínculos para os 26 clientes em `dim_client`
+- Problemas identificados:
+  - `ocupacional_98c851f5` sem nenhum vínculo em `platform_client_links` (100% unattributed)
+  - `eventid` MediaSmart compartilhado Pardini/Ocupacional com `client_id` NULL (unresolved)
+  - `fact_delivery.sql` usando `strategyid` em vez de `controlid` como `platform_campaign_id` para MediaSmart
+  - 44 MGID campaignids ainda em `pending_confirmation`
+- Lista priorizada de ações: 3 imediatas (A1-A3), 4 aguardando comercial (B1-B4), 4 contínuas (C1-C4)
+
+**Arquivos tocados:**
+- `docs/id_attribution_map.md` ← novo
+- `docs/INDEX.md` ← atualizado
+- `CHANGELOG.md` ← atualizado
+
+---
+
+## 2026-06-11 — Mapa de linhagem de colunas RAW→GOLD
+
+**Autor:** Douglas Reche | **Contexto:** auditoria de cobertura de colunas — suspeita de perda de informações entre camadas
+
+### O que mudou
+
+**1. `docs/column_lineage_map.md` — criado**
+- **Problema:** não havia documentação rastreando quais colunas do RAW sobrevivem até o GOLD. Suspeita de perda de métricas antes dos KPIs.
+- **Conteúdo:** diagrama de arquitetura em camadas, cadeia de atribuição de cliente, tabelas de linhagem por plataforma (MediaSmart delivery/revenue/bid_supply, MGID, Siprocal, IO Plan), matriz de cobertura de métricas por view GOLD, e resumo priorizado de 9 lacunas identificadas.
+- **Lacunas críticas documentadas:**
+  - `mediasmart_bid_supply` inteiro fica órfão na STG (win rate, media cost, publisher performance nunca chegam no GOLD)
+  - `unit_price` e `impressions_cpm` do IO plan não mapeados (CPM planejado impossível)
+  - `video_*` ausentes no `fact_delivery` principal (Cora e Fintech sem métricas de vídeo)
+  - Conversões MGID em colunas separadas (`mgid_conv_*`) — funis cross-platform somam só MediaSmart
+  - `conversions_1-5` ausentes no `fct_cora_delivery_full`
+
+**Arquivos tocados:**
+- `docs/column_lineage_map.md` ← novo
+- `docs/INDEX.md` ← atualizado
+- `CHANGELOG.md` ← atualizado
+
+---
+
 ## 2026-06-08 — Ativação de links Amigo + workaround MediaSmart + auditoria de APIs
 
 **Autor:** Douglas Reche | **Contexto:** sprint de entrega dashboard Cora/TecPar (prazo 2026-06-11)

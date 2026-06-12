@@ -1,6 +1,6 @@
 # Índice de Documentação — AdFramework BQ Pipeline
 
-> Última revisão: 2026-06-08
+> Última revisão: 2026-06-12 (issue #16 resolvido, schemas Grupo A corrigidos, STG T7–T13 fechadas, plano de backfill documentado)
 > **Regra:** ao criar ou modificar qualquer doc, atualizar este índice com o novo status e data de validação.
 
 ---
@@ -9,12 +9,17 @@
 
 | Arquivo | Status | Última validação | Descrição |
 |---|---|---|---|
-| `../CHANGELOG.md` | ✅ ATUAL | 2026-06-08 | Histórico completo de decisões e mudanças — sempre atualizar |
-| `INDEX.md` | ✅ ATUAL | 2026-06-08 | Este arquivo |
-| `known_issues.md` | ✅ ATUAL | 2026-06-08 | Issues abertas e resolvidas do pipeline |
+| `../CHANGELOG.md` | ✅ ATUAL | 2026-06-11 | Histórico completo de decisões e mudanças — sempre atualizar |
+| `INDEX.md` | ✅ ATUAL | 2026-06-11 | Este arquivo |
+| `known_issues.md` | ✅ ATUAL | 2026-06-11 | Issues abertas e resolvidas do pipeline |
 | `api_capabilities.md` | ✅ ATUAL | 2026-06-08 | Inventário completo MediaSmart + MGID + Siprocal (APIs) |
+| `API_Doc_MediaSmart.md` | ✅ ATUAL | 2026-06-11 | **FONTE PRIMÁRIA** — documentação oficial MediaSmart API completa (4.601 linhas), salva por Douglas. Consulta autoritativa. |
+| `mediasmart_api_reference.md` | ✅ ATUAL | 2026-06-11 | Resumo estruturado da API MediaSmart para uso no ETL — endpoints principais, drilldowns, KPIs, notas de uso. Ver `API_Doc_MediaSmart.md` para referência completa. |
+| `mediasmart_stg_design.md` | ✅ ATUAL | 2026-06-11 | Design da camada STG MediaSmart: modelo dimensional, colunas, decisões de IDs, limitações da API |
 | `etl_expansion_plan.md` | ✅ ATUAL | 2026-06-08 | Plano de expansão: device, geo, financeiro, criativo |
 | `commercial_questions.md` | ✅ ATUAL | 2026-06-08 | Perguntas pendentes para área comercial |
+| `column_lineage_map.md` | ✅ ATUAL | 2026-06-11 | Linhagem coluna a coluna RAW→STG→CORE→GOLD — mapa de lacunas e cobertura de métricas por view |
+| `id_attribution_map.md` | ✅ ATUAL | 2026-06-11 | Mapa de atribuição de IDs: onde cada RAW perde client_id, quais IDs estão unresolved e ações necessárias |
 | `pipeline_complete_map.md` | ⚠️ DESATUALIZADO | 2026-06-03 | Mapa detalhado do pipeline — válido até jun/03, precisa refletir fixes de jun/08 |
 | `client_registry.md` | ⚠️ DESATUALIZADO | 2026-05-12 | Registro de clientes — fonte de verdade migrou para `core.dim_client` + `core/seeds/clients.csv` |
 | `adframework_erd_mermaid.md` | ⚠️ DESATUALIZADO | 2026-05-13 | ERD gerado automaticamente — pode não refletir schema atual |
