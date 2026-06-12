@@ -1,6 +1,6 @@
 # Índice de Documentação — AdFramework BQ Pipeline
 
-> Última revisão: 2026-06-12 (docs Meta Ads e Google Ads criados; acesso Meta obtido, token pendente)
+> Última revisão: 2026-06-12 — backfill Grupo A concluído; fix REQUEST_TIMEOUT_SECONDS 10→60s; docs `known_issues` e `mediasmart_stg_design` atualizados.
 > **Regra:** ao criar ou modificar qualquer doc, atualizar este índice com o novo status e data de validação.
 
 ---
@@ -9,13 +9,13 @@
 
 | Arquivo | Status | Última validação | Descrição |
 |---|---|---|---|
-| `../CHANGELOG.md` | ✅ ATUAL | 2026-06-11 | Histórico completo de decisões e mudanças — sempre atualizar |
-| `INDEX.md` | ✅ ATUAL | 2026-06-11 | Este arquivo |
-| `known_issues.md` | ✅ ATUAL | 2026-06-11 | Issues abertas e resolvidas do pipeline |
+| `../CHANGELOG.md` | ✅ ATUAL | 2026-06-12 | Histórico completo de decisões e mudanças — sempre atualizar |
+| `INDEX.md` | ✅ ATUAL | 2026-06-12 | Este arquivo |
+| `known_issues.md` | ✅ ATUAL | 2026-06-12 | Issues abertas e resolvidas do pipeline |
 | `api_capabilities.md` | ✅ ATUAL | 2026-06-08 | Inventário completo MediaSmart + MGID + Siprocal (APIs) |
 | `API_Doc_MediaSmart.md` | ✅ ATUAL | 2026-06-11 | **FONTE PRIMÁRIA** — documentação oficial MediaSmart API completa (4.601 linhas), salva por Douglas. Consulta autoritativa. |
 | `mediasmart_api_reference.md` | ✅ ATUAL | 2026-06-11 | Resumo estruturado da API MediaSmart para uso no ETL — endpoints principais, drilldowns, KPIs, notas de uso. Ver `API_Doc_MediaSmart.md` para referência completa. |
-| `mediasmart_stg_design.md` | ✅ ATUAL | 2026-06-11 | Design da camada STG MediaSmart: modelo dimensional, colunas, decisões de IDs, limitações da API |
+| `mediasmart_stg_design.md` | ✅ ATUAL | 2026-06-12 | Design da camada STG MediaSmart: modelo dimensional, colunas, decisões de IDs, backfill concluído (row counts reais), lições aprendidas |
 | `etl_expansion_plan.md` | ✅ ATUAL | 2026-06-08 | Plano de expansão: device, geo, financeiro, criativo |
 | `commercial_questions.md` | ✅ ATUAL | 2026-06-08 | Perguntas pendentes para área comercial |
 | `meta_ads_integration.md` | ✅ ATUAL | 2026-06-12 | Integração Meta Ads ao pipeline — credenciais, steps pendentes, schema proposto |

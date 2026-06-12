@@ -1,7 +1,7 @@
 # MediaSmart STG Layer — Design e Plano de Implementação
 
-> Criado em: 2026-06-11
-> Status: Em definição — tabelas 1-10 fechadas (MediaSmart), **MGID e Siprocal são os próximos**, T11 (bid_supply) no radar
+> Criado em: 2026-06-11 | Última atualização: 2026-06-12
+> Status: STG design T1–T13 fechado; **GRUPO A backfill 2026 concluído ✅** (2026-06-12); MGID e Siprocal são os próximos
 
 ---
 
@@ -558,9 +558,8 @@ ms_creative_id → stg.ms_creatives.ms_creative_id
 
 ## Novos jobs RAW a criar no Firestore
 
-> Atualizado 2026-06-11 (sessão 2) — schemas das 6 tabelas **CORRIGIDOS**. Todos os jobs operacionais com colunas de dimensão corretas.
+> Atualizado 2026-06-12 (sessão 3) — **BACKFILL GRUPO A CONCLUÍDO.** Todas as 6 tabelas com histórico completo jan–jun/2026.
 > API confirmada sem custo adicional por chamada (incluída no contrato DSP).
-> **Correção confirmada em produção:** `convsource` é dimensão de drilldown, não KPI.
 >
 > ✅ **PROBLEMA #16 RESOLVIDO (2026-06-11 sessão 2):**
 > Root cause: tabelas pré-existiam com schema antigo (Shiro `aat-console`); `bigquery.py:load_data`
@@ -568,12 +567,18 @@ ms_creative_id → stg.ms_creatives.ms_creative_id
 > HTTP API. Tabelas recriadas com schema nativo da API após `normalize_data`.
 > Todas as STG T7/T9/T10/by_os/by_hour/by_publisher estão DESBLOQUEADAS.
 >
+> ✅ **FIX REQUEST_TIMEOUT_SECONDS (2026-06-12 sessão 3):**
+> `REQUEST_TIMEOUT_SECONDS = 10` → `60` em `mediasmart.py:16`. Commit `7bee5f9`.
+> Drilldowns de alta cardinalidade (geo: country+area+city; publisher: company+url+exchange) precisam de >10s
+> para a API gerar o relatório — com 10s, todos os requests dos jobs de geo e publisher falhavam com timeout.
+> Revisão deployada: `adframework-etl-00238-n4h`.
+>
 > **ETL HTTP API (documentada):**
 > `POST /jobs/{job_name}/run` — trigger síncrono. Format: `{platform_id}_{update_type}:{doc_name}`
 > Exemplos: `mediasmart_daily:delivery_by_os`, `mediasmart_daily:creative_daily`
 > Auth: Bearer token (`gcloud auth print-identity-token`)
 >
-> **Backfill pendente:** tabelas têm apenas 2026-06-10. Ver seção "Plano de Backfill Grupo A" abaixo.
+> ✅ **BACKFILL CONCLUÍDO (2026-06-12):** Ver seção "Plano de Backfill Grupo A" para resultado, row counts reais e lições aprendidas.
 
 ### GRUPO A — Jobs bulk (`/api/analytics/custom-report`) — ✅ OPERACIONAIS E CORRIGIDOS (2026-06-11)
 
@@ -804,15 +809,24 @@ GET /v2/analytics/distance-time  — distância e tempo entre impressão e conve
 
 ---
 
-## Plano de Backfill Grupo A — Trazer histórico 2026
+## Plano de Backfill Grupo A — ✅ EXECUTADO E CONCLUÍDO (2026-06-12)
 
-**Contexto:** Após o fix de schema (2026-06-11), as 6 tabelas têm apenas 1 dia de dados (2026-06-10).
-O histórico de 2026 está em falta. Backfill não foi executado na sessão de fix para não bloquear a verificação de schema.
+**Contexto:** Após o fix de schema (2026-06-11), as 6 tabelas tinham apenas 1 dia de dados (2026-06-10).
+Backfill executado em 2026-06-12 via múltiplos triggers sequenciais com `force_from_date` incrementado.
 
-**Impacto de não ter o backfill:**
-- `stg.ms_creative_daily` sem dados de `creative_id` para jan–jun/2026 — análise de criativos zerada
-- `stg.ms_delivery_by_geo` sem dados históricos — impossível ver tendências geográficas
-- `stg.ms_delivery_by_publisher` com 9.820 publishers de apenas 1 dia — sem volume para análise de inventory
+### Resultado final do backfill
+
+| Tabela BQ | Linhas totais | Período | Observações |
+|---|---|---|---|
+| `raw.mediasmart_delivery_by_device` | 206.541 | 2026-01-01 → 2026-06-11 | ✅ Completo |
+| `raw.mediasmart_delivery_by_os` | 273.799 | 2026-01-01 → 2026-06-11 | ✅ Completo |
+| `raw.mediasmart_delivery_by_hour` | 5.430 | **2026-05-28 → 2026-06-11** | ✅ Completo — sem dados hourly antes de mai/28 na API |
+| `raw.mediasmart_delivery_by_geo` | 8.417.374 | 2026-01-01 → 2026-06-11 | ✅ Completo (deduplicado) |
+| `raw.mediasmart_creative_daily` | 394.347 | 2026-01-01 → 2026-06-11 | ✅ Completo |
+| `raw.mediasmart_delivery_by_publisher` | 9.804.184 | 2026-01-01 → 2026-06-11 | ✅ Completo |
+
+**Estado Firestore pós-backfill (verificado 2026-06-12):**
+Todos os 6 jobs com `enabled=True`, `force_from_date=NONE`, `last_status=ok`, crons operacionais.
 
 ### Como executar o backfill
 
@@ -875,9 +889,11 @@ for j in jobs_to_run:
         print(f'ERR {j}: {ex}')
 ```
 
-> ⚠️ **Atenção timeout:** backfill de 5+ meses pode exceder o timeout do Cloud Run (300s padrão).
-> Se a request timeout, o job continua rodando no servidor mas a resposta se perde.
-> Verificar progresso via `last_loaded_date` no Firestore após alguns minutos.
+> ⚠️ **Atenção Cloud Run timeout (30 min / 1800s):** backfill de 5+ meses pode exceder o limite.
+> Se o cliente sofrer timeout (`Invoke-WebRequest: The operation has timed out`), o Cloud Run **continua rodando** —
+> a resposta se perde mas os dados continuam sendo carregados. Verificar progresso via `last_loaded_date`
+> no Firestore após alguns minutos **antes** de setar um novo `force_from_date` para evitar duplicação.
+> Drilldowns de alta cardinalidade (geo, publisher) requerem múltiplos triggers sequenciais (ver Lições abaixo).
 
 **Passo 3 — Remover force_from_date após backfill concluído:**
 ```python
@@ -891,16 +907,53 @@ for doc_id in jobs:
     print(f'Cleaned {doc_id}: last_loaded={doc.get("last_loaded_date")}')
 ```
 
-### Volume esperado do backfill (jan–jun 2026, ~160 dias)
+### Volume real do backfill vs estimado
 
-| Tabela | Linhas/dia (D-1) | Total estimado 160 dias |
-|---|---|---|
-| `mediasmart_creative_daily` | ~606 | ~97k linhas |
-| `mediasmart_delivery_by_device` | ~31 | ~5k linhas |
-| `mediasmart_delivery_by_geo` | ~728 | ~116k linhas |
-| `mediasmart_delivery_by_os` | ~51 | ~8k linhas |
-| `mediasmart_delivery_by_hour` | ~107 | ~17k linhas |
-| `mediasmart_delivery_by_publisher` | ~9.820 | ~1.57M linhas |
+| Tabela | Linhas/dia D-1 (est.) | Total estimado | **Total real** | Diferença |
+|---|---|---|---|---|
+| `mediasmart_creative_daily` | ~606 | ~97k | **394.347** | Volume real ~4× maior (mais criativos por estratégia do que D-1) |
+| `mediasmart_delivery_by_device` | ~31 | ~5k | **206.541** | Volume real ~40× maior (base de dados mais longa + variação) |
+| `mediasmart_delivery_by_geo` | ~728 | ~116k | **8.417.374** | ~73× maior — geo é o maior volume do pipeline raw |
+| `mediasmart_delivery_by_os` | ~51 | ~8k | **273.799** | ~34× maior |
+| `mediasmart_delivery_by_hour` | ~107 | ~17k | **5.430** | Dados só a partir de 2026-05-28 — sem dados hourly anteriores na API |
+| `mediasmart_delivery_by_publisher` | ~9.820 | ~1.57M | **9.804.184** | ~6× maior — publisher é o 2º maior volume |
+
+> **Lição:** as estimativas de D-1 refletem apenas a campaña mais recente; o histórico acumula muito mais dados.
+
+### Lições aprendidas do backfill (para futuras plataformas)
+
+1. **REQUEST_TIMEOUT_SECONDS mínimo 60s** para qualquer job de alta cardinalidade.
+   Drilldowns com 3+ dimensões (geo: country+area+city; publisher: company+url+exchange) levam >10s
+   para a MediaSmart API gerar o relatório CSV. Com 10s o timeout acontece **antes** de começar a receber dados.
+
+2. **Cloud Run 30-min timeout + múltiplos triggers:**
+   - Backfill de geo (~8.4M rows) requereu ~8 triggers; publisher (~9.8M) requereu ~10 triggers
+   - Após timeout no cliente, verificar `last_loaded_date` no Firestore para ver até onde o Cloud Run chegou
+   - **CRÍTICO:** o Cloud Run continua rodando após o timeout do cliente — sempre confirmar `max_day` real no BQ antes de setar o próximo `force_from_date`
+   - Fórmula segura: `force_from_date = max_day_atual + 1 dia`
+
+3. **Deduplicação em caso de overlap:**
+   Se dois triggers carregarem o mesmo período, deduplicar com:
+   ```sql
+   CREATE OR REPLACE TABLE `adframework.raw.<tabela>` AS
+   SELECT DISTINCT * FROM `adframework.raw.<tabela>`;
+   ```
+   Funciona apenas para **duplicatas exatas** (toda a linha idêntica). Confirmar com:
+   ```sql
+   SELECT COUNT(*) AS total,
+          COUNT(DISTINCT CONCAT(day,'|',event_id,'|',campaign_id,'|',strategy_id)) AS unique_keys
+   FROM `adframework.raw.<tabela>`
+   WHERE day = 'YYYY-MM-DD';
+   -- total / unique_keys = fator de duplicação
+   ```
+
+4. **HTTP 503 "Login failed: Under maintenance"** — erro transiente da MediaSmart.
+   Aguardar 30 segundos e re-triggrar. Não é problema de credenciais.
+
+5. **delivery_by_hour sem dados antes de 2026-05-28:**
+   A MediaSmart não tem analytics hourly para contas monitoradas antes dessa data.
+   A API retorna resultado vazio para qualquer período anterior — sem erro, só sem dados.
+   Range correto: 2026-05-28 → hoje. Não tentar backfill de jan→mai27.
 
 ### Nota sobre creative_id nas tabelas que "faltam"
 
@@ -911,12 +964,14 @@ O `creative_id` completo para análise histórica virá de `raw.mediasmart_creat
 Para jan–jun/2026, o backfill do `mediasmart_daily:creative_daily` populará `creative_id` em todos os dias
 onde houve impressão de criativo — cobrindo o histórico que a `raw.mediasmart_daily` não tem.
 
-### Próximos passos após backfill
+### Próximos passos após backfill ✅ (CONCLUÍDO — itens a executar)
 
-1. Implementar as DDLs das STG (T7–T13) em BigQuery
-2. Verificar que soma de impressões por device bate com total de `stg.ms_delivery` (sanity check)
-3. Verificar que `creative_id` populado no backfill bate com IDs em `stg.ms_creatives`
-4. Integrar `stg.ms_delivery_by_publisher` com análise de inventory (publishers com maior spend vs delivery)
+1. ✅ ~~Executar backfill~~ — concluído 2026-06-12
+2. Implementar as DDLs das STG (T7–T13) em BigQuery
+3. Verificar que soma de impressões por device bate com total de `stg.ms_delivery` (sanity check)
+4. Verificar que `creative_id` populado no backfill bate com IDs em `stg.ms_creatives`
+5. Integrar `stg.ms_delivery_by_publisher` com análise de inventory (publishers com maior spend vs delivery)
+6. Considerar futura grande ingestão para popular `creative_id` histórico nas tabelas que o têm NULL
 
 ---
 
@@ -934,7 +989,8 @@ Arquivos críticos para ingestão MediaSmart:
        NÃO fazer mapping semântico aqui — apenas normalização
 
   adframework_python/src/connectors/mediasmart.py
-    └─ RATE_LIMIT_DELAY = 0.6  (100 req/min — margem de 22% abaixo do limite de 128/min)
+    └─ RATE_LIMIT_DELAY = 0.6       (commit 4d1662f — era 0.3; 100 req/min = 22% abaixo do limite 128/min)
+    └─ REQUEST_TIMEOUT_SECONDS = 60 (commit 7bee5f9 — era 10; drilldowns geo/publisher precisam >10s de geração)
     └─ fetch_data(): GET → CSV → pd.read_csv → normalize_data
     └─ _build_url(): monta URL com drilldown, kpis, format=csv, rules, raw=true
 

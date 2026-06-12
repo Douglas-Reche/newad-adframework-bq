@@ -1,15 +1,16 @@
 # Problemas Conhecidos — AdFramework BigQuery
 
-> Última atualização: 2026-06-12 (backfill Grupo A em andamento — 2 jobs completos, 4 pendentes por API timeout; Firestore corrigido para evitar duplicatas)
+> Última atualização: 2026-06-12 — backfill Grupo A concluído, todas as 6 tabelas MediaSmart com histórico completo Jan–Jun/2026; fix REQUEST_TIMEOUT_SECONDS 10s→60s deployado.
 > Autor: Douglas Reche
 
 ---
 
-## ⚠️ Em andamento — 2026-06-12
+## ✅ Resolvidos em 2026-06-12
 
-| # | Problema | Estado |
+| # | Problema | Resolução |
 |---|---|---|
-| B1 | **Backfill Grupo A incompleto — 4 de 6 jobs com API timeout** — `delivery_by_hour` (dropada, wrong range), `delivery_by_geo` (sem tabela), `creative_daily` (parcial Jan 1-20), `delivery_by_publisher` (parcial Jan 1-6). Causa: MediaSmart API com timeouts às ~12:17 UTC. | Firestore corrigido para retrigger sem duplicar. `delivery_by_hour` dropada. Retrigger pendente quando API estabilizar. Ver CHANGELOG 2026-06-12 para curl commands. |
+| B1 | **Backfill Grupo A incompleto — 4 de 6 jobs com API timeout** — `delivery_by_hour` (dados com range errado Mai 28+), `delivery_by_geo` (sem tabela), `creative_daily` (parcial Jan 1-20), `delivery_by_publisher` (parcial Jan 1-6). | Causa raiz: `REQUEST_TIMEOUT_SECONDS = 10` muito baixo para drilldowns de alta cardinalidade (geo, publisher). Fix: timeout aumentado para 60s + deploy revision `adframework-etl-00238-n4h`. Backfill executado via múltiplos triggers sequenciais com `force_from_date` atualizado incrementalmente. `delivery_by_geo` deduplicada com `SELECT DISTINCT *` após duplicação acidental. `delivery_by_hour` confirmado que MediaSmart não tem dados hourly antes de 2026-05-28 para as contas monitoradas. Todos os 6 `force_from_date` removidos do Firestore. |
+| T1 | **`REQUEST_TIMEOUT_SECONDS = 10` — timeout insuficiente para drilldowns de alta cardinalidade** — `delivery_by_geo` (country+area+city) e `delivery_by_publisher` (company+url+exchange) geram relatórios grandes que excedem 10s. Manifestou-se como `HTTPSConnectionPool Read timed out` em todos os requests desses jobs. | `adframework_python/src/connectors/mediasmart.py` linha 16: `REQUEST_TIMEOUT_SECONDS = 10` → `60`. Commit `7bee5f9`. Deploy Cloud Run revision `adframework-etl-00238-n4h`. Jobs que completavam ok antes (device, os, hour) não foram afetados (baixa cardinalidade = API responde rápido). |
 
 ---
 
