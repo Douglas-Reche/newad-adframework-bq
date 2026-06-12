@@ -39,6 +39,9 @@ Drilldowns de alta cardinalidade (`geo`: country+area+city, `publisher`: company
 - `adframework_python/src/connectors/mediasmart.py` ← timeout 10→60s (commit 7bee5f9)
 - Firestore `platform_reports`: todos os `force_from_date` removidos de 6 docs
 - `raw.mediasmart_delivery_by_geo` ← deduplicada com `SELECT DISTINCT *`
+- `docs/known_issues.md` ← B1 + T1 movidos para Resolvidos; detalhe de causa raiz e fix (commit 6227da7)
+- `docs/mediasmart_stg_design.md` ← backfill section: resultado real, volume comparativo, lições aprendidas; caminhos: `REQUEST_TIMEOUT_SECONDS` e `RATE_LIMIT_DELAY` com commits de ref (commit 6227da7)
+- `docs/INDEX.md` ← datas e descrições atualizadas (commit 6227da7)
 
 ---
 
