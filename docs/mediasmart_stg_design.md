@@ -1,7 +1,7 @@
 # MediaSmart STG Layer — Design e Plano de Implementação
 
 > Criado em: 2026-06-11 | Última atualização: 2026-06-12
-> Status: STG design T1–T13 fechado; **GRUPO A backfill 2026 concluído ✅** (2026-06-12); MGID e Siprocal são os próximos
+> Status: **STG MediaSmart T1–T13 implementado em produção ✅** (commit `8355d1c`, 2026-06-12); GRUPO A backfill concluído ✅; MGID e Siprocal são os próximos
 
 ---
 
@@ -964,14 +964,32 @@ O `creative_id` completo para análise histórica virá de `raw.mediasmart_creat
 Para jan–jun/2026, o backfill do `mediasmart_daily:creative_daily` populará `creative_id` em todos os dias
 onde houve impressão de criativo — cobrindo o histórico que a `raw.mediasmart_daily` não tem.
 
-### Próximos passos após backfill ✅ (CONCLUÍDO — itens a executar)
+### Próximos passos após backfill ✅ (CONCLUÍDO)
 
 1. ✅ ~~Executar backfill~~ — concluído 2026-06-12
-2. Implementar as DDLs das STG (T7–T13) em BigQuery
-3. Verificar que soma de impressões por device bate com total de `stg.ms_delivery` (sanity check)
+2. ✅ ~~Implementar as DDLs das STG (T1–T13) em BigQuery~~ — concluído 2026-06-12 (commit `8355d1c`)
+3. Verificar que soma de impressões por device bate com total de `stg.ms_delivery` (sanity check pendente)
 4. Verificar que `creative_id` populado no backfill bate com IDs em `stg.ms_creatives`
 5. Integrar `stg.ms_delivery_by_publisher` com análise de inventory (publishers com maior spend vs delivery)
 6. Considerar futura grande ingestão para popular `creative_id` histórico nas tabelas que o têm NULL
+7. Migrar `gold.fact_delivery` para usar `stg.ms_delivery` (T6) e `stg.ms_revenue` (T8) — permite dropar views legadas
+
+### Row counts em produção (verificado 2026-06-12)
+
+| View STG | Rows | Commit |
+|---|---|---|
+| `stg.ms_clients` | 21 | `8355d1c` |
+| `stg.ms_campaigns` | 115 | `8355d1c` |
+| `stg.ms_strategies` | 17 | `8355d1c` |
+| `stg.ms_creatives` | 4.434 | `8355d1c` |
+| `stg.ms_delivery` | 641.975 | `8355d1c` |
+| `stg.ms_creative_delivery` | 394.347 | `8355d1c` |
+| `stg.ms_revenue` | 9.247 | `8355d1c` |
+| `stg.ms_delivery_by_device` | 206.541 | `8355d1c` |
+| `stg.ms_delivery_by_geo` | 8.417.374 | `8355d1c` |
+| `stg.ms_delivery_by_os` | 273.799 | `8355d1c` |
+| `stg.ms_delivery_by_hour` | 5.430 | `8355d1c` |
+| `stg.ms_delivery_by_publisher` | 9.804.184 | `8355d1c` |
 
 ---
 

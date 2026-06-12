@@ -6,6 +6,50 @@
 
 ---
 
+## 2026-06-12 — STG MediaSmart T1-T13 — 12 views criadas em produção ✅
+
+**Autor:** Douglas Reche | **Commit:** `8355d1c`
+
+### Views criadas (todas em `adframework.stg`)
+
+| View | # | Rows | Fonte RAW | Notas |
+|---|---|---|---|---|
+| `ms_clients` | T1 | 21 | `mediasmart_advertisers` | ms_client_id = slug(name)\_LEFT(id,8) |
+| `ms_campaigns` | T3 | 115 | `mediasmart_campaigns` | ms_client_id via JOIN delivery→T1 |
+| `ms_strategies` | T4 | 17 | JSON `strategies[]` em campaigns | UNNEST |
+| `ms_creatives` | T5 | 4.434 | `mediasmart_creatives` | PK = `id` (não `creative_id`) |
+| `ms_delivery` | T6 | 641.975 | UNION delivery+daily | ms_client_id via T1; substitui legada futuramente |
+| `ms_creative_delivery` | T7 | 394.347 | `mediasmart_creative_daily` | KPIs por criativo; schema novo |
+| `ms_revenue` | T8 | 9.247 | `mediasmart_revenue` | ms_client_id via T3 (sem eventid) |
+| `ms_delivery_by_device` | T9 | 206.541 | `mediasmart_delivery_by_device` | |
+| `ms_delivery_by_geo` | T10 | 8.417.374 | `mediasmart_delivery_by_geo` | |
+| `ms_delivery_by_os` | T11 | 273.799 | `mediasmart_delivery_by_os` | |
+| `ms_delivery_by_hour` | T12 | 5.430 | `mediasmart_delivery_by_hour` | dados a partir de 2026-05-28 |
+| `ms_delivery_by_publisher` | T13 | 9.804.184 | `mediasmart_delivery_by_publisher` | |
+
+### Drop map — views legadas
+
+| View legada | Referenciada em | Substituta | Pode dropar quando |
+|---|---|---|---|
+| `stg.mediasmart_delivery` | `gold.fact_delivery` | `stg.ms_delivery` (T6) | Após gold migrar para T6 |
+| `stg.mediasmart_revenue` | `gold.fact_delivery` | `stg.ms_revenue` (T8) | Após gold migrar para T8 |
+| `stg.mediasmart_bid_supply` | não usada no gold | T14 (no radar) | Manter indefinidamente |
+| `stg.mgid_delivery` | `gold.fact_delivery` | MGID STG (fase futura) | Manter até MGID STG |
+| `stg.siprocal_delivery` | `gold.fact_delivery` | Siprocal STG (fase futura) | Manter até Siprocal STG |
+
+### Achados na verificação do schema real vs DDL do repo
+
+- `raw.mediasmart_advertisers`: tem `event_id` + `id` separados (não só `id`); sem `raw_ingested_at`. DDL corrigido.
+- `raw.mediasmart_creatives`: PK real é `id` (sempre preenchido, 4.434 únicos); `creative_id` = NULL em 33.250 linhas.
+- `raw.mediasmart_campaigns`: sem `raw_ingested_at`; dedup via `updated_at`.
+- IDE linter mostra erros T-SQL falso-positivos em arquivos BigQuery Standard SQL — ignorar.
+
+### Arquivos tocados
+- `stg/ddl/ms_clients.sql` … `ms_delivery_by_publisher.sql` (12 arquivos novos)
+- `raw/ddl/mediasmart_advertisers.sql` (schema corrigido)
+
+---
+
 ## 2026-06-12 — MediaSmart: backfill 2026 Grupo A — CONCLUÍDO ✅ + fix timeout ETL 10s→60s
 
 **Autor:** Douglas Reche | **Resultado:** todas as 6 tabelas RAW Grupo A com histórico completo 2026.
