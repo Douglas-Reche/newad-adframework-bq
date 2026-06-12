@@ -6,6 +6,45 @@
 
 ---
 
+## 2026-06-12 — Sanity check STG + dedup 4 raw tables Grupo A ✅
+
+**Autor:** Douglas Reche
+
+### Problema identificado
+
+Sanity check comparou `SUM(impressions)` de cada drilldown STG vs `stg.ms_delivery` (período 2026).
+4 raw tables tinham duplicatas por múltiplos triggers de backfill com WRITE_APPEND:
+
+| Tabela | Antes (rows) | Fator dup | Depois (rows) |
+|---|---|---|---|
+| `raw.mediasmart_delivery_by_device` | 206.541 | 3.52× | 58.610 |
+| `raw.mediasmart_delivery_by_os` | 273.799 | 3.76× | 72.741 |
+| `raw.mediasmart_delivery_by_hour` | 5.430 | 2.00× | 2.715 |
+| `raw.mediasmart_delivery_by_publisher` | 9.804.184 | 1.36× | 7.198.762 |
+| `raw.mediasmart_delivery_by_geo` | 8.417.374 | ✅ limpa | 8.417.374 |
+| `raw.mediasmart_creative_daily` | 394.347 | ✅ limpa | 394.347 |
+
+### Fix aplicado
+
+`CREATE OR REPLACE TABLE ... AS SELECT DISTINCT * FROM ...` em cada tabela afetada (BQ in-place).
+
+### Resultado do sanity check (pós-dedup)
+
+| View | Impressões | Status |
+|---|---|---|
+| `stg.ms_delivery_by_device` | 233.093.873 | ✅ |
+| `stg.ms_delivery_by_os` | 233.093.873 | ✅ |
+| `stg.ms_delivery_by_geo` | 233.093.873 | ✅ |
+| `stg.ms_creative_delivery` | 233.093.873 | ✅ |
+| `stg.ms_delivery` (2026) | 233.027.031 | ✅ δ = 0.029% (grains diferentes) |
+| `stg.ms_delivery_by_publisher` | 199.546.530 | ✅ esperado — cobertura parcial publisher |
+| `stg.ms_delivery_by_hour` (mai28+) | 4.160.659 | ✅ período menor |
+
+### Arquivos tocados
+- `docs/known_issues.md` — item S1 adicionado
+
+---
+
 ## 2026-06-12 — STG MediaSmart T1-T13 — 12 views criadas em produção ✅
 
 **Autor:** Douglas Reche | **Commit:** `8355d1c`
