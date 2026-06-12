@@ -6,6 +6,74 @@
 
 ---
 
+## 2026-06-12 — MediaSmart: backfill 2026 Grupo A — estado, problemas de API timeout e Firestore corrigidos
+
+**Autor:** Douglas Reche | **Contexto:** executar backfill desde 2026-01-01 das 6 tabelas Grupo A criadas na sessão anterior. ETL disparado via HTTP API sequencialmente.
+
+### Estado do backfill ao final da sessão 2026-06-12
+
+| Tabela | Linhas BQ | Intervalo | Status | Ação pendente |
+|---|---|---|---|---|
+| `mediasmart_delivery_by_device` | 196.653 | 2026-01-01 → 2026-06-11 | ✅ COMPLETO | Nenhuma |
+| `mediasmart_delivery_by_os` | 190.169 | 2026-01-01 → 2026-06-11 | ✅ COMPLETO | Nenhuma |
+| `mediasmart_delivery_by_hour` | DROPPED | — | ❌ RESET | Retrigger após API recover |
+| `mediasmart_delivery_by_geo` | sem tabela | — | ❌ API timeout | Retrigger após API recover |
+| `mediasmart_creative_daily` | 42.531 | 2026-01-01 → 2026-01-20 | ⚠️ PARCIAL | Retrigger — continuará de Jan 21 |
+| `mediasmart_delivery_by_publisher` | 117.867 | 2026-01-01 → 2026-01-06 | ⚠️ PARCIAL | Retrigger — continuará de Jan 7 |
+
+### Problemas encontrados
+
+**1. API MediaSmart — timeouts em cascata às ~12:17 UTC**
+
+Todos os 4 jobs que falharam apresentaram o mesmo erro: `HTTPSConnectionPool(host='api.mediasmart.io', port=443): Read timed out. (read timeout=10)`. A API ficou lenta nesse horário. Os jobs `device` e `os` completaram antes (~12:18-12:19). Os jobs `hour`, `geo`, `creative`, `publisher` foram atingidos pelo timeout.
+
+**2. delivery_by_hour — dados parciais com intervalo errado**
+
+Quando o backfill do `hour` foi disparado, tinha data de início errada (carregou Mai 28-Jun 11 em vez de Jan 1-Jun 11). Causa: o `force_from_date=2026-01-01` estava correto no Firestore, mas o job pode ter encontrado a tabela já existente com dados históricos (de um trigger anterior ao DROP), e o `_get_date_range` usou max_date+1 em vez de force_from_date. Tabela dropada ao final da sessão para garantir reload limpo.
+
+**3. force_from_date deixado em todos os docs — risco de duplicata**
+
+Os jobs `device` e `os`, após completar, tinham `force_from_date=2026-01-01` ainda ativo no Firestore. Se o cron diário fosse rodar, recarregaria desde Jan 1 e duplicaria todo o histórico. Corrigido ao final da sessão.
+
+### Correções aplicadas ao final desta sessão (Firestore + BQ)
+
+```
+Ação executada                                Estado após ação
+─────────────────────────────────────────────────────────────
+remove force_from_date → device               next cron carrega de max_date+1
+remove force_from_date → os                  next cron carrega de max_date+1
+force_from_date 2026-01-01 → 2026-01-21 → creative_daily   continua de Jan 21 sem duplicar
+force_from_date 2026-01-01 → 2026-01-07 → publisher         continua de Jan 7 sem duplicar
+force_from_date mantido 2026-01-01 → hour    tabela foi dropada, reload completo
+force_from_date mantido 2026-01-01 → geo     sem tabela, reload completo
+DROP raw.mediasmart_delivery_by_hour          removida para garantir schema correto no reload
+```
+
+### Próximos passos — quando MediaSmart API estiver estável
+
+1. **Verificar API com request teste** (ver seção "Como testar API" em `mediasmart_stg_design.md`)
+2. **Retrigger os 4 jobs** via HTTP API:
+   ```
+   TOKEN=$(gcloud auth print-identity-token)
+   BASE=https://adframework-etl-911847757485.us-central1.run.app
+
+   # menor volume primeiro — respeitar rate limit 128 req/min
+   curl -s -X POST "$BASE/jobs/mediasmart_daily%3Adelivery_by_hour/run" -H "Authorization: Bearer $TOKEN"
+   curl -s -X POST "$BASE/jobs/mediasmart_daily%3Adelivery_by_geo/run" -H "Authorization: Bearer $TOKEN"
+   curl -s -X POST "$BASE/jobs/mediasmart_daily%3Acreative_daily/run" -H "Authorization: Bearer $TOKEN"
+   curl -s -X POST "$BASE/jobs/mediasmart_daily%3Adelivery_by_publisher/run" -H "Authorization: Bearer $TOKEN"
+   ```
+3. **Verificar BQ após cada job** (row count + date range)
+4. **Verificar schema de delivery_by_hour** após reload: `event_id`, `campaign_id`, `strategy_id`, `hour`, `final_price`, `media_cost__brl` presentes
+5. **Após todos completos:** confirmar que `force_from_date` foi removido de todos os 6 docs no Firestore
+
+### Arquivos tocados
+- `CHANGELOG.md` ← este
+- Firestore `platform_reports`: `params_json.force_from_date` atualizado para 4 docs
+- `raw.mediasmart_delivery_by_hour` ← DROPPED (será recriado no próximo trigger)
+
+---
+
 ## 2026-06-11 (sessão 2) — MediaSmart: correção de schema das 6 tabelas RAW Grupo A + investigação de ingestão
 
 **Autor:** Douglas Reche | **Contexto:** investigação de `delivery_by_os` sem coluna `os` → revelou problema sistêmico de schema em todas as 6 tabelas Grupo A → diagnóstico, fix e verificação completa.

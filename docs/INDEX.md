@@ -1,6 +1,6 @@
 # Índice de Documentação — AdFramework BQ Pipeline
 
-> Última revisão: 2026-06-12 (issue #16 resolvido, schemas Grupo A corrigidos, STG T7–T13 fechadas, plano de backfill documentado)
+> Última revisão: 2026-06-12 (docs Meta Ads e Google Ads criados; acesso Meta obtido, token pendente)
 > **Regra:** ao criar ou modificar qualquer doc, atualizar este índice com o novo status e data de validação.
 
 ---
@@ -18,6 +18,8 @@
 | `mediasmart_stg_design.md` | ✅ ATUAL | 2026-06-11 | Design da camada STG MediaSmart: modelo dimensional, colunas, decisões de IDs, limitações da API |
 | `etl_expansion_plan.md` | ✅ ATUAL | 2026-06-08 | Plano de expansão: device, geo, financeiro, criativo |
 | `commercial_questions.md` | ✅ ATUAL | 2026-06-08 | Perguntas pendentes para área comercial |
+| `meta_ads_integration.md` | ✅ ATUAL | 2026-06-12 | Integração Meta Ads ao pipeline — credenciais, steps pendentes, schema proposto |
+| `google_ads_integration.md` | ✅ ATUAL | 2026-06-12 | Integração Google Ads ao pipeline — guia completo de credenciais OAuth2, schema, GAQL |
 | `column_lineage_map.md` | ✅ ATUAL | 2026-06-11 | Linhagem coluna a coluna RAW→STG→CORE→GOLD — mapa de lacunas e cobertura de métricas por view |
 | `id_attribution_map.md` | ✅ ATUAL | 2026-06-11 | Mapa de atribuição de IDs: onde cada RAW perde client_id, quais IDs estão unresolved e ações necessárias |
 | `pipeline_complete_map.md` | ⚠️ DESATUALIZADO | 2026-06-03 | Mapa detalhado do pipeline — válido até jun/03, precisa refletir fixes de jun/08 |

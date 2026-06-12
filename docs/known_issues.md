@@ -1,7 +1,15 @@
 # Problemas Conhecidos — AdFramework BigQuery
 
-> Última atualização: 2026-06-11 sessão 2 (issue #16 resolvido — schema Grupo A corrigido, ETL API documentada, mapeamento completo API→BQ)
+> Última atualização: 2026-06-12 (backfill Grupo A em andamento — 2 jobs completos, 4 pendentes por API timeout; Firestore corrigido para evitar duplicatas)
 > Autor: Douglas Reche
+
+---
+
+## ⚠️ Em andamento — 2026-06-12
+
+| # | Problema | Estado |
+|---|---|---|
+| B1 | **Backfill Grupo A incompleto — 4 de 6 jobs com API timeout** — `delivery_by_hour` (dropada, wrong range), `delivery_by_geo` (sem tabela), `creative_daily` (parcial Jan 1-20), `delivery_by_publisher` (parcial Jan 1-6). Causa: MediaSmart API com timeouts às ~12:17 UTC. | Firestore corrigido para retrigger sem duplicar. `delivery_by_hour` dropada. Retrigger pendente quando API estabilizar. Ver CHANGELOG 2026-06-12 para curl commands. |
 
 ---
 
