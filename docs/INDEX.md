@@ -18,6 +18,7 @@
 | `mediasmart_api_reference.md` | ✅ ATUAL | 2026-06-11 | Resumo estruturado da API MediaSmart para uso no ETL — endpoints principais, drilldowns, KPIs, notas de uso. Ver `API_Doc_MediaSmart.md` para referência completa. |
 | `mediasmart_stg_design.md` | ✅ ATUAL | 2026-06-12 | Design da camada STG MediaSmart: modelo dimensional, colunas, decisões de IDs, backfill concluído (row counts reais), lições aprendidas |
 | `mgid_stg_design.md` | ✅ ATUAL | 2026-06-14 | Design completo STG MGID T1–T13b: todas as 13 views, raw jobs A–G, decisões arquiteturais, gaps vs MediaSmart, dedup, parsing Python dict |
+| `siprocal_stg_design.md` | ✅ ATUAL | 2026-06-14 | Design Siprocal: arquitetura (Google Sheet → SiproCalConnector → BQ), raw schema, STG view, 4 bugs corrigidos, limitações, próximos passos |
 | `etl_expansion_plan.md` | ✅ ATUAL | 2026-06-08 | Plano de expansão: device, geo, financeiro, criativo |
 | `io_plan_pipeline.md` | ✅ ATUAL | 2026-06-09 | Pipeline IO Plan: planilhas Google Drive → `raw.io_plan_drive_snapshot` → `core.io_plan_manual` → `gold.fact_io_plan` |
 | `commercial_questions.md` | ✅ ATUAL | 2026-06-08 | Perguntas pendentes para área comercial |
