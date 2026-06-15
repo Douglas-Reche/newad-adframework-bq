@@ -1,6 +1,6 @@
 # Índice de Documentação — AdFramework BQ Pipeline
 
-> Última revisão: 2026-06-12 — README.md reescrito (estrutura completa do repo); `io_plan_pipeline.md` e `MGID_API_Doc.md` adicionados ao índice.
+> Última revisão: 2026-06-14 — `mgid_stg_design.md` criado (STG MGID T1–T13b completa); Siprocal resolvido com SiproCalConnector; CHANGELOG + known_issues atualizados.
 > **Regra:** ao criar ou modificar qualquer doc, atualizar este índice com o novo status e data de validação.
 
 ---
@@ -9,14 +9,15 @@
 
 | Arquivo | Status | Última validação | Descrição |
 |---|---|---|---|
-| `../CHANGELOG.md` | ✅ ATUAL | 2026-06-12 | Histórico completo de decisões e mudanças — sempre atualizar |
-| `INDEX.md` | ✅ ATUAL | 2026-06-12 | Este arquivo |
-| `known_issues.md` | ✅ ATUAL | 2026-06-12 | Issues abertas e resolvidas do pipeline |
+| `../CHANGELOG.md` | ✅ ATUAL | 2026-06-14 | Histórico completo de decisões e mudanças — sempre atualizar |
+| `INDEX.md` | ✅ ATUAL | 2026-06-14 | Este arquivo |
+| `known_issues.md` | ✅ ATUAL | 2026-06-14 | Issues abertas e resolvidas do pipeline |
 | `api_capabilities.md` | ✅ ATUAL | 2026-06-08 | Inventário completo MediaSmart + MGID + Siprocal (APIs) |
 | `API_Doc_MediaSmart.md` | ✅ ATUAL | 2026-06-11 | **FONTE PRIMÁRIA** — documentação oficial MediaSmart API completa (4.601 linhas), salva por Douglas. Consulta autoritativa. |
 | `MGID_API_Doc.md` | ✅ ATUAL | 2026-06-11 | Documentação oficial MGID REST API — referência para implementação do ETL MGID |
 | `mediasmart_api_reference.md` | ✅ ATUAL | 2026-06-11 | Resumo estruturado da API MediaSmart para uso no ETL — endpoints principais, drilldowns, KPIs, notas de uso. Ver `API_Doc_MediaSmart.md` para referência completa. |
 | `mediasmart_stg_design.md` | ✅ ATUAL | 2026-06-12 | Design da camada STG MediaSmart: modelo dimensional, colunas, decisões de IDs, backfill concluído (row counts reais), lições aprendidas |
+| `mgid_stg_design.md` | ✅ ATUAL | 2026-06-14 | Design completo STG MGID T1–T13b: todas as 13 views, raw jobs A–G, decisões arquiteturais, gaps vs MediaSmart, dedup, parsing Python dict |
 | `etl_expansion_plan.md` | ✅ ATUAL | 2026-06-08 | Plano de expansão: device, geo, financeiro, criativo |
 | `io_plan_pipeline.md` | ✅ ATUAL | 2026-06-09 | Pipeline IO Plan: planilhas Google Drive → `raw.io_plan_drive_snapshot` → `core.io_plan_manual` → `gold.fact_io_plan` |
 | `commercial_questions.md` | ✅ ATUAL | 2026-06-08 | Perguntas pendentes para área comercial |

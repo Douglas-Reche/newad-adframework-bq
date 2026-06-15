@@ -128,7 +128,7 @@ Existe apenas um IO para Cora (`io_202603_nwd-banco-cora-acfae3ab_001`). O `io_c
 ## ✅ RESOLVIDO — 10. Siprocal: pipeline quebrado, dados parados em 2026-05-26
 
 **Data identificado:** 2026-06-10  
-**Data resolvido:** 2026-06-11
+**Data resolvido (definitivo):** 2026-06-14
 
 **Causa raiz:**  
 A tabela `raw.siprocal_daily_native` (fonte original do ETL job) foi deletada entre 01/06 e 05/06, provavelmente durante uma limpeza. O ETL job `siprocal_daily:Daily` continuou tentando ler dela e falhando com 404 todos os dias.
@@ -138,30 +138,39 @@ A tabela `raw.siprocal_daily_native` (fonte original do ETL job) foi deletada en
 - Job lia de `platform_endpoints/siprocal_ep_external_daily.path_template` = `external://bq/raw.siprocal_daily_native`
 - `siprocal_daily_native` sumiu → 404 a partir de ~02/06. Não existe Cloud Run Job ou outro scheduler que a populava.
 
-**Resolução (2026-06-11):**
-- Scripts redundantes deletados: `siprocal_full_reload.py`, `siprocal_backfill_from_sheets.py`, `siprocal_reconnect_etl.py`, `siprocal_sheet_meta.py`
-- `raw.siprocal_sheet_ext` criada como BQ External Table (auxiliar, para inspeção via SQL)
-- `raw.siprocal_raw_sheet` recriada como **TABLE nativa** com 1.078 linhas (ago/25 → 09/06/26)
-- Firestore `platform_endpoints/siprocal_ep_external_daily.path_template` corrigido para `external://bq/adframework.raw.siprocal_raw_sheet`
-- **ETL job rodou com sucesso às 12:01 UTC de 11/06** — `siprocal_delivery` com 1.078 linhas até 09/06
+**Resolução parcial (2026-06-11):**
+Criada `raw.siprocal_raw_sheet` como TABLE nativa BQ com 1.078 linhas. Pipeline provisório:
+`sync_sheet.py → raw.siprocal_raw_sheet → ETL job → raw.siprocal_delivery`
+Funcionou parcialmente (dados até 09/06), mas dependia de passo manual + 3 bugs bloqueavam Jun/10 e Jun/11.
 
-**Arquitetura atual (funcionando):**
+**Resolução definitiva (2026-06-14) — SiproCalConnector:**
+
+Pipeline inteiro substituído por conector direto `SiproCalConnector` (`src/connectors/siprocal.py`).
+Elimina `sync_sheet.py`, `siprocal_raw_sheet` intermediário e qualquer dependência de ADC local.
+
+4 bugs corrigidos durante essa sessão:
+1. Firestore `siprocal_daily_external`: `bq_project_id/dataset_id/table_id` eram `None` → adicionado `adframework/raw/siprocal_delivery`
+2. Firestore `siprocal.secrets.sheet_range`: `Planilha1!A:G` (aba inexistente) → `raw_daily!A:G`
+3. Python closure late-binding em `_get()` dentro do loop `for raw_row in values[1:]` → corrigido com `def _get(field, _row=raw_row)` (default arg captura valor atual)
+4. Cloud Run não faz auto-deploy por push → deploy manual obrigatório após cada mudança
+
+**Arquitetura atual (funcionando desde 2026-06-14):**
 ```
-Google Sheet (raw_daily)
-  └─ scripts/siprocal/sync_sheet.py  [WRITE_APPEND incremental — rodar quando sheet atualizar]
-       └─ raw.siprocal_raw_sheet  [TABLE nativa BQ — fonte do ETL]
-            └─ ETL job siprocal_daily:Daily  [Cloud Scheduler 05:00 UTC — automático]
-                 └─ raw.siprocal_delivery  [CREATE OR REPLACE diário]
-                      └─ stg.siprocal_delivery → gold.fact_delivery
+Google Sheet raw_siprocal (aba raw_daily!A:G)
+  └─ SiproCalConnector (src/connectors/siprocal.py — Sheets API v4)
+       └─ orchestrator._run_siprocal_daily()
+            └─ raw.siprocal_delivery [WRITE_TRUNCATE — substitui tudo a cada run]
+                 └─ stg.siprocal_delivery → gold.fact_delivery
 
-raw.siprocal_sheet_ext  [BQ External Table → Sheet — auxiliar para inspeção]
+Firestore:
+  platform_reports/siprocal_daily_external  — schedule: 03:20 UTC
+  platform_credentials/siprocal.secrets     — {spreadsheet_id, sheet_range: raw_daily!A:G}
 ```
 
-**Restrição do orchestrator:** rejeita External Tables com fonte Google Sheets como source do ETL.  
-`siprocal_raw_sheet` deve ser sempre TABLE nativa; nunca substituir por VIEW sobre `siprocal_sheet_ext`.
-
-**Passo manual restante:** rodar `sync_sheet.py` quando a Siprocal atualizar a planilha (antes das 05:00 UTC).  
-Para automação zero-touch: Cloud Run Job agendado às 04:45 UTC — requer Shiro.
+**Estado atual (2026-06-14):**
+- `raw.siprocal_delivery`: 1.093 linhas | 2025-08-22 → 2026-06-11 | `last_status: ok`
+- Cloud Run revision: `adframework-etl-00240-8mw`
+- Zero passos manuais necessários — pipeline 100% automático
 
 ---
 

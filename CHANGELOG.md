@@ -6,6 +6,109 @@
 
 ---
 
+## 2026-06-14 — Siprocal: pipeline reescrito com SiproCalConnector + 4 bugs corrigidos ✅
+
+**Autor:** Douglas Reche
+
+### Problema
+Pipeline Siprocal estava quebrado: `raw.siprocal_raw_sheet` (fonte do ETL job antigo) não existia mais.
+A abordagem `sync_sheet.py → BQ intermediário → ETL job` dependia de ADC local com scope `spreadsheets`,
+que o Google bloqueia para clientes CLI. Pipeline parado — dados só chegavam até 09/06.
+
+### Solução: SiproCalConnector direto Google Sheets → BQ
+
+`adframework_python/src/connectors/siprocal.py` — classe `SiproCalConnector`:
+- Lê Google Sheet `raw_siprocal` aba `raw_daily!A:G` via `SheetsClient` (Sheets API v4)
+- Suporta headers PT e EN via `_COLUMN_ALIASES` (data/day, campanha/advertiser, etc.)
+- Normaliza datas `dd/mm/yyyy → yyyy-mm-dd` via regex
+- Grava direto em `raw.siprocal_delivery` com WRITE_TRUNCATE (substitui tudo a cada run)
+
+`adframework_python/src/orchestrator.py` — `_run_siprocal_daily()`:
+- Dispatch via `platform_id == 'siprocal' AND update_type == 'daily'`
+- Lê `spreadsheet_id` + `sheet_range` de `platform_credentials/siprocal.secrets`
+- Atualiza `last_status`, `last_rows_loaded`, `last_loaded_date` no Firestore após cada run
+
+### 4 bugs corrigidos
+
+| # | Bug | Fix |
+|---|---|---|
+| 1 | Pipeline antigo quebrado (`sync_sheet.py` + ADC sem scope Sheets + tabela raw deletada) | Substituído inteiramente por `SiproCalConnector` |
+| 2 | Firestore `siprocal_daily_external`: `bq_project_id / dataset_id / table_id` eram `None` | Adicionado `adframework` / `raw` / `siprocal_delivery` |
+| 3 | Firestore `siprocal.secrets.sheet_range`: `Planilha1!A:G` (aba inexistente) | Corrigido para `raw_daily!A:G` |
+| 4 | Python closure late-binding: `def _get(field)` dentro de `for raw_row in values[1:]` capturava `raw_row` por referência — últimas ~15 linhas liam o row errado | `def _get(field, _row=raw_row)` — default arg captura valor no momento da definição |
+
+**Impacto do bug 4:** dados de 10/06 e 11/06 (PATIOMEDEIROS) estavam na sheet mas nunca chegavam ao BQ.
+
+### Deploy
+Cloud Run não faz auto-deploy por push de branch.
+Deploy manual: `gcloud run deploy adframework-etl --source . --region=us-central1 --project=adframework`
+Nova revisão: `adframework-etl-00240-8mw`
+
+### Resultado pós-fix
+
+| Campo | Valor |
+|---|---|
+| Linhas em `raw.siprocal_delivery` | 1.093 |
+| Período | 2025-08-22 → 2026-06-11 |
+| Anunciantes distintos | 36 |
+| `last_status` Firestore | ok |
+| Schedule | 03:20 UTC diário |
+| Write mode | WRITE_TRUNCATE |
+
+### Arquivos tocados
+- `adframework_python/src/connectors/siprocal.py` — SiproCalConnector (novo)
+- `adframework_python/src/orchestrator.py` — `_run_siprocal_daily` (novo método + dispatch)
+- `raw/ddl/siprocal_delivery.sql` — pipeline description atualizada
+
+---
+
+## 2026-06-14 — MGID STG T8–T13b: todas as views de drilldown em produção ✅
+
+**Autor:** Douglas Reche
+
+### Contexto
+Após os raw jobs A–G (statistics-reports API) terem sido aprovados em 2026-06-13, os DDLs STG
+correspondentes foram criados e executados em produção. STG MGID agora está completa (T1–T13b).
+
+### Tabelas STG criadas
+
+| View | # | Grain | Raw table fonte | Financeiro |
+|---|---|---|---|---|
+| `stg.mgid_revenue` | T8 | day + campaign | `raw.mgid_stats_daily` (Job A) | ✅ spent, cpc, revenue, profit, roas |
+| `stg.mgid_delivery_by_device` | T9 | day + campaign + device_type | `raw.mgid_stats_by_device` (Job C) | ✅ |
+| `stg.mgid_delivery_by_geo` | T10 | day + campaign + region | `raw.mgid_stats_by_geo` (Job D) | ✅ |
+| `stg.mgid_delivery_by_os` | T11 | day + campaign + os | `raw.mgid_stats_by_os` (Job E1) | ✅ |
+| `stg.mgid_delivery_by_browser` | T11b | day + campaign + browser | `raw.mgid_stats_by_browser` (Job E2) | ✅ |
+| `stg.mgid_delivery_by_hour` | T12 | day + campaign + hour | `raw.mgid_stats_by_hour` (Job F) | ✅ |
+| `stg.mgid_delivery_by_widget` | T13 | day + campaign + widget_id | `raw.mgid_stats_by_widget` (Job G) | ✅ (sem conversões) |
+
+### Padrão de implementação (igual para todos T9–T13)
+- Dedup com `ROW_NUMBER() OVER (PARTITION BY grain ORDER BY raw_ingested_at DESC)`
+- Python dict → JSON: `REPLACE(REPLACE(field, "'", '"'), 'None', 'null')` antes de `JSON_VALUE($.amount)`
+- `roas` é STRING inteiro direto (não dict) — `SAFE_CAST AS FLOAT64` direto
+- LEFT JOIN `core.platform_client_links` ON platform='mgid' AND link_type='campaignid'
+- `source_table` = nome da raw table (rastreabilidade de origem)
+
+### Decisões de design (T10 — geo)
+- `raw.mgid_geo_regions` tem 0 linhas (job one-time nunca executado) — JOIN impossível
+- `geo_level` derivado do sufixo do texto bruto da API (`City` → city, `Region` → region_aggregate, etc.)
+- `country_code` não incluído — resolvido na próxima fase se necessário
+
+### Decisões de design (T13 — widget)
+- `widget_id` é ID numérico do placement (widgetid) — sem nome de publisher
+- Sem conversões: API MGID não retorna conversões neste grain (mesmo padrão MS publisher)
+
+### Arquivos tocados
+- `stg/ddl/mgid_revenue.sql` (T8 — novo)
+- `stg/ddl/mgid_delivery_by_device.sql` (T9 — novo)
+- `stg/ddl/mgid_delivery_by_geo.sql` (T10 — novo)
+- `stg/ddl/mgid_delivery_by_os.sql` (T11 — novo)
+- `stg/ddl/mgid_delivery_by_browser.sql` (T11b — novo)
+- `stg/ddl/mgid_delivery_by_hour.sql` (T12 — novo)
+- `stg/ddl/mgid_delivery_by_widget.sql` (T13 — novo)
+
+---
+
 ## 2026-06-13 (cont.) — Raw jobs MGID A–G: DDLs criados, Job A aprovado
 
 **Autor:** Douglas Reche
