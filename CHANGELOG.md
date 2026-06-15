@@ -6,6 +6,57 @@
 
 ---
 
+## 2026-06-14 — Siprocal: redesign STG com padronização de campos e resolução de client_id ✅
+
+**Autor:** Douglas Reche
+**Commit:** `d952783`
+
+### O que mudou
+
+`stg.siprocal_delivery` redesenhada do zero seguindo o padrão de `stg.mgid_delivery` e `stg.ms_delivery`:
+
+- **`siprocal_client_id` resolvido na STG** via LEFT JOIN com `core.platform_client_links` — 11/11 clientes atribuídos, 0 NULL
+- **Grain corrigido:** `day + advertiser_key + creative` (antes documentado incorretamente como incluindo `campaign_id`)
+- **Campos renomeados/adicionados:**
+  - `advertiser` → `advertiser_key` (chave extraída via regex, ex: `LUCKBET`)
+  - `campaign_id` → `pi_externo` (nome honesto — não é ID único, é referência comercial)
+  - `campaign_name` preservado como o nome completo (`NEWAD_LUCKBET_BR_SET25`)
+  - `ctr` adicionado: `SAFE_DIVIDE(clicks, impressions)`
+- **Campos removidos:** `creative_type` (100% vazio na fonte), `report_name` (metadado interno)
+- **WHERE clause mais estrita:** filtra `advertiser IS NOT NULL AND advertiser != ''`
+
+### Auditoria RAW realizada antes do redesign
+
+| Check | Resultado |
+|---|---|
+| Grain `day + advertiser + creative` | ✅ 100% único (0 duplicatas) |
+| Nulls em campos principais | ✅ Zero |
+| Advertiser seguem `NEWAD_{X}_BR_{Y}` | ✅ 1.093/1.093 rows |
+| Impressions/clicks numéricos | ✅ sem exceções |
+| `creative_type` | ⚠️ 100% vazio (removido da STG) |
+| `campaign_id` (pi_externo) | ⚠️ 172 rows com `(vazio)`, não único por cliente |
+
+### Resultado pós-deploy
+
+| Métrica | Valor |
+|---|---|
+| Total linhas STG | 1.093 |
+| `siprocal_client_id` resolvidos | 11/11 (100%) |
+| Total impressions | 7.453.790 |
+| Total clicks | 120.545 |
+
+### Tabelas legacy marcadas para drop
+
+`raw.siprocal_raw_sheet` (C1) e `raw.siprocal_sheet_ext` (C2) — documentadas em `known_issues.md`.
+Executar após gold layer Siprocal validado.
+
+### Arquivos tocados
+- `stg/ddl/siprocal_delivery.sql` — DDL redesenhado
+- `docs/siprocal_stg_design.md` — atualizado com novo schema, decisões e próximos passos
+- `docs/known_issues.md` — C1/C2 adicionados (tabelas legacy para drop)
+
+---
+
 ## 2026-06-14 — Siprocal: pipeline reescrito com SiproCalConnector + 4 bugs corrigidos ✅
 
 **Autor:** Douglas Reche

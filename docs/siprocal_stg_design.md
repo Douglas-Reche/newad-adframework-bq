@@ -1,7 +1,7 @@
 # Siprocal STG Layer — Design e Histórico Completo
 
 > Criado em: 2026-06-14 | Última atualização: 2026-06-14
-> Status: **RAW completa ✅ (1.093 linhas, 2025-08-22 → 2026-06-11) | STG existente em produção | Pendente: redesign STG para client_id resolution antes do gold layer**
+> Status: **RAW completa ✅ (1.093 linhas, 2025-08-22 → 2026-06-11) | STG redesenhada ✅ (siprocal_client_id resolvido, 11/11 clientes atribuídos) | Próximo: gold layer**
 
 ---
 
@@ -41,7 +41,7 @@ Google Sheet raw_siprocal
   adframework.stg.siprocal_delivery
   CREATE OR REPLACE VIEW — sem persistência adicional
         │
-        ▼ (pendente redesign)
+        ▼
   gold.fact_delivery
 ```
 
@@ -234,67 +234,95 @@ def _run_siprocal_daily(self, report, creds):
 ## STG Layer — `stg.siprocal_delivery`
 
 **Arquivo:** `stg/ddl/siprocal_delivery.sql`
-**Status:** ✅ Em produção (view existente)
-**Grain:** `day + campaign_name + campaign_id + creative`
+**Status:** ✅ Redesenhada em produção (2026-06-14, commit `d952783`)
+**Grain:** `day + advertiser_key + creative`
 
-### DDL atual
+### DDL
 
 ```sql
 CREATE OR REPLACE VIEW `adframework.stg.siprocal_delivery` AS
+
+WITH base AS (
+  SELECT
+    SAFE_CAST(day AS DATE)                                          AS day,
+    advertiser                                                      AS campaign_name,
+    COALESCE(
+      REGEXP_EXTRACT(UPPER(TRIM(advertiser)), r'^NEWAD_(.+)_BR_\w+$'),
+      UPPER(TRIM(advertiser))
+    )                                                               AS advertiser_key,
+    campaign_id                                                     AS pi_externo,
+    creative,
+    SAFE_CAST(impressions AS INT64)                                 AS impressions,
+    SAFE_CAST(clicks      AS INT64)                                 AS clicks,
+    platform,
+    raw_ingested_at
+  FROM `adframework.raw.siprocal_delivery`
+  WHERE day IS NOT NULL
+    AND day != ''
+    AND advertiser IS NOT NULL
+    AND advertiser != ''
+)
+
 SELECT
-  SAFE_CAST(day AS DATE)                                                   AS day,
-  advertiser                                                               AS campaign_name,
-  COALESCE(
-    REGEXP_EXTRACT(UPPER(TRIM(advertiser)), r'^NEWAD_(.+)_BR_\w+$'),
-    UPPER(TRIM(advertiser))
-  )                                                                        AS advertiser,
-  campaign_id,
-  creative_type,
-  creative,
-  SAFE_CAST(impressions AS INT64)                                          AS impressions,
-  SAFE_CAST(clicks      AS INT64)                                          AS clicks,
-  platform,
-  report_name,
-  raw_ingested_at
-FROM `adframework.raw.siprocal_delivery`
-WHERE day IS NOT NULL;
+  b.day,
+  pcl.client_id                                                     AS siprocal_client_id,
+  b.campaign_name,
+  b.advertiser_key,
+  b.pi_externo,
+  b.creative,
+  b.impressions,
+  b.clicks,
+  SAFE_DIVIDE(b.clicks, b.impressions)                              AS ctr,
+  b.platform,
+  b.raw_ingested_at
+FROM base b
+LEFT JOIN `adframework.core.platform_client_links` pcl
+  ON  pcl.platform   = 'siprocal'
+  AND pcl.link_type  = 'advertiser'
+  AND pcl.link_value = b.advertiser_key;
 ```
 
 ### Schema da view
 
 | Campo | Tipo | Fonte | Notas |
 |---|---|---|---|
-| `day` | DATE | `raw.day` | `SAFE_CAST(day AS DATE)` |
-| `campaign_name` | STRING | `raw.advertiser` | preserva nome original (ex: NEWAD_AMIGOTECPAR_BR_ABR26) |
-| `advertiser` | STRING | extraído de `raw.advertiser` | chave de atribuição via regex; COALESCE para campanhas sem padrão NEWAD_ |
-| `campaign_id` | STRING | `raw.campaign_id` | PI Externo — pode ser vazio |
-| `creative_type` | STRING | `raw.creative_type` | quase sempre vazio |
+| `day` | DATE | `raw.day` | `SAFE_CAST(STRING → DATE)` |
+| `siprocal_client_id` | STRING | `core.platform_client_links` | resolvido via JOIN — NULL se advertiser_key sem mapeamento |
+| `campaign_name` | STRING | `raw.advertiser` | nome completo da campanha, ex: `NEWAD_LUCKBET_BR_SET25` — rastreabilidade |
+| `advertiser_key` | STRING | extraído de `raw.advertiser` | chave extraída pelo regex (`LUCKBET`) — base do JOIN |
+| `pi_externo` | STRING | `raw.campaign_id` | PI Externo da Siprocal — referência comercial, não usar como FK |
 | `creative` | STRING | `raw.creative` | nome/descrição do criativo |
 | `impressions` | INT64 | `raw.impressions` | `SAFE_CAST` → NULL se não numérico |
 | `clicks` | INT64 | `raw.clicks` | `SAFE_CAST` → NULL se não numérico |
+| `ctr` | FLOAT64 | calculado | `SAFE_DIVIDE(clicks, impressions)` — NULL se impressions = 0 |
 | `platform` | STRING | `raw.platform` | sempre `'siprocal'` |
-| `report_name` | STRING | `raw.report_name` | sempre `'Daily'` |
 | `raw_ingested_at` | TIMESTAMP | `raw.raw_ingested_at` | rastreabilidade de ingestão |
 
-### O que a STG atual NÃO faz (pendente redesign)
+**Removidos vs versão anterior:** `creative_type` (sempre vazio), `report_name` (metadado interno).
+**Adicionados:** `siprocal_client_id` (JOIN), `advertiser_key`, `pi_externo`, `ctr`.
 
-- ❌ **Não resolve `client_id`** — sem LEFT JOIN em `core.platform_client_links`
-- ❌ **Sem `siprocal_client_id` ou qualquer FK resolvida** — o gold layer não consegue atribuir entrega a cliente diretamente
-- ❌ **Sem financeiro** — a sheet não tem custo
-- ❌ **Sem drilldowns** — sem grain por device/geo/OS (não existe na fonte)
+### Decisões de design
 
-### Redesign pendente para o gold layer
+- **JOIN na STG** (não no gold): segue padrão de `stg.mgid_delivery` e `stg.ms_delivery` — o gold recebe `siprocal_client_id` pronto.
+- **`pi_externo` mantido** como passthrough — não é um ID confiável mas tem valor para referência comercial (número do PI na Siprocal).
+- **`creative_type` removido** — coluna 100% vazia na raw atual; ausente na sheet. Se a Siprocal adicionar a coluna `tipo_criativo` no futuro, o conector já tem o alias mapeado e voltará a popular na raw automaticamente.
+- **`campaign_name`** é o identificador natural de campanha do Siprocal (substitui `platform_campaign_id` no gold).
 
-O JOIN com `platform_client_links` seria:
+### Sanity check pós-deploy (2026-06-14)
 
-```sql
-LEFT JOIN `adframework.core.platform_client_links` pcl
-  ON  pcl.platform   = 'siprocal'
-  AND pcl.link_type  = 'advertiser'
-  AND pcl.link_value = stg.advertiser   -- ex: 'AMIGOTECPAR', 'LUCKBET', 'SENAR'
-```
+| Métrica | Valor |
+|---|---|
+| Total de linhas | 1.093 |
+| Clientes com `siprocal_client_id` resolvido | **11/11 (100%)** |
+| `siprocal_client_id` NULL | **0** |
+| Período | 2025-08-22 → 2026-06-11 |
+| Total impressions | 7.453.790 |
+| Total clicks | 120.545 |
 
-**Bloqueio atual:** issue #5 em `known_issues.md` — dois client IDs (`nwd_luckbet_69e72f18` e `nwd_luckbet_a485d6bc`) têm `link_value = 'luckbet'` para Siprocal. O JOIN vai duplicar linhas de Luckbet. Resolver qual client ID é canônico antes de reescrever a STG.
+### Limitações da STG (inerentes à fonte)
+
+- **Sem financeiro** — a sheet não tem custo/receita. Siprocal não reporta spend.
+- **Sem drilldowns** — sem grain por device/geo/OS/hora. Fonte única (sheet agregada).
 
 ---
 
@@ -416,11 +444,9 @@ A chave de atribuição é o texto extraído da coluna `advertiser` via regex.
 - `NEWAD_LUCK BET_BR_SET25` ← espaço → `advertiser = 'LUCK BET'` ❌ sem match
 - `SENAR` ← sem prefixo NEWAD → COALESCE retorna `'SENAR'` (funciona se `link_value='senar'`)
 
-### L2 — Dois client IDs para Luckbet Siprocal (known_issues.md #5)
+### L2 — Atribuição AMIGOTECPAR vai para Amigo, não para TecPar diretamente
 
-`nwd_luckbet_69e72f18` e `nwd_luckbet_a485d6bc` têm `link_value='luckbet'` em `platform_client_links` para `platform='siprocal'`. Um LEFT JOIN com `link_type='advertiser'` retorna 2 linhas → duplicação na gold.
-
-**Resolução necessária:** desativar um dos links no Admin UI / Firestore antes de integrar Siprocal ao gold.
+O advertiser `NEWAD_AMIGOTECPAR_BR_*` extrai a chave `AMIGOTECPAR`, que mapeia para `amigo_db1c2f0c` (sub-cliente de TecPar). Impressões de AMIGOTECPAR (1.21M) são atribuídas a `amigo_db1c2f0c`, não a `tecpar_edfcc744`. O gold precisa usar hierarquia de clientes (`parent_client_id`) para consolidar TecPar + Amigo se necessário.
 
 ### L3 — Sem dados financeiros
 
@@ -432,13 +458,13 @@ A sheet `raw_daily` contém atualmente 2025-08-22 → 2026-06-11. Se a Siprocal 
 
 **Mitigação possível:** Mudar para `WRITE_APPEND` + dedup por grain no STG — mas requer confirmação de que a sheet não vai repetir linhas com valores alterados (o que tornaria o dedup ambíguo).
 
-### L5 — `creative_type` quase sempre vazio
+### L5 — `creative_type` sem dado na fonte atual
 
-A coluna G da sheet (`creative_type` ou `tipo`) raramente é preenchida pela Siprocal. No STG, o campo existe mas terá valor NULL ou `''` para a grande maioria dos registros.
+A sheet não tem coluna `tipo_criativo`. O conector já tem o alias mapeado (`_COLUMN_ALIASES`), mas sem a coluna na sheet o campo não aparece na raw. Removido da STG. Se a Siprocal adicionar a coluna, começará a popular automaticamente na raw — a STG precisará ser atualizada para incluí-la.
 
-### L6 — `campaign_id` não é um ID estruturado confiável
+### L6 — `pi_externo` não é ID estruturado confiável
 
-O "PI Externo" da Siprocal (coluna A) não é consistente: alguns são numéricos (`"38"`, `"43"`), outros são texto, outros estão vazios. Não é adequado como FK. O `advertiser` extraído é a chave real de atribuição.
+O "PI Externo" (coluna A da sheet) não é único por cliente: o valor `38` aparece para AMIGOTECPAR, SENAR e BANCOCORA ao mesmo tempo. 172 linhas (15.7%) têm `(vazio)`. Renomeado para `pi_externo` na STG para deixar claro que é referência comercial, não FK. O grain real é `day + advertiser_key + creative`.
 
 ---
 
@@ -456,7 +482,7 @@ O "PI Externo" da Siprocal (coluna A) não é consistente: alguns são numérico
 | Frequência de update | Diário (automatic) | Diário (automatic) | Diário (automatic) — mas depende da sheet ser mantida |
 | Colunas raw | 30+ | 12–16 por job | 10 |
 | STG views | 13 (T1–T13) | 11 (T1–T13b) | 1 (stg.siprocal_delivery) |
-| Client linkage | Resolvido no STG | Resolvido no STG | ⚠️ Pendente redesign STG |
+| Client linkage | Resolvido no STG | Resolvido no STG | ✅ Resolvido no STG (siprocal_client_id) |
 
 ---
 
@@ -475,17 +501,13 @@ O "PI Externo" da Siprocal (coluna A) não é consistente: alguns são numérico
 
 ## Próximos passos
 
-1. **Resolver known_issue #5** — definir qual client ID é canônico para Luckbet Siprocal e desativar o link legacy (`nwd_luckbet_69e72f18`). Isso desbloqueia o JOIN seguro no STG.
+1. **Gold layer** — integrar `stg.siprocal_delivery` ao `gold.fact_delivery` unificado (MS + MGID + Siprocal).
+   - Siprocal não terá `platform_strategy_id` (NULL), `spent` (NULL), `device_type` (NULL) — mesma lógica de MGID.
+   - `platform_campaign_id` no gold usará `campaign_name` (NEWAD_LUCKBET_BR_SET25) — mais informativo que o pi_externo.
+   - JOIN no gold simplificado: `stg.siprocal_delivery` já entrega `siprocal_client_id` resolvido.
 
-2. **Redesign STG — adicionar `client_id`**
-   ```sql
-   LEFT JOIN `adframework.core.platform_client_links` pcl
-     ON  pcl.platform   = 'siprocal'
-     AND pcl.link_type  = 'advertiser'
-     AND pcl.link_value = stg.advertiser
-   ```
-   Adicionar `pcl.client_id AS siprocal_client_id` ao SELECT.
+2. **Drop das tabelas legacy** (após gold validado em produção):
+   - `raw.siprocal_raw_sheet` — C1 em `known_issues.md`
+   - `raw.siprocal_sheet_ext` — C2 em `known_issues.md`
 
-3. **Gold layer** — após STG com `client_id`, integrar `stg.siprocal_delivery` ao `gold.fact_delivery` unificado (MS + MGID + Siprocal). Siprocal não terá `platform_strategy_id` (NULL), `spent` (NULL), nem `device_type` (NULL) — mesma lógica de MGID.
-
-4. **Monitorar sheet** — a Siprocal atualiza a sheet manualmente. Se pararem de atualizar, o BQ ficará desatualizado sem alarme. Considerar alerta de data (`MAX(day)` < hoje - 3 dias).
+3. **Monitorar sheet** — a Siprocal atualiza manualmente. Se pararem, o BQ fica desatualizado sem alarme. Considerar alerta de data (`MAX(day) < hoje - 3 dias`).
