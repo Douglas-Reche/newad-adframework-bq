@@ -2,20 +2,30 @@
 -- Entrega diária da Siprocal. Fonte de verdade para dados Siprocal no pipeline.
 -- Grain: day + advertiser + campaign_id + creative_type + creative
 --
--- PIPELINE DE INGESTÃO:
---   1. Google Sheet (raw_daily) → scripts/siprocal/sync_sheet.py → raw.siprocal_raw_sheet (TABLE nativa)
---   2. ETL job siprocal_daily_external (Cloud Run, Firestore: platform_reports/siprocal_daily_external)
---      lê de raw.siprocal_raw_sheet → sobrescreve esta tabela (CREATE OR REPLACE, diário 05:00 UTC)
---      Endpoint lido de: Firestore platform_endpoints/siprocal_ep_external_daily (path_template)
+-- PIPELINE DE INGESTÃO (atual — desde 2026-06-15):
+--   Google Sheet raw_siprocal (aba raw_daily!A:G)
+--   → SiproCalConnector (src/connectors/siprocal.py)
+--   → ETL job siprocal_daily_external (Firestore: platform_reports/siprocal_daily_external)
+--   → WRITE_TRUNCATE → adframework.raw.siprocal_delivery
+--   Schedule: 03:20 UTC diário (schedule_cron: "20 3 * * *")
+--   Credentials: Firestore platform_credentials/siprocal.secrets
+--     {spreadsheet_id: "1HaGrxaU-...", sheet_range: "raw_daily!A:G"}
 --
--- IMPORTANTE: raw.siprocal_raw_sheet DEVE ser TABLE nativa BQ.
---   O orchestrator valida o tipo da tabela e rejeita External Tables com fonte Google Sheets.
---   raw.siprocal_sheet_ext (External Table) existe como auxiliar para inspeção; nunca usá-la diretamente.
---   Para automação completa: agendar sync_sheet.py às 04:45 UTC via Cloud Run Job (pendente Shiro).
+-- LEGADO (DESCONTINUADO): o pipeline antigo usava sync_sheet.py → raw.siprocal_raw_sheet
+--   e um endpoint BQ para query intermediária. Foi substituído pelo conector direto.
+--
+-- SCHEMA DA SHEET: PI Externo | Data | Campanha | Criativo | Impressions | Clicks | CTR
+--   Suporta headers em PT e EN via _COLUMN_ALIASES no conector.
+--   Datas em dd/mm/yyyy ou yyyy-mm-dd — normalizadas para yyyy-mm-dd na ingestão.
+--   CTR (col G) é descartada — recalculada no STG/Gold se necessário.
 --
 -- IMPORTANTE: O campo `advertiser` segue o padrão NEWAD_{CLIENTE}_BR_{MES}{ANO}.
 --   stg.siprocal_delivery extrai o {CLIENTE} via regex e faz join com core.platform_client_links.
 --   Qualquer variação de escrita pelo lado da Siprocal quebra a atribuição silenciosamente.
+--
+-- NOTA SCHEMA: tabela criada via load_rows (WRITE_TRUNCATE) — sem partição real.
+--   DDL abaixo define o schema canônico; a partição PARTITION BY DATE(raw_ingested_at)
+--   não está ativa na tabela atual (recriada a cada load completo).
 
 CREATE OR REPLACE TABLE `adframework.raw.siprocal_delivery`
 (
