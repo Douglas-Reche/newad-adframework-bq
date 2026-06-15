@@ -20,7 +20,7 @@
 | `mgid_stg_design.md` | ✅ ATUAL | 2026-06-14 | Design completo STG MGID T1–T13b: todas as 13 views, raw jobs A–G, decisões arquiteturais, gaps vs MediaSmart, dedup, parsing Python dict |
 | `siprocal_stg_design.md` | ✅ ATUAL | 2026-06-14 | Design Siprocal: arquitetura, raw auditada, STG redesenhada (siprocal_client_id resolvido 11/11, grain corrigido, pi_externo, ctr), limitações, próximos passos |
 | `etl_expansion_plan.md` | ✅ ATUAL | 2026-06-08 | Plano de expansão: device, geo, financeiro, criativo |
-| `io_plan_pipeline.md` | ✅ ATUAL | 2026-06-09 | Pipeline IO Plan: planilhas Google Drive → `raw.io_plan_drive_snapshot` → `core.io_plan_manual` → `gold.fact_io_plan` |
+| `io_plan_pipeline.md` | ✅ ATUAL | 2026-06-14 | Pipeline IO Plan completo: arquitetura Drive→RAW→Core→Gold, CLIENT_MAP 14 clientes, regras de seleção de arquivo, schema, limitações, auditoria Cora |
 | `commercial_questions.md` | ✅ ATUAL | 2026-06-08 | Perguntas pendentes para área comercial |
 | `meta_ads_integration.md` | ✅ ATUAL | 2026-06-12 | Integração Meta Ads ao pipeline — credenciais, steps pendentes, schema proposto |
 | `google_ads_integration.md` | ✅ ATUAL | 2026-06-12 | Integração Google Ads ao pipeline — guia completo de credenciais OAuth2, schema, GAQL |
