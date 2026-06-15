@@ -1,7 +1,18 @@
 # Problemas Conhecidos — AdFramework BigQuery
 
-> Última atualização: 2026-06-12 — MGID STG T1–T4 planejados; T1 em produção; T2–T4 DDLs prontos aguardando execução; raw tables MGID com alta duplicação pendente de fix.
+> Última atualização: 2026-06-14 — Siprocal raw auditado e aprovado; 2 tabelas legacy marcadas para drop após STG estabilizar; MGID STG T1–T13b completa.
 > Autor: Douglas Reche
+
+---
+
+## 🗑️ Limpeza pendente (executar após STG Siprocal estabilizar)
+
+| # | Tabela | Motivo | Ação |
+|---|---|---|---|
+| C1 | `raw.siprocal_raw_sheet` | Pipeline antigo (`sync_sheet.py`) — descontinuado em 2026-06-14 quando `SiproCalConnector` entrou em produção. Tabela vazia ou com dados legados, não usada por nenhum job atual. | `DROP TABLE adframework.raw.siprocal_raw_sheet` |
+| C2 | `raw.siprocal_sheet_ext` | External Table auxiliar linkada direto na Google Sheet — usada só para inspeção ad-hoc. Não faz parte do pipeline. Pode ser recriada a qualquer momento se precisar inspecionar a sheet. | `DROP EXTERNAL TABLE adframework.raw.siprocal_sheet_ext` |
+
+> **Quando executar:** após `stg.siprocal_delivery` e `gold.fact_delivery` Siprocal validados em produção (ver próximos passos do pipeline Siprocal).
 
 ---
 

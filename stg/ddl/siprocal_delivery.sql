@@ -1,31 +1,56 @@
--- stg.siprocal_delivery
--- Typing, normalização e extração de advertiser sobre raw.siprocal_delivery.
--- Grain: day + campaign_name + campaign_id + creative
+-- stg.siprocal_delivery (T1 Siprocal)
+-- Fato de entrega Siprocal com siprocal_client_id resolvido.
+-- Grain: day + advertiser_key + creative
 --
--- IMPORTANTE — formato da coluna `advertiser` na raw:
---   raw.siprocal_delivery.advertiser = nome completo da campanha (ex: NEWAD_AMIGOTECPAR_BR_ABR26).
---   Esta view extrai o advertiser key via REGEXP_EXTRACT('NEWAD_{ADVERTISER}_BR_{MES}{ANO}').
---   O campo `campaign_name` preserva o nome completo da campanha (rastreabilidade).
---   O JOIN com core.platform_client_links usa link_type='advertiser' e link_value = advertiser (ex: AMIGOTECPAR).
+-- Fonte: raw.siprocal_delivery (Google Sheet raw_daily via SiproCalConnector)
+-- Atualização: diária WRITE_TRUNCATE (schedule 03:20 UTC)
 --
--- Fonte: raw.siprocal_delivery (Google Sheets raw_daily via ETL siprocal_daily_external)
--- Atualização: diária via ETL (Firestore: siprocal_daily_external)
+-- Atribuição: raw.advertiser (NEWAD_LUCKBET_BR_SET25)
+--   → regex extrai advertiser_key (LUCKBET)
+--   → JOIN core.platform_client_links (platform='siprocal', link_type='advertiser')
+--   → siprocal_client_id resolvido
+--
+-- Nota: pi_externo (campaign_id na raw) é referência comercial interna da Siprocal.
+--   Não é único por cliente — não usar como chave de campanha.
+--   campaign_name (NEWAD_{CLIENTE}_BR_{MES}{ANO}) é o identificador natural de campanha.
 
 CREATE OR REPLACE VIEW `adframework.stg.siprocal_delivery` AS
+
+WITH base AS (
+  SELECT
+    SAFE_CAST(day AS DATE)                                          AS day,
+    advertiser                                                      AS campaign_name,
+    COALESCE(
+      REGEXP_EXTRACT(UPPER(TRIM(advertiser)), r'^NEWAD_(.+)_BR_\w+$'),
+      UPPER(TRIM(advertiser))
+    )                                                               AS advertiser_key,
+    campaign_id                                                     AS pi_externo,
+    creative,
+    SAFE_CAST(impressions AS INT64)                                 AS impressions,
+    SAFE_CAST(clicks      AS INT64)                                 AS clicks,
+    platform,
+    raw_ingested_at
+  FROM `adframework.raw.siprocal_delivery`
+  WHERE day IS NOT NULL
+    AND day != ''
+    AND advertiser IS NOT NULL
+    AND advertiser != ''
+)
+
 SELECT
-  SAFE_CAST(day AS DATE)                                                   AS day,
-  advertiser                                                               AS campaign_name,
-  COALESCE(
-    REGEXP_EXTRACT(UPPER(TRIM(advertiser)), r'^NEWAD_(.+)_BR_\w+$'),
-    UPPER(TRIM(advertiser))
-  )                                                                        AS advertiser,
-  campaign_id,
-  creative_type,
-  creative,
-  SAFE_CAST(impressions AS INT64)                                          AS impressions,
-  SAFE_CAST(clicks      AS INT64)                                          AS clicks,
-  platform,
-  report_name,
-  raw_ingested_at
-FROM `adframework.raw.siprocal_delivery`
-WHERE day IS NOT NULL;
+  b.day,
+  pcl.client_id                                                     AS siprocal_client_id,
+  b.campaign_name,
+  b.advertiser_key,
+  b.pi_externo,
+  b.creative,
+  b.impressions,
+  b.clicks,
+  SAFE_DIVIDE(b.clicks, b.impressions)                              AS ctr,
+  b.platform,
+  b.raw_ingested_at
+FROM base b
+LEFT JOIN `adframework.core.platform_client_links` pcl
+  ON  pcl.platform   = 'siprocal'
+  AND pcl.link_type  = 'advertiser'
+  AND pcl.link_value = b.advertiser_key;
