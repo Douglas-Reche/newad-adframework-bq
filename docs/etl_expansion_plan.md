@@ -1,7 +1,10 @@
 # ETL Expansion Plan — Novas Dimensões e Métricas
 
-> Criado em: 2026-06-08
+> Criado em: 2026-06-08  
+> Atualizado em: 2026-06-09  
 > Status: Planejado — implementação depende de alinhamento com Shiro (orchestrator)
+
+**Ver também:** `docs/io_plan_pipeline.md` — pipeline de planejamento comercial (Drive → BQ) já implementado e funcionando.
 
 ---
 
@@ -140,6 +143,22 @@ spend             FLOAT64
 - `conversionsRateInterest`, `conversionsRateDecision`, `conversionsRateBuy`
 
 **Pré-requisito:** cliente precisa ter pixel de conversão com valor monetário para ROAS fazer sentido.
+
+---
+
+### #7b — Publisher breakdown MediaSmart *(no radar — 2026-06-11)*
+
+**Dado disponível na API** — drilldown variables: `publishercompany`, `publisherurl`, `publisherid`, `exchange`, `domain`
+
+**Novo job sugerido:**
+- Tabela raw: `raw.mediasmart_delivery_by_publisher`
+- Drilldown: `day,eventid,controlid,publishercompany,publisherurl,exchange`
+- KPIs: `impressions,clicks,wonprice`
+
+**Atenção:** publisher é dado volumoso — uma campanha pode ter centenas de publishers por dia.
+Usar janela de 7 dias por chamada igual ao job de device.
+
+**Tabela gold resultante:** `gold.fact_delivery_by_publisher`
 
 ---
 

@@ -15,8 +15,12 @@ patio_medeiros_874a0358,patio_medeiros,Patio Medeiros,unknown,active,2026-05-26,
 townhouses_bc40f009,townhouses,TownHouses,imobiliario,active,2026-05-26,
 ocupacional_98c851f5,ocupacional,Ocupacional,saude_ocupacional,active,2026-05-26,
 dr_consulta_215378ef,dr_consulta,Dr. Consulta,saude,active,2026-05-26,
-amigo_db1c2f0c,amigo,Amigo,unknown,pending_confirmation,2026-05-26,aguardando confirmacao comercial
-tecpar_edfcc744,tecpar,TecPar,unknown,pending_confirmation,2026-05-26,aguardando confirmacao comercial
-stocco_b712c66e,stocco,Stocco,unknown,pending_confirmation,2026-05-26,aguardando confirmacao comercial
-stoquinho_56a6ee2a,stoquinho,Stoquinho,educacao,pending_confirmation,2026-05-26,aguardando confirmacao comercial
-dr_consulta_rj_11040bf9,dr_consulta_rj,Dr. Consulta RJ,saude,pending_confirmation,2026-05-26,aguardando confirmacao comercial
+amigo_db1c2f0c,amigo,Amigo,unknown,pending_confirmation,2026-05-26,aguardando confirmacao comercial — Amigo vs TecPar
+tecpar_edfcc744,tecpar,TecPar,unknown,pending_confirmation,2026-05-26,aguardando confirmacao comercial — Amigo vs TecPar
+stocco_b712c66e,stocco,Stocco,unknown,pending_confirmation,2026-05-26,aguardando confirmacao comercial — Stocco vs Stoquinho
+stoquinho_56a6ee2a,stoquinho,Stoquinho,educacao,pending_confirmation,2026-05-26,aguardando confirmacao comercial — Stocco vs Stoquinho
+dr_consulta_rj_11040bf9,dr_consulta_rj,Dr. Consulta RJ,saude,pending_confirmation,2026-05-26,aguardando confirmacao comercial — Dr Consulta SP vs RJ
+bet7k_b777ab9c,bet7k,Bet7k,apostas,pending_confirmation,2026-05-26,aguardando confirmacao comercial — aparece em MGID sem delivery ainda
+lab2lab_efb1cb34,lab2lab,Lab2Lab,unknown,pending_confirmation,2026-05-26,aguardando confirmacao comercial — aparece em MGID sem delivery ainda
+caloi_8ac28140,caloi,Caloi,unknown,pending_confirmation,2026-05-26,aguardando confirmacao comercial — 689K imp no MediaSmart; 2 campanhas MGID sem delivery
+catalise_0b7d18d6,catalise,Catalise,unknown,pending_confirmation,2026-05-26,aguardando confirmacao comercial — 1.2M imp no MGID (mar/2026)

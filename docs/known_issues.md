@@ -1,6 +1,6 @@
 # Problemas Conhecidos — AdFramework BigQuery
 
-> Última atualização: 2026-06-12 — sanity check STG concluído; 4 raw tables Grupo A deduplicadas (by_device, by_os, by_hour, by_publisher); impressões confirmadas consistentes 0.029% δ.
+> Última atualização: 2026-06-12 — MGID STG T1–T4 planejados; T1 em produção; T2–T4 DDLs prontos aguardando execução; raw tables MGID com alta duplicação pendente de fix.
 > Autor: Douglas Reche
 
 ---
@@ -353,6 +353,43 @@ Não adicionar dicionário de mapeamento ao ETL raw. `normalize_data` deve perma
 **Estado atual (2026-06-11):**
 Todas as 6 STG (T7, T9, T10, by_os, by_hour, by_publisher) estão **DESBLOQUEADAS**.
 Tabelas têm 1 dia de dados (2026-06-10). Backfill histórico de 2026 está pendente — ver `mediasmart_stg_design.md` seção "Plano de Backfill Grupo A".
+
+---
+
+## M1. MGID raw tables com alta duplicação — pendente fix antes da execução STG
+
+**Impacto:** `stg.mgid_creatives` e `stg.mgid_campaigns` dependem de dedup correto. Executar os DDLs sem fazer o fix primeiro pode mascarar dados.
+
+**Status:** Identificado em 2026-06-12. Fix pendente — `SELECT DISTINCT *` em ambas as tabelas antes de executar T2–T4.
+
+**Causa raiz confirmada (2026-06-13):** `write_mode=WRITE_APPEND` no Firestore doc de cada job — orchestrator.py lê `str(report.get("write_mode") or "WRITE_APPEND")`. Cada execução appenda todas as campanhas/criativos novamente. Mesma causa que `mediasmart_firstlevel_campaigns` antes do fix (GRUPO D 2026-06-11).
+**Fix permanente:** mudar `write_mode` para `WRITE_TRUNCATE` nos docs Firestore `mgid_firstlevel_campaigns` e `mgid_firstlevel_creatives`.
+
+| Tabela | Total linhas | IDs únicos | Fator dup |
+|---|---|---|---|
+| `raw.mgid_campaigns` | 19.789 | 248 | 79.8× |
+| `raw.mgid_creatives` | ~10.660 | ~410 | ~26× |
+
+**Fix pontual (uma vez):**
+```sql
+CREATE OR REPLACE TABLE `adframework.raw.mgid_campaigns` AS SELECT DISTINCT * FROM `adframework.raw.mgid_campaigns`;
+CREATE OR REPLACE TABLE `adframework.raw.mgid_creatives` AS SELECT DISTINCT * FROM `adframework.raw.mgid_creatives`;
+```
+
+**Fix permanente (Firestore — após dedup):**
+```python
+# mgid_firstlevel_campaigns e mgid_firstlevel_creatives
+db.collection('platform_reports').document('mgid_firstlevel_campaigns').update({'write_mode': 'WRITE_TRUNCATE'})
+db.collection('platform_reports').document('mgid_firstlevel_creatives').update({'write_mode': 'WRITE_TRUNCATE'})
+```
+
+---
+
+## M2. MGID `raw.mgid_delivery` sem `spent` — 100% NULL
+
+**Impacto:** T3 `stg.mgid_delivery` e T4 `stg.mgid_creative_delivery` não têm custo. Análises de ROI indisponíveis.
+
+**Status:** Confirmado em 2026-06-12. `spent` existe como coluna mas todos os valores são NULL. Requer novo raw job via `statistics-reports` endpoint (Job A + Job B do plano). Ver `docs/mgid_stg_design.md`.
 
 ---
 

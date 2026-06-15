@@ -1,0 +1,6 @@
+client_id,platform,conversion_slot,conversion_name,conversion_description,is_primary,created_at
+,mediasmart,conversions_1,Pageview,Visualizacao de pagina — default global para todos os clientes,false,2026-05-26
+luckbet_bea15ebc,mediasmart,conversions_2,Cadastro,Cadastro completo na plataforma,false,2026-05-26
+luckbet_bea15ebc,mediasmart,conversions_3,FTD,First Time Deposit — primeiro deposito do usuario,true,2026-05-26
+luckbet_bea15ebc,mediasmart,conversions_4,Deposito Recorrente,Deposito de usuario ja cadastrado,false,2026-05-26
+luckbet_bea15ebc,mediasmart,conversions_5,Inicio Cadastro,Usuario iniciou mas nao completou o cadastro,false,2026-05-26

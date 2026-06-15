@@ -158,7 +158,7 @@ def process_full(df, cols):
     df = df[df["dia"].notna()].copy()
     for c in NUM_ALL:
         if c in df.columns:
-            df[c] = df[c].apply(br_num)
+            df[c] = pd.to_numeric(df[c].apply(br_num), errors="coerce")
     return df
 
 

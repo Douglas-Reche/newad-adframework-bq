@@ -10,19 +10,20 @@
 --   Muitos criativos têm campaign_id = NULL (sem vínculo de campanha ativo).
 --   O campo `creative` (JSON) contém dimensões físicas (width, height).
 --
--- Depende de: nenhuma view STG (fonte direta da RAW)
+-- Depende de: stg.ms_campaigns (para resolver ms_client_id)
 -- NÃO substitui nenhuma view existente — view nova.
 
 CREATE OR REPLACE VIEW `adframework.stg.ms_creatives` AS
 SELECT
-  id                                                                   AS ms_creative_id,
-  campaign_id                                                          AS ms_campaign_id,
-  name                                                                 AS ms_creative_name,
-  type                                                                 AS creative_type,
-  SAFE_CAST(JSON_VALUE(creative, '$.creative.width')  AS INT64)       AS size_width,
-  SAFE_CAST(JSON_VALUE(creative, '$.creative.height') AS INT64)       AS size_height,
-  thumbnail_url,
-  SAFE_CAST(updated_at AS TIMESTAMP)                                   AS updated_at
+  cr.id                                                                AS ms_creative_id,
+  cr.campaign_id                                                       AS ms_campaign_id,
+  c.ms_client_id,
+  cr.name                                                              AS creative_name,
+  cr.type                                                              AS creative_type,
+  SAFE_CAST(JSON_VALUE(cr.creative, '$.creative.width')  AS INT64)    AS size_width,
+  SAFE_CAST(JSON_VALUE(cr.creative, '$.creative.height') AS INT64)    AS size_height,
+  cr.thumbnail_url                                                     AS image_url,
+  SAFE_CAST(cr.updated_at AS TIMESTAMP)                               AS updated_at
 FROM (
   SELECT *,
     ROW_NUMBER() OVER (
@@ -31,5 +32,6 @@ FROM (
     ) AS rn
   FROM `adframework.raw.mediasmart_creatives`
   WHERE id IS NOT NULL
-)
-WHERE rn = 1;
+) cr
+LEFT JOIN `adframework.stg.ms_campaigns` c ON c.ms_campaign_id = cr.campaign_id
+WHERE cr.rn = 1;

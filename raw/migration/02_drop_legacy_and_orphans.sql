@@ -46,7 +46,10 @@ DROP TABLE IF EXISTS `adframework.raw.mediasmart_daily_operational`;
 -- BLOCO C — Duplicatas e tabelas descontinuadas
 -- =============================================================================
 
-DROP TABLE IF EXISTS `adframework.raw.siprocal_daily_native`;       -- duplicata exata de siprocal_delivery
+-- ⚠️ NÃO DROPAR: siprocal_daily_native é a tabela FONTE do ETL (siprocal_daily_external no Firestore).
+-- O job lê de siprocal_daily_native e sobrescreve siprocal_delivery via CREATE OR REPLACE TABLE.
+-- Foi dropada por engano em 2026-05-26 (marcada incorretamente como duplicata) e restaurada no mesmo dia.
+-- DROP TABLE IF EXISTS `adframework.raw.siprocal_daily_native`;
 DROP TABLE IF EXISTS `adframework.raw.mgid_daily_device`;           -- disabled no daily_jobs_target.yaml
 
 

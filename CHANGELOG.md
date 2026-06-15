@@ -6,6 +6,250 @@
 
 ---
 
+## 2026-06-13 (cont.) — Raw jobs MGID A–G: DDLs criados, Job A aprovado
+
+**Autor:** Douglas Reche
+
+### Criado
+- `raw/ddl/mgid_stats_daily.sql` — Job A (day + campaignId + impressions + clicks + spent + cpc + ctr + conversions*)
+- `raw/ddl/mgid_stats_creative.sql` — Job B (day + campaignId + teaserId + mesmas métricas)
+- `raw/ddl/mgid_stats_by_device.sql` — Job C (day + campaignId + deviceType)
+- `raw/ddl/mgid_stats_by_geo.sql` — Job D (day + campaignId + country + region) ⚠️ 4 dims excedem limite API de 3 — a resolver
+- `raw/ddl/mgid_stats_by_os.sql` — Job E (day + campaignId + os + browser) ⚠️ mesma restrição
+- `raw/ddl/mgid_stats_by_hour.sql` — Job F (day + campaignId + hour)
+- `raw/ddl/mgid_stats_by_widget.sql` — Job G (day + campaignId + widgetId + impressions + clicks + spent)
+
+### Alterado
+- `adframework_python/src/connectors/mgid.py` — `fetch_daily_rows()`: serialização de dict/list após coleta de rows (necessário para `spent` e `cpc` que a API retorna como objetos `{'amount': '...', 'currency': 'USD'}`)
+
+### Job G — aprovado 2026-06-14
+- `raw/ddl/mgid_stats_by_widget.sql` — grain: day + campaignid + widgetid; métricas: impressions, clicks, spent (sem conversões) → T13
+**Config Firestore:**
+```json
+{ "platform": "mgid", "type": "mgid_daily", "name": "mgid_stats_by_widget",
+  "bq_dataset": "raw", "bq_table": "mgid_stats_by_widget", "write_mode": "WRITE_APPEND",
+  "params_json": { "rules": "dimensions[]=day&dimensions[]=campaignId&dimensions[]=widgetId&metrics[]=impressions&metrics[]=clicks&metrics[]=spent", "limit": 1000 } }
+```
+
+### Job A — revenue adicionado 2026-06-14
+- `raw/ddl/mgid_stats_daily.sql` atualizado: adicionados `revenue`, `profit`, `roas`
+- Decisão: separação delivery vs revenue no STG (não no raw) — MGID não tem `revenuesource` (grain idêntico para todos os KPIs)
+- T3 stg.mgid_delivery = delivery metrics; T8 stg.mgid_revenue = spent + cpc + revenue + profit + roas
+- Config Firestore Job A atualizada:
+```json
+{ "params_json": { "rules": "dimensions[]=day&dimensions[]=campaignId&metrics[]=impressions&metrics[]=clicks&metrics[]=spent&metrics[]=cpc&metrics[]=ctr&metrics[]=revenue&metrics[]=profit&metrics[]=roas&metrics[]=conversionsInterest&metrics[]=conversionsDecision&metrics[]=conversionsBuy", "limit": 1000 } }
+```
+
+### ✅ Todos os raw jobs MGID aprovados (A, B, C, D, D-lookup, E1, E2, F, G)
+DDLs raw criados. Próximo: executar DDLs no BQ + criar docs Firestore + dedup raw tables.
+
+### Job F — aprovado 2026-06-14
+- `raw/ddl/mgid_stats_by_hour.sql` — grain: day + campaignid + hour → T12
+**Config Firestore:**
+```json
+{ "platform": "mgid", "type": "mgid_daily", "name": "mgid_stats_by_hour",
+  "bq_dataset": "raw", "bq_table": "mgid_stats_by_hour", "write_mode": "WRITE_APPEND",
+  "params_json": { "rules": "dimensions[]=day&dimensions[]=campaignId&dimensions[]=hour&metrics[]=impressions&metrics[]=clicks&metrics[]=spent&metrics[]=conversionsInterest&metrics[]=conversionsDecision&metrics[]=conversionsBuy", "limit": 1000 } }
+```
+
+### Jobs E1 + E2 — aprovados 2026-06-14
+- OS e browser são atributos independentes — sem hierarquia, lookup não resolve (diferente do geo)
+- `raw/ddl/mgid_stats_by_os.sql` — atualizado: removido browser; grain: day + campaignid + os → T11
+- `raw/ddl/mgid_stats_by_browser.sql` — NOVO: grain: day + campaignid + browser → T11b
+- STG terá duas tabelas independentes: stg.mgid_delivery_by_os (T11) e stg.mgid_delivery_by_browser (T11b)
+
+**Config Firestore Job E1:**
+```json
+{ "platform": "mgid", "type": "mgid_daily", "name": "mgid_stats_by_os",
+  "bq_dataset": "raw", "bq_table": "mgid_stats_by_os", "write_mode": "WRITE_APPEND",
+  "params_json": { "rules": "dimensions[]=day&dimensions[]=campaignId&dimensions[]=os&metrics[]=impressions&metrics[]=clicks&metrics[]=spent&metrics[]=conversionsInterest&metrics[]=conversionsDecision&metrics[]=conversionsBuy", "limit": 1000 } }
+```
+
+**Config Firestore Job E2:**
+```json
+{ "platform": "mgid", "type": "mgid_daily", "name": "mgid_stats_by_browser",
+  "bq_dataset": "raw", "bq_table": "mgid_stats_by_browser", "write_mode": "WRITE_APPEND",
+  "params_json": { "rules": "dimensions[]=day&dimensions[]=campaignId&dimensions[]=browser&metrics[]=impressions&metrics[]=clicks&metrics[]=spent&metrics[]=conversionsInterest&metrics[]=conversionsDecision&metrics[]=conversionsBuy", "limit": 1000 } }
+```
+
+### Job D — aprovado 2026-06-14
+- `raw/ddl/mgid_stats_by_geo.sql` — atualizado: removido `country` (API só retorna `region` com 3 dims); grain: day + campaignid + region
+- `raw/ddl/mgid_geo_regions.sql` — NOVO: lookup global region_id → country_code + nomes
+- Decisão: `/dictionaries/geo?type=countries` (sem filtro) → todos os países → `/dictionaries/geo?type=cities&countries[]=todos` → lookup completo independente de país ativo
+- STG T10 fará JOIN raw.mgid_stats_by_geo + raw.mgid_geo_regions para entregar day + campaignId + country + region
+
+**Config Firestore Job D:**
+```json
+{
+  "platform": "mgid", "type": "mgid_daily", "name": "mgid_stats_by_geo",
+  "bq_dataset": "raw", "bq_table": "mgid_stats_by_geo", "write_mode": "WRITE_APPEND",
+  "params_json": {
+    "rules": "dimensions[]=day&dimensions[]=campaignId&dimensions[]=region&metrics[]=impressions&metrics[]=clicks&metrics[]=spent&metrics[]=conversionsInterest&metrics[]=conversionsDecision&metrics[]=conversionsBuy",
+    "limit": 1000
+  }
+}
+```
+
+### Job C — config Firestore aprovada
+```json
+{
+  "platform": "mgid", "type": "mgid_daily", "name": "mgid_stats_by_device",
+  "bq_dataset": "raw", "bq_table": "mgid_stats_by_device", "write_mode": "WRITE_APPEND",
+  "params_json": {
+    "rules": "dimensions[]=day&dimensions[]=campaignId&dimensions[]=deviceType&metrics[]=impressions&metrics[]=clicks&metrics[]=spent&metrics[]=conversionsInterest&metrics[]=conversionsDecision&metrics[]=conversionsBuy",
+    "limit": 1000
+  }
+}
+```
+
+### Job B — config Firestore aprovada
+```json
+{
+  "platform": "mgid", "type": "mgid_daily", "name": "mgid_stats_creative",
+  "bq_dataset": "raw", "bq_table": "mgid_stats_creative", "write_mode": "WRITE_APPEND",
+  "params_json": {
+    "rules": "dimensions[]=day&dimensions[]=campaignId&dimensions[]=teaserId&metrics[]=impressions&metrics[]=clicks&metrics[]=spent&metrics[]=cpc&metrics[]=ctr&metrics[]=conversionsInterest&metrics[]=conversionsDecision&metrics[]=conversionsBuy",
+    "limit": 1000
+  }
+}
+```
+
+### Job A — config Firestore aprovada
+```json
+{
+  "platform": "mgid", "type": "mgid_daily", "name": "mgid_stats_daily",
+  "bq_dataset": "raw", "bq_table": "mgid_stats_daily", "write_mode": "WRITE_APPEND",
+  "params_json": {
+    "rules": "dimensions[]=day&dimensions[]=campaignId&metrics[]=impressions&metrics[]=clicks&metrics[]=spent&metrics[]=cpc&metrics[]=ctr&metrics[]=conversionsInterest&metrics[]=conversionsDecision&metrics[]=conversionsBuy",
+    "limit": 1000
+  }
+}
+```
+
+---
+
+## 2026-06-13 — Análise de ingestão MGID + T1 atualizada + arquitetura gold definida 🏗️
+
+**Autor:** Douglas Reche
+
+### Novos achados
+
+**1. Ingestão MGID confirmada como raw (sem filtros)**
+- Leitura completa de `adframework_python/src/connectors/mgid.py` e `orchestrator.py`
+- `fetch_campaigns()`: zero filtros por estado/data — ingere TODAS as campanhas da API
+- Única transformação existente: `str(item[k])` converte campos nested (dict/list) para Python string repr — necessário porque BQ não aceita objetos sem schema definido; não é filtro de dados
+- `fetch_teasers()` tem `seen_ids` set (dedup intra-run); `fetch_campaigns()` não precisa pois a API não pagina por id
+- `_run_generic_report()` lê `write_mode` do Firestore do job (`str(report.get("write_mode") or "WRITE_APPEND")`) — é esta config que causa duplicação
+
+**2. Causa da duplicação raw.mgid_campaigns (79.8×) confirmada**
+- `write_mode=WRITE_APPEND` no Firestore doc do job `mgid_firstlevel_campaigns`
+- Cada execução appenda TODAS as campanhas novamente — mesmo comportamento que `mediasmart_firstlevel_campaigns` tinha antes do fix (GRUPO D 2026-06-11)
+- Fix: mudar para `WRITE_TRUNCATE` no Firestore + rodar dedup `SELECT DISTINCT *` uma vez
+- Precedente MS: documentado em `mediasmart_stg_design.md` GRUPO D
+
+**3. Análise completa de campos disponíveis na API MGID**
+- Campaigns endpoint: confirmado que `language`, `trackingOptions` (utm_source/medium/campaign), `geoTargets` estão disponíveis na raw mas não estavam na STG T1
+- Teasers endpoint: `reason_if_drop_karantin` (motivo de rejeição) não estava na T2
+- Descartados intencionalmente: `domainsFilter`, `ipsFilter`, `widgetsFilterUid`, `sourceFilters` (blocklists operacionais), `targets/languageTargeting/browserTargeting` (targeting operacional, baixo valor analítico), `geoTargets` (array complexo, baixo ROI agora)
+- `campaign_type` MGID (product/push/rich_media) não tem equivalente na MediaSmart — campo `type` MS era sempre "generic" (foi removido no design STG MS)
+
+**4. Arquitetura gold definida**
+- STG atual (stg.mediasmart_delivery, stg.mgid_delivery legada) e gold atual estão quebrados — o rebuild completo do STG é o caminho para o gold funcional
+- Decisão: `client_id` será resolvido no STG (não no gold) — gold só agrega
+- Novo `gold.fact_delivery` lerá de stg.ms_delivery (T6) + stg.mgid_delivery (T3 novo) sem JOINs em platform_client_links
+- Novo `gold.dim_campaign` lerá de stg.ms_strategies (T4) + stg.mgid_campaigns (T1) — nomes reais de campanha do catálogo, não strategyname da delivery
+- Assimetria de grain: MS usa strategyid como `platform_campaign_id`, MGID usa campaignid (sem nível de strategy)
+
+### Alterações de código
+
+| Arquivo | Tipo | Mudança |
+|---|---|---|
+| `stg/ddl/mgid_campaigns.sql` | ALTERADO | Adicionados: `language_id`, `utm_source`, `utm_medium`, `utm_campaign` (de `trackingOptions` JSON); `trackingOptions` adicionado ao CTE `campaigns_latest` com REPLACE para Python dict |
+
+### Pendências geradas
+
+| Item | Prioridade | Depende de |
+|---|---|---|
+| Mudar `write_mode` MGID campaigns+creatives para WRITE_TRUNCATE no Firestore | 🔴 Alta | Nada — pode fazer agora |
+| Dedup `raw.mgid_campaigns` (`SELECT DISTINCT *`) | 🔴 Alta | — |
+| Dedup `raw.mgid_creatives` (`SELECT DISTINCT *`) | 🔴 Alta | — |
+| Executar DDLs T2–T4 em lote no BQ | 🔴 Alta | Após dedup |
+| Reescrever `gold.fact_delivery` usando novos STGs | 🟡 Média | Após T3 MGID pronto |
+| Reescrever `gold.dim_campaign` usando novos STGs | 🟡 Média | Após T1 MGID executado |
+
+---
+
+## 2026-06-12 — MGID STG T1–T4 planejados + análise de API para novos jobs 📋
+
+**Autor:** Douglas Reche
+
+### O que foi feito
+
+Planejamento completo do pipeline STG MGID, seguindo os mesmos padrões do STG MediaSmart.
+T1 executada em produção. T2–T4 com DDLs prontos aguardando execução em lote.
+Análise completa do API doc MGID para mapear gaps e novos raw jobs possíveis.
+
+### Tabelas STG criadas/planejadas
+
+| Tabela | Grain | Status | Arquivo |
+|---|---|---|---|
+| `stg.mgid_campaigns` | 1 row/campanha | ✅ em produção | `stg/ddl/mgid_campaigns.sql` |
+| `stg.mgid_creatives` | 1 row/criativo | DDL pronto | `stg/ddl/mgid_creatives.sql` |
+| `stg.mgid_delivery` | day + campaign | DDL pronto | `stg/ddl/mgid_delivery.sql` |
+| `stg.mgid_creative_delivery` | day + campaign + creative | DDL pronto | `stg/ddl/mgid_creative_delivery.sql` |
+
+### Decisões de arquitetura
+
+- Client linkage via `platform_client_links` direto (sem intermediário `event_id` como MS)
+- Sem `updated_at` — API MGID não retorna timestamp de atualização
+- Sem `strategy_id` — MGID não tem hierarquia de estratégia
+- `spent` removido de T3/T4 — requer novo raw job via statistics-reports (T8 futuro)
+- `creative_id` (teaserid) separado do T3 — pertence ao T4 (mesmo padrão T6/T7 MS)
+- Todos os campos JSON em Python dict (single-quotes) — REPLACE necessário antes de JSON_VALUE
+- Dedup por ROW_NUMBER: mgid_campaigns (79.8× dup), mgid_creatives (~26× dup)
+
+### Alterações em tabelas MediaSmart existentes
+
+| Arquivo | Mudança |
+|---|---|
+| `stg/ddl/ms_creatives.sql` (T5) | `thumbnail_url` → `image_url`; adicionado `ms_client_id` via JOIN stg.ms_campaigns; `name` → `creative_name` |
+
+### Plano de novos raw jobs MGID (API statistics-reports)
+
+| Job | Raw table | Dimensões | Prioridade |
+|---|---|---|---|
+| A | `raw.mgid_stats_daily` | day + campaignId | 🔴 Alta — resolve spent |
+| B | `raw.mgid_stats_creative` | day + campaignId + teaserId | 🔴 Alta — resolve spent em T4 |
+| C | `raw.mgid_stats_by_device` | day + campaignId + deviceType | 🟡 Média |
+| D | `raw.mgid_stats_by_geo` | day + campaignId + country + region | 🟡 Média |
+| E | `raw.mgid_stats_by_os` | day + campaignId + os + browser | 🟡 Média |
+| F | `raw.mgid_stats_by_hour` | day + campaignId + hour | 🟡 Média |
+| G | `raw.mgid_stats_by_widget` | day + campaignId + widgetId | 🟢 Baixa |
+
+### Gaps confirmados vs MediaSmart (não disponíveis na API MGID)
+
+`updated_at`, `strategy_id/name`, `conversion_source`, `app_vs_web`,
+video quartis em drilldowns, `media_cost_brl`, geo nível cidade, `size` width/height em criativos.
+
+### Próximos passos
+
+1. Dedup raw tables: `mgid_campaigns` (79.8×) + `mgid_creatives` (~26×)
+2. Executar DDLs T2–T4 em lote no BQ
+3. Criar raw jobs A + B (statistics-reports com spent)
+4. Criar DDLs T8 + T9–T13 após raw jobs
+5. Gold `fact_delivery` — análise de alinhamento MS + MGID
+
+### Arquivos tocados
+
+`stg/ddl/mgid_campaigns.sql` (novo, em produção)
+`stg/ddl/mgid_creatives.sql` (novo, aguarda execução)
+`stg/ddl/mgid_delivery.sql` (substituiu versão legada, aguarda execução)
+`stg/ddl/mgid_creative_delivery.sql` (novo, aguarda execução)
+`stg/ddl/ms_creatives.sql` (atualizado — client_id + renomes)
+`docs/mgid_stg_design.md` (novo — design doc completo)
+
+---
+
 ## 2026-06-12 — Sanity check STG + dedup 4 raw tables Grupo A ✅
 
 **Autor:** Douglas Reche
