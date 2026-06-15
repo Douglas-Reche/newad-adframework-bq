@@ -43,10 +43,33 @@ DRIVE_ROOT_FOLDER = "0ACFCcMtN5j8EUk9PVA"
 BQ_PROJECT = "adframework"
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
-# Drive folder name → canonical client_id (add new clients here)
+# Nomes de pessoas que aparecem nos arquivos pessoais/rascunho.
+# Quando uma pasta PLANO tem múltiplos xlsx, arquivos com esses tokens são ignorados
+# se existir pelo menos um arquivo sem nenhum deles (o oficial).
+# Adicionar novos nomes conforme aparecerem no Drive.
+PERSONAL_NAME_TOKENS = {"RAFA", "GESSIANE"}
+
+# Drive folder name → canonical client_id
+# Mapeamento auditado em 2026-06-14 cruzando pastas do Drive root com core.dim_client.
+# TEC PAR aponta para tecpar_edfcc744; Amigo (amigo_db1c2f0c) é sub-cliente e vive
+# dentro da pasta TEC PAR — não tem pasta própria no Drive root.
+# DÚVIDA ABERTA: LABTOLAB PARDINI — pode ser pardini_60395024, lab2lab_efb1cb34 ou ambos.
+# PENDENTE: PHISALIA — cliente ainda não cadastrado em dim_client.
 CLIENT_MAP = {
-    "CORA": "banco_cora_fe13d78a",
-    "TEC PAR": "amigo_db1c2f0c",
+    "7K":             "bet7k_b777ab9c",
+    "APERAM":         "aperam_14d1f27e",
+    "CATÁLISE":       "catalise_0b7d18d6",
+    "CORA":           "banco_cora_fe13d78a",
+    "DAXX":           "dax_agency_00000001",
+    "DOOING":         "dooing_994db77e",
+    "EINSTEIN":       "einstein_6b33a588",
+    "LUCKBET":        "luckbet_bea15ebc",
+    "MOPAR":          "mopar_a47949f4",
+    "MRV":            "mrv_f19a2136",
+    "OCUPACIONAL":    "ocupacional_98c851f5",
+    "PATIO MEDEIROS": "patio_medeiros_874a0358",
+    "STOCCO":         "stocco_b712c66e",
+    "TEC PAR":        "tecpar_edfcc744",
 }
 
 # Strategy name keywords → platform (checked via substring, case-insensitive, no accents)
@@ -263,9 +286,9 @@ def parse_xlsx(file_bytes: bytes, client_id: str, source_file: str,
         if not header_row or not col_map:
             continue
 
-        # spend_type: primary = filename ("RAFA" files = media/net rates)
-        # fallback = CPM-only unit prices (ignore CPC rates which can be >R$5)
-        spend_type_hint = "net" if "RAFA" in source_file.upper() else None
+        # spend_type: detectado pelo unit_price das linhas CPM
+        # (arquivos com nome de pessoa são filtrados antes de chegar aqui)
+        spend_type_hint = None
 
         unit_prices_cpm = []
         strategy_rows_raw = []
@@ -458,9 +481,20 @@ def _list_folder(drive_svc, folder_id: str, mime: str = None) -> list[dict]:
     return items
 
 
+def _has_personal_name(filename: str) -> bool:
+    """True se o nome do arquivo contém token de pessoa (ex: RAFA, GESSIANE)."""
+    upper = filename.upper()
+    return any(token in upper for token in PERSONAL_NAME_TOKENS)
+
+
 def find_plano_files(drive_svc, client_folder_id: str) -> list[dict]:
     """
-    Traverse CLIENT/YEAR/MONTH/PLANO/ and return ALL .xlsx files.
+    Traverse CLIENT/YEAR/MONTH/PLANO/ and return .xlsx files to sync.
+    Regra de seleção por pasta PLANO:
+      1. Preferir arquivos sem nome de pessoa (oficiais).
+      2. Se só houver arquivos com nome de pessoa, usar como fallback.
+      3. Em ambos os casos, pegar apenas o mais recente (por modifiedTime).
+         Isso evita duplicação quando há múltiplas versões ou cópias renomeadas.
     Returns list of {file_id, file_name, modified_time, drive_path}.
     """
     results = []
@@ -478,17 +512,26 @@ def find_plano_files(drive_svc, client_folder_id: str) -> list[dict]:
             for plano_f in _list_folder(drive_svc, month_f["id"], FOLDER_MIME):
                 if "PLANO" not in plano_f["name"].upper():
                     continue
-                for xlsx_f in _list_folder(drive_svc, plano_f["id"], XLSX_MIME):
-                    if xlsx_f["id"] in seen_file_ids:
-                        continue  # same physical file already registered from another folder
-                    seen_file_ids.add(xlsx_f["id"])
-                    results.append({
-                        "file_id": xlsx_f["id"],
-                        "file_name": xlsx_f["name"],
-                        "modified_time": xlsx_f["modifiedTime"],
-                        "drive_path": f"{year_f['name']}/{month_f['name']}",
-                        "drive_year": int(year_f["name"]),
-                    })
+                xlsx_files = [
+                    f for f in _list_folder(drive_svc, plano_f["id"], XLSX_MIME)
+                    if f["id"] not in seen_file_ids
+                ]
+                if not xlsx_files:
+                    continue
+
+                official = [f for f in xlsx_files if not _has_personal_name(f["name"])]
+                candidates = official if official else xlsx_files
+
+                # Always pick only the most recent to avoid duplicating plans
+                xlsx_f = max(candidates, key=lambda f: f["modifiedTime"])
+                seen_file_ids.add(xlsx_f["id"])
+                results.append({
+                    "file_id": xlsx_f["id"],
+                    "file_name": xlsx_f["name"],
+                    "modified_time": xlsx_f["modifiedTime"],
+                    "drive_path": f"{year_f['name']}/{month_f['name']}",
+                    "drive_year": int(year_f["name"]),
+                })
     return results
 
 

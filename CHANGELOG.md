@@ -6,6 +6,42 @@
 
 ---
 
+## 2026-06-14 — IO Plan sync: regra de seleção de arquivo e expansão de clientes
+
+**Arquivo:** `scripts/io_plan/sync_drive.py`
+
+### O que mudou
+
+**1. Regra de seleção de arquivo por pasta PLANO (nova lógica):**
+- Antes: preferia arquivo sem nome de pessoa; se só havia pessoais, pegava todos (causava duplicação)
+- Agora: prefere arquivo sem nome de pessoa; entre os candidatos (oficiais ou pessoais como fallback), pega **sempre o mais recente** por `modifiedTime` do Drive
+- Motivação: evita duplicar dados quando existem múltiplas versões ou cópias renomeadas na mesma pasta
+
+**2. `CLIENT_MAP` expandido de 2 para 14 clientes:**
+
+| Drive folder | client_id |
+|---|---|
+| `7K` | `bet7k_b777ab9c` |
+| `APERAM` | `aperam_14d1f27e` |
+| `CATÁLISE` | `catalise_0b7d18d6` |
+| `CORA` | `banco_cora_fe13d78a` |
+| `DAXX` | `dax_agency_00000001` |
+| `DOOING` | `dooing_994db77e` |
+| `EINSTEIN` | `einstein_6b33a588` |
+| `LUCKBET` | `luckbet_bea15ebc` |
+| `MOPAR` | `mopar_a47949f4` |
+| `MRV` | `mrv_f19a2136` |
+| `OCUPACIONAL` | `ocupacional_98c851f5` |
+| `PATIO MEDEIROS` | `patio_medeiros_874a0358` |
+| `STOCCO` | `stocco_b712c66e` |
+| `TEC PAR` | `tecpar_edfcc744` |
+
+**Dúvidas abertas (não mapeado ainda):**
+- `LABTOLAB PARDINI` → Pardini (`pardini_60395024`) ou Lab2Lab (`lab2lab_efb1cb34`) ou ambos?
+- `PHISALIA` → cliente sem correspondência em `dim_client`
+
+---
+
 ## 2026-06-14 — Siprocal: redesign STG com padronização de campos e resolução de client_id ✅
 
 **Autor:** Douglas Reche
