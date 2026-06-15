@@ -1,6 +1,6 @@
 # Índice de Documentação — AdFramework BQ Pipeline
 
-> Última revisão: 2026-06-14 — `mgid_stg_design.md` criado (STG MGID T1–T13b completa); Siprocal resolvido com SiproCalConnector; CHANGELOG + known_issues atualizados.
+> Última revisão: 2026-06-15 — `audit_io_plan_cora_tecpar_2026-06-15.md` criado: auditoria completa Drive + BQ raw de Cora e TecPar, análise de linkage plano→campanha, pendências técnicas e perguntas para comercial.
 > **Regra:** ao criar ou modificar qualquer doc, atualizar este índice com o novo status e data de validação.
 
 ---
@@ -21,6 +21,7 @@
 | `siprocal_stg_design.md` | ✅ ATUAL | 2026-06-14 | Design Siprocal: arquitetura, raw auditada, STG redesenhada (siprocal_client_id resolvido 11/11, grain corrigido, pi_externo, ctr), limitações, próximos passos |
 | `etl_expansion_plan.md` | ✅ ATUAL | 2026-06-08 | Plano de expansão: device, geo, financeiro, criativo |
 | `io_plan_pipeline.md` | ✅ ATUAL | 2026-06-14 | Pipeline IO Plan completo: arquitetura Drive→RAW→Core→Gold, CLIENT_MAP 14 clientes, regras de seleção de arquivo, schema, limitações, auditoria Cora |
+| `audit_io_plan_cora_tecpar_2026-06-15.md` | ✅ ATUAL | 2026-06-15 | Auditoria IO Plan Cora+TecPar: Drive structure, raw BQ state, duplicações, anomalias, estratégias por plataforma, análise de linkage plano→campanha, 7 perguntas para comercial, 5 pendências técnicas |
 | `commercial_questions.md` | ✅ ATUAL | 2026-06-08 | Perguntas pendentes para área comercial |
 | `meta_ads_integration.md` | ✅ ATUAL | 2026-06-12 | Integração Meta Ads ao pipeline — credenciais, steps pendentes, schema proposto |
 | `google_ads_integration.md` | ✅ ATUAL | 2026-06-12 | Integração Google Ads ao pipeline — guia completo de credenciais OAuth2, schema, GAQL |
