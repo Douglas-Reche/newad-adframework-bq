@@ -6,6 +6,131 @@
 
 ---
 
+## 2026-06-15 — Siprocal SheetsClient fix + auditoria RAW MGID + 6 campanhas linkadas
+
+**Autor:** Douglas Reche
+
+### O que mudou
+
+**1. SheetsClient — fix crítico: bypass filtros básicos (commit `ff1f6f5`)**
+
+- **Bug:** `values.get()` respeita filtros básicos ativos em planilhas quando conta tem acesso Viewer. O service account ETL é Viewer na sheet Siprocal. Filtro ativo na coluna C (Campanha) escondia ~27 linhas de Jun/10-14 → ETL recebia apenas 1.078 rows (max Jun/09).
+- **Fix:** `SheetsClient.read_values()` trocado para `spreadsheets.get(includeGridData=True)` → lê GridData raw, imune a filtros de qualquer tipo e qualquer nível de acesso.
+- **Arquivo:** `adframework_python/src/sheets.py`
+- **Resultado:** `raw.siprocal_delivery` agora tem 1.105 rows | 2025-08-22 → 2026-06-14 | max date correto
+- **Deploy:** `adframework-etl-00243-hg5` (deploy manual via `gcloud run deploy --source`)
+
+**2. Orchestrator — fix fallback de sheet_range (commit `ff1f6f5`)**
+
+- Default hardcoded `"Planilha1!A:G"` em `_run_siprocal_daily()` substituído por `SiproCalConnector.DEFAULT_RANGE`
+- Arquivo: `adframework_python/src/orchestrator.py`
+
+**3. Auditoria RAW MGID — resultado completo**
+
+| Tabela | Período | Rows | Situação |
+|---|---|---|---|
+| `raw.mgid_stats_daily` | out/2025 → hoje | 4.566 | 1.95× dup (STG corrige via ROW_NUMBER) |
+| `raw.mgid_campaigns` | atual | 173 | 1.0× (WRITE_TRUNCATE) |
+| `raw.mgid_creatives` | atual | 165 | 1.0× (WRITE_TRUNCATE) |
+| Breakdowns (7 tabelas) | out/2025 → hoje | variado | 100% cobertura histórica backfill |
+
+- 3 campaign_ids em `raw.mgid_stats_daily` sem metadata em `raw.mgid_campaigns` (campanha encerrada removida pelo WRITE_TRUNCATE) — não bloqueia STG
+- 1 dia ausente no calendário MGID (não crítico)
+- 0 bad casts em métricas numéricas
+
+**4. 6 campanhas MGID jun/2026 adicionadas a `platform_client_links`**
+
+| campaignid | client_id | Campanha |
+|---|---|---|
+| 12430495 | einstein_6b33a588 | Einstein Native Jun |
+| 12430502 | senar_105bd174 | Senar Native Jun |
+| 12430501 | senar_105bd174 | Senar Push Jun |
+| 12430497 | amigo_db1c2f0c | Amigo Native Jun |
+| 12432098 | stoquinho_56a6ee2a | Stoquinho Native Jun |
+| 12437129 | banco_cora_fe13d78a | Banco Cora Native Jun/Jul |
+
+- Script: `C:\Temp\add_mgid_campaigns_jun2026.py`
+- `stg.mgid_delivery`: 100% atribuído (0 NULL client_id)
+
+**5. Auditoria RAW Siprocal — resultado**
+
+- 1.105 rows | 36 advertisers | 181 rows com `campaign_id = "(vazio)"` (PI Externo não preenchido pela Siprocal — não bloqueia atribuição)
+- 1.0× dedup (WRITE_TRUNCATE garante limpeza)
+- Max date: 2026-06-14
+
+**6. Fix crítico: `raw.mediasmart_daily` eventid NULL desde Jun/11 (commit `842ab47`)**
+
+- **Bug:** `normalize_data()` converte headers da API para snake_case (`event_id`, `campaign_id`, `strategy_id`). `raw.mediasmart_daily` tem schema BQ com nomes antigos (`eventid`, `controlid`, `strategyid`) do Shiro. `load_data()` descartava as colunas renomeadas → `eventid = NULL` → `stg.ms_delivery` sem atribuição desde Jun/11.
+- **Root cause timeline:** Shiro (aat-console) parou de carregar essa tabela em ~Jun/11; Python ETL assumiu mas sempre teve esse bug — confirmado porque backfill Mai 25-26 (issue D2, Jun/11) também gerou rows NULL.
+- **Fix:** `df.rename(columns={"event_id":"eventid","campaign_id":"controlid","strategy_id":"strategyid","strategy_name":"strategyname"})` em `_run_mediasmart_daily()` antes de `bq.load_data()`.
+- **Deploy:** `adframework-etl-00249-c4j` via tagged image (`gcloud builds submit --tag` + `gcloud run deploy --image`) — workaround para `--source .` gerar imagens sem tag não importáveis pelo Cloud Run (revisões 00244-00247 todas falharam com `ContainerImageImportFailed`).
+- **Backfill:** DELETE rows NULL Mai 25-26 (26 rows) + Jun 11-14 (28 rows) → reingesta com `force_from_date: 2026-05-25` (204 rows) e `force_from_date: 2026-06-11` (34 rows).
+
+**7. Auditoria STG — resultado final pós-correções**
+
+| Tabela | Rows | NULL client_id | Max date |
+|---|---|---|---|
+| `stg.ms_delivery` | 642.180 | **0** | 2026-06-15 |
+| `stg.mgid_delivery` | 2.344 | **0** | 2026-06-14 |
+| `stg.siprocal_delivery` | 1.105 | **0** | 2026-06-14 |
+
+RAW → STG coeso e operacional para as 3 plataformas.
+
+**Próximos passos:**
+- Executar `gold/ddl/fact_delivery.sql` no BigQuery
+- Validar Cora e TecPar end-to-end no gold
+
+---
+
+## 2026-06-15 — Gold fact_delivery v2 + ativação Stocco/DR Consulta + auditoria RAW MediaSmart
+
+**Autor:** Douglas Reche
+
+### O que mudou
+
+**1. `gold.fact_delivery` reescrita (v2) — arquivo: `gold/ddl/fact_delivery.sql`**
+- DDL antigo estava completamente quebrado após deploy das novas views STG:
+  - MGID: colunas `d.campaignid`, `d.spent`, `d.conversionsinterest` não existem mais em `stg.mgid_delivery` (T3)
+  - Siprocal: `d.advertiser`, `d.campaign_id` não existem mais na view redesenhada
+  - MS: ainda usava `stg.mediasmart_delivery` (legacy) em vez de `stg.ms_delivery` (T6)
+- Novo DDL corrigido:
+  - MS: `stg.ms_delivery` (T6) + JOIN duplo `stg.ms_clients` → `platform_client_links` via `ms_event_id`
+  - MGID: `stg.mgid_delivery` (T3) + `stg.mgid_revenue` (T8) — `client_id` já canônico na T3
+  - Siprocal: `stg.siprocal_delivery` (redesenhada) — `siprocal_client_id` já canônico
+- Particionado por `day`, clusterizado por `client_id, platform`
+- MS revenue gap documentado: `raw.mediasmart_revenue` só vai até 2026-05-16 (sem `mediasmart_revenue_daily`)
+- **Status:** DDL salvo, **ainda não executado no BigQuery**
+
+**2. Stocco e DR Consulta ativados em `core.platform_client_links`**
+- Causa do `pending_confirmation`: adicionados manualmente com status conservador aguardando confirmação comercial
+- Confirmado: STGs NÃO filtram por `status` — ambos já estavam sendo atribuídos normalmente
+- UPDATE executado: 8 rows afetadas (Stocco: 1 MS + 3 MGID; DR Consulta: 1 MS + 3 MGID)
+- Todos os `platform_client_links` ativos para esses clientes agora
+
+**3. Auditoria MediaSmart RAW (resultado)**
+
+| Tabela | Período | Rows | Situação |
+|---|---|---|---|
+| `raw.mediasmart_delivery` (hist) | ago/2025 → mai/2024 | 155,391 | 14 event_ids, backfill completo |
+| `raw.mediasmart_daily` (active) | mai/2025 → hoje | 15,497 | 5 event_ids ativos + 54 NULL |
+| `raw.mediasmart_revenue` | ? → 2026-05-16 | 9,247 | GAP: sem `mediasmart_revenue_daily` |
+
+- 0 gaps de datas na delivery (cobertura contínua)
+- 1 event_id sem backfill (`pardini_60395024`) — cliente sem resposta, decisão comercial pendente
+- 54 rows com `event_id IS NULL` em `mediasmart_daily` — investigar
+
+**4. Docs atualizados**
+- `docs/id_attribution_map.md`: contagens MS eventids atualizadas (12 ativos / 1 pending / 1 unresolved), status Stocco+DR Consulta+Amigo corrigidos
+- `docs/known_issues.md`: M1 marcado como RESOLVIDO, M2 marcado como RESOLVIDO, M3 adicionado (mgid_stats_daily 1.95x dup no raw)
+
+**Pendente:**
+- Executar `gold/ddl/fact_delivery.sql` no BigQuery
+- Investigar 54 NULL event_id em `mediasmart_daily`
+- Decidir sobre Pardini MS eventid (comercial)
+- Criar `mediasmart_revenue_daily` job para cobrir spend pós 2026-05-16
+
+---
+
 ## 2026-06-14 — IO Plan sync: regra de seleção de arquivo e expansão de clientes
 
 **Arquivo:** `scripts/io_plan/sync_drive.py`

@@ -533,24 +533,38 @@ ms_creative_id → stg.ms_creatives.ms_creative_id
 | Tabela | Range | Linhas | Colunas | Status |
 |---|---|---|---|---|
 | `raw.mediasmart_delivery` | 2025-08-01 → 2026-05-24 | 641.798 | 24 | Job **morto** — só histórico. Falta `creative_type`, `creative_id`, `id_type`, `mediasmart_id`, `nativesize`, `size`, `client_currency` |
-| `raw.mediasmart_daily` | 2026-05-25 → hoje | 170+ | 31 | Job **ativo** — criado 2026-05-28 quando API passou a retornar 31 colunas |
+| `raw.mediasmart_daily` | 2026-05-25 → hoje | 642k+ | 31 | Job **ativo** — criado 2026-05-28 quando API passou a retornar 31 colunas |
 
 **Campo `bq_destiny` vs `table_name` no Firestore:**
 - `mediasmart_daily_daily.bq_destiny = "raw.mediasmart_delivery"` — campo LEGADO, ignorado pelo orchestrator
 - `mediasmart_daily_daily.table_name = "mediasmart_daily"` + `dataset_id = "raw"` — o que o orchestrator usa
 - `_resolve_bq_target()` prioriza `table_name` + `dataset_id`; só cai no `bq_destiny` se esses campos estiverem vazios
-- Confirmado: `last_status: ok`, `last_loaded_date: 2026-06-10` — job rodando corretamente
 
 **Origem dos 31 cols de `raw.mediasmart_daily`:**
 - A API `/api/analytics/custom-report` é FLEXÍVEL — retorna headers conforme o drilldown solicitado
 - `raw.mediasmart_daily` tem 31 cols porque o job `mediasmart_daily_daily` usa um drilldown largo que inclui `eventid,controlid,strategyid,strategyname,convsource` + KPIs financeiros
 - Os campos `creative_type`, `creative_id`, etc. aparecem no schema porque Shiro's `aat-console` populou a tabela com um template de schema que os inclui — vêm como NULL para linhas sem drilldown de criativo
 - `platform`, `report_name`, `raw_ingested_at` também vêm direto da API (NÃO são adicionados pelo ETL Python)
-- **Os nomes das colunas em `raw.mediasmart_daily` são os ANTIGOS** (`eventid`, `controlid`, `strategyid`) porque o Shiro's `aat-console` aplica um mapeamento inverso antes de carregar. Isso é diferente das 6 novas tabelas do Grupo A que usam os nomes normalizados nativos da API.
-- Confirmado via código: `_run_mediasmart_daily()` não faz nenhuma adição de colunas entre `fetch_data()` e `bq.load_data()`
+
+> ⚠️ **ATENÇÃO — Armadilha de nomes de colunas (corrigido 2026-06-15, commit `842ab47`):**
+>
+> `raw.mediasmart_daily` usa nomes **ANTIGOS** (`eventid`, `controlid`, `strategyid`, `strategyname`) porque o Shiro's `aat-console` criou a tabela com mapeamento inverso. As 6 tabelas do Grupo A usam nomes NOVOS (`event_id`, `campaign_id`, `strategy_id`).
+>
+> O `normalize_data()` em `base.py` converte headers da API → snake_case → produz nomes NOVOS (`event_id`, etc.). O `load_data()` em `bigquery.py` dropa colunas do DataFrame que não estão no schema BQ existente. Resultado: `event_id` (novo) era descartado, `eventid` (antigo, no schema) ficava NULL.
+>
+> **Fix aplicado:** `_run_mediasmart_daily()` em `orchestrator.py` faz rename explícito ANTES de `bq.load_data()`:
+> ```python
+> df = df.rename(columns={
+>     "event_id": "eventid",
+>     "campaign_id": "controlid",
+>     "strategy_id": "strategyid",
+>     "strategy_name": "strategyname",
+> })
+> ```
+> **NUNCA remover esse rename** sem antes migrar o schema da tabela BQ e atualizar as 3 views STG que referenciam os nomes antigos (`stg.ms_delivery`, `stg.ms_campaigns`, `stg.mediasmart_delivery`).
 
 - **Zero overlap** entre as duas tabelas — UNION direto sem risco de duplicação
-- **Gap de 25-26/mai/2026** preenchido via `force_from_date` (commit `4d1662f`) — ver Grupo D
+- **Gap de 25-26/mai/2026** preenchido via `force_from_date` + fix do rename (commit `842ab47`) — ver Grupo D atualizado
 - `mediasmart_daily` tem coluna `creative_id` mas vem **sempre vazia** em delivery diária — drilldown sem `creativeid` retorna NULL no campo fixo da API
 - **Decisão:** NÃO adicionar `creativeid` ao drilldown da `mediasmart_daily` — criar job separado `mediasmart_creative_daily` (Opção B)
 
@@ -791,7 +805,8 @@ custo:   zero — dado já está na raw; apenas ajuste na transformação STG
 | `mediasmart_firstlevel_campaigns` | WRITE_APPEND → WRITE_TRUNCATE | ✅ | Firestore `write_mode: WRITE_TRUNCATE`. BQ deduplicado: 5.451 → 140 linhas via `CREATE OR REPLACE TABLE ... WHERE rn = 1` |
 | `mediasmart_firstlevel_advertisers` | WRITE_APPEND → WRITE_TRUNCATE | ✅ | Firestore `write_mode: WRITE_TRUNCATE` |
 | `mediasmart_firstlevel_creatives` | WRITE_APPEND → WRITE_TRUNCATE | ✅ | Firestore `write_mode: WRITE_TRUNCATE` |
-| `mediasmart_daily` — gap 25–26/mai/2026 | Backfill retroativo | ✅ | `force_from_date` implementado em `_get_date_range` (orchestrator.py). Job temporário `mediasmart_backfill_may2526` rodou e foi deletado. 26 linhas carregadas (13/dia). |
+| `mediasmart_daily` — gap 25–26/mai/2026 | Backfill retroativo | ✅ | `force_from_date` implementado em `_get_date_range` (orchestrator.py, commit `4d1662f`). Primeiro backfill (Jun/11) gerou 26 rows com `eventid=NULL` — bug do rename não tinha sido corrigido ainda. **Refeito em 2026-06-15** após commit `842ab47`: DELETE nas 26 rows NULL + `force_from_date: 2026-05-25` → 204 rows com eventid válido. |
+| `mediasmart_daily` — eventid NULL Jun 11-15 | Rename fix + backfill | ✅ | Mesmo bug do item acima mas para Jun/11-15 (quando Shiro parou de carregar). DELETE 28 rows NULL + `force_from_date: 2026-06-11` → 34 rows com eventid válido. Commit `842ab47`, deploy `00249-c4j`. |
 
 **Nota sobre campaigns:** decidido usar WRITE_TRUNCATE em vez de MERGE por simplicidade — a STG já desduplicada por ROW_NUMBER(). O risco de perder campanhas deletadas é baixo (plataforma raramente deleta; histórico de entrega preservado em `raw.mediasmart_delivery`). Implementação de MERGE verdadeiro fica como melhoria futura no ETL expansion.
 

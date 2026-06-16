@@ -1,6 +1,6 @@
 # Problemas Conhecidos — AdFramework BigQuery
 
-> Última atualização: 2026-06-14 — Siprocal raw auditado e aprovado; 2 tabelas legacy marcadas para drop após STG estabilizar; MGID STG T1–T13b completa.
+> Última atualização: 2026-06-15 — MS eventid NULL corrigido (rename fix + deploy 00249-c4j); backfill Mai 25-26 e Jun 11-15 concluídos; STG 3 plataformas 100% atribuído.
 > Autor: Douglas Reche
 
 ---
@@ -13,6 +13,24 @@
 | C2 | `raw.siprocal_sheet_ext` | External Table auxiliar linkada direto na Google Sheet — usada só para inspeção ad-hoc. Não faz parte do pipeline. Pode ser recriada a qualquer momento se precisar inspecionar a sheet. | `DROP EXTERNAL TABLE adframework.raw.siprocal_sheet_ext` |
 
 > **Quando executar:** após `stg.siprocal_delivery` e `gold.fact_delivery` Siprocal validados em produção (ver próximos passos do pipeline Siprocal).
+
+---
+
+## ✅ Resolvidos em 2026-06-15
+
+| # | Problema | Resolução |
+|---|---|---|
+| MS1 | **`raw.mediasmart_daily` — `eventid` NULL desde 2026-06-11 (e no backfill Mai 25-26)** — `stg.ms_delivery` mostrava `ms_client_id = NULL` para todas as datas a partir de Jun/11. Causa raiz: `normalize_data()` em `base.py` converte headers da API para snake_case (`event_id`, `campaign_id`, `strategy_id`), mas `raw.mediasmart_daily` tem schema BQ com nomes antigos (`eventid`, `controlid`, `strategyid`) herdados do sistema do Shiro (aat-console). `load_data()` em `bigquery.py` dropa colunas do DataFrame não presentes no schema existente, então `event_id` era descartado e `eventid` ficava NULL. O bug existia desde que o Python ETL assumiu o carregamento (Shiro parou em Jun/11); o backfill de Mai 25-26 (issue D2) também foi afetado pelo mesmo motivo. | Fix: adicionado rename explícito em `_run_mediasmart_daily()` (orchestrator.py) ANTES de `bq.load_data()`: `df.rename(columns={"event_id":"eventid","campaign_id":"controlid","strategy_id":"strategyid","strategy_name":"strategyname"})`. Commit `842ab47`. Deploy revision `adframework-etl-00249-c4j` via tagged image (workaround: `gcloud builds submit --tag ... --dockerfile adframework_python/Dockerfile` + `gcloud run deploy --image` — o flow `--source .` gera imagens sem tag que Cloud Run não importa). Backfill: DELETE nas rows NULL + `force_from_date` → 34 rows Jun 11-15 + 204 rows Mai 25-Jun 15. STG resultado: ms_delivery 642.180 rows, 0 NULL client_id, max Jun 15. |
+| MS2 | **Deploy `gcloud run deploy --source .` gerando imagens sem tag não importáveis** — revisões 00244 a 00247 falharam com `ContainerImageImportFailed`. Imagem buildada com sucesso no Artifact Registry mas sem tag (`TAGS: []`), Cloud Run não conseguia importar. | Workaround: usar `gcloud builds submit --tag <image>:<tag> --project <proj>` no diretório com Dockerfile, depois `gcloud run deploy --image <image>:<tag>`. Imagem tagueada importa normalmente. Causa raiz exata do comportamento `--source .` não investigada — pode ser bug do gcloud SDK local ou política do projeto. |
+| SIP1 | **`raw.siprocal_delivery` — dados truncados em Jun/09 (1.078 rows, max Jun/09)** — filtro básico ativo na coluna C da Google Sheet (`Campanha`) ocultava ~27 linhas de Jun/10-14 via API `values.get()`. Service account ETL tem acesso Viewer; `values.get()` respeita filtros básicos para Viewers. | Fix: `SheetsClient.read_values()` trocado de `values.get()` para `spreadsheets.get(includeGridData=True)` — lê GridData raw, imune a qualquer filtro independente do nível de acesso. Commit `ff1f6f5`. Deploy revision `adframework-etl-00243-hg5`. Resultado: 1.105 rows / 2025-08-22 → 2026-06-14. |
+
+**Estado STG pós-correções (2026-06-15):**
+
+| Tabela | Rows | NULL client_id | Min date | Max date |
+|---|---|---|---|---|
+| `stg.ms_delivery` | 642.180 | **0** | 2025-08-01 | 2026-06-15 |
+| `stg.mgid_delivery` | 2.344 | **0** | 2025-10-01 | 2026-06-14 |
+| `stg.siprocal_delivery` | 1.105 | **0** | 2025-08-22 | 2026-06-14 |
 
 ---
 
@@ -159,29 +177,50 @@ Funcionou parcialmente (dados até 09/06), mas dependia de passo manual + 3 bugs
 Pipeline inteiro substituído por conector direto `SiproCalConnector` (`src/connectors/siprocal.py`).
 Elimina `sync_sheet.py`, `siprocal_raw_sheet` intermediário e qualquer dependência de ADC local.
 
-4 bugs corrigidos durante essa sessão:
+4 bugs corrigidos em 2026-06-14:
 1. Firestore `siprocal_daily_external`: `bq_project_id/dataset_id/table_id` eram `None` → adicionado `adframework/raw/siprocal_delivery`
 2. Firestore `siprocal.secrets.sheet_range`: `Planilha1!A:G` (aba inexistente) → `raw_daily!A:G`
 3. Python closure late-binding em `_get()` dentro do loop `for raw_row in values[1:]` → corrigido com `def _get(field, _row=raw_row)` (default arg captura valor atual)
 4. Cloud Run não faz auto-deploy por push → deploy manual obrigatório após cada mudança
 
-**Arquitetura atual (funcionando desde 2026-06-14):**
+**Bug adicional descoberto e corrigido em 2026-06-15 — SheetsClient filtro básico:**
+
+**Sintoma:** `raw.siprocal_delivery` travou em Jun/09 (1.078 rows) apesar de a sheet ter dados até Jun/14.
+**Causa raiz:** `SheetsClient.read_values()` usava `values.get()` que respeita filtros básicos ativos quando a conta tem acesso **Viewer**. O service account `adframework-etl@adframework.iam.gserviceaccount.com` é Viewer na sheet. A equipe Siprocal ativou um filtro na coluna Campanha (C) que escondia ~27 linhas de Jun/10-14, tornando-as invisíveis para a API.
+
+**Fix (commit `ff1f6f5`):** `SheetsClient.read_values()` trocou `values.get()` por `spreadsheets.get(includeGridData=True)`. O `includeGridData` lê o GridData raw da planilha, que não é afetado por filtros de qualquer tipo, independente do nível de acesso da conta.
+
+```python
+# ANTES (afetado por filtros básicos para Viewer accounts)
+result = self.service.spreadsheets().values().get(spreadsheetId=..., range=...).execute()
+
+# DEPOIS (imune a filtros)
+response = self.service.spreadsheets().get(
+    spreadsheetId=..., ranges=[range_name], includeGridData=True
+).execute()
+# extrai formattedValue de cada cell em response["sheets"][0]["data"][0]["rowData"]
+```
+
+**Arquitetura atual (funcionando desde 2026-06-15):**
 ```
 Google Sheet raw_siprocal (aba raw_daily!A:G)
-  └─ SiproCalConnector (src/connectors/siprocal.py — Sheets API v4)
-       └─ orchestrator._run_siprocal_daily()
-            └─ raw.siprocal_delivery [WRITE_TRUNCATE — substitui tudo a cada run]
-                 └─ stg.siprocal_delivery → gold.fact_delivery
+  └─ SheetsClient.read_values() → spreadsheets.get(includeGridData=True)
+       └─ SiproCalConnector (src/connectors/siprocal.py)
+            └─ orchestrator._run_siprocal_daily()
+                 └─ raw.siprocal_delivery [WRITE_TRUNCATE — substitui tudo a cada run]
+                      └─ stg.siprocal_delivery → gold.fact_delivery
 
 Firestore:
   platform_reports/siprocal_daily_external  — schedule: 03:20 UTC
   platform_credentials/siprocal.secrets     — {spreadsheet_id, sheet_range: raw_daily!A:G}
 ```
 
-**Estado atual (2026-06-14):**
-- `raw.siprocal_delivery`: 1.093 linhas | 2025-08-22 → 2026-06-11 | `last_status: ok`
-- Cloud Run revision: `adframework-etl-00240-8mw`
-- Zero passos manuais necessários — pipeline 100% automático
+**Nota de qualidade de dados:** 181 das 1.105 linhas têm `campaign_id = "(vazio)"` — campo PI Externo não preenchido pela Siprocal. Não bloqueia atribuição de cliente (usa campo `advertiser`/Campanha), mas é dado incompleto. Clientes afetados: AMIGOTECPAR, BANCOCORA, DRCONSULTA, PATIOMEDEIROS, SENAR, TECPAR.
+
+**Estado atual (2026-06-15):**
+- `raw.siprocal_delivery`: 1.105 linhas | 2025-08-22 → 2026-06-14 | `last_status: ok`
+- Cloud Run revision: `adframework-etl-00243-hg5` (deploy manual 2026-06-15)
+- Zero passos manuais necessários — pipeline 100% automático e imune a filtros da sheet
 
 ---
 
@@ -376,40 +415,53 @@ Tabelas têm 1 dia de dados (2026-06-10). Backfill histórico de 2026 está pend
 
 ---
 
-## M1. MGID raw tables com alta duplicação — pendente fix antes da execução STG
+## ✅ RESOLVIDO — M1. MGID raw tables com alta duplicação
 
-**Impacto:** `stg.mgid_creatives` e `stg.mgid_campaigns` dependem de dedup correto. Executar os DDLs sem fazer o fix primeiro pode mascarar dados.
-
-**Status:** Identificado em 2026-06-12. Fix pendente — `SELECT DISTINCT *` em ambas as tabelas antes de executar T2–T4.
-
-**Causa raiz confirmada (2026-06-13):** `write_mode=WRITE_APPEND` no Firestore doc de cada job — orchestrator.py lê `str(report.get("write_mode") or "WRITE_APPEND")`. Cada execução appenda todas as campanhas/criativos novamente. Mesma causa que `mediasmart_firstlevel_campaigns` antes do fix (GRUPO D 2026-06-11).
-**Fix permanente:** mudar `write_mode` para `WRITE_TRUNCATE` nos docs Firestore `mgid_firstlevel_campaigns` e `mgid_firstlevel_creatives`.
-
-| Tabela | Total linhas | IDs únicos | Fator dup |
-|---|---|---|---|
-| `raw.mgid_campaigns` | 19.789 | 248 | 79.8× |
-| `raw.mgid_creatives` | ~10.660 | ~410 | ~26× |
-
-**Fix pontual (uma vez):**
-```sql
-CREATE OR REPLACE TABLE `adframework.raw.mgid_campaigns` AS SELECT DISTINCT * FROM `adframework.raw.mgid_campaigns`;
-CREATE OR REPLACE TABLE `adframework.raw.mgid_creatives` AS SELECT DISTINCT * FROM `adframework.raw.mgid_creatives`;
-```
-
-**Fix permanente (Firestore — após dedup):**
-```python
-# mgid_firstlevel_campaigns e mgid_firstlevel_creatives
-db.collection('platform_reports').document('mgid_firstlevel_campaigns').update({'write_mode': 'WRITE_TRUNCATE'})
-db.collection('platform_reports').document('mgid_firstlevel_creatives').update({'write_mode': 'WRITE_TRUNCATE'})
-```
+**Resolvido em 2026-06-14.** Firestore `write_mode` alterado para `WRITE_TRUNCATE` em `mgid_firstlevel_campaigns` e `mgid_firstlevel_creatives`. Auditado em 2026-06-15: `raw.mgid_campaigns` = 173 rows / 173 IDs únicos (1.0×). `raw.mgid_creatives` = 165 rows. Sem duplicação.
 
 ---
 
-## M2. MGID `raw.mgid_delivery` sem `spent` — 100% NULL
+## ✅ RESOLVIDO — M2. MGID `spent` sem dados
 
-**Impacto:** T3 `stg.mgid_delivery` e T4 `stg.mgid_creative_delivery` não têm custo. Análises de ROI indisponíveis.
+**Resolvido em 2026-06-14.** `raw.mgid_stats_daily` (Job A) criado via endpoint `statistics-reports` com métricas `spent`, `cpc`, `revenue`, `profit`, `roas`. `stg.mgid_revenue` (T8) em produção com 2.344 rows, período 2025-10-01 → hoje. Total spent histórico: R$157.271,98. `raw.mgid_delivery` (legacy) descontinuado como fonte de spent.
 
-**Status:** Confirmado em 2026-06-12. `spent` existe como coluna mas todos os valores são NULL. Requer novo raw job via `statistics-reports` endpoint (Job A + Job B do plano). Ver `docs/mgid_stg_design.md`.
+---
+
+## M4. MGID — novas campanhas não vinculadas automaticamente ao `platform_client_links` 🔧 BACKLOG PÓS-ENTREGA
+
+**Identificado:** 2026-06-15
+**Impacto:** Cada novo flight MGID (mensal por cliente) cria um `campaignid` novo que não existe em `platform_client_links` → STG mostra `mgid_client_id IS NULL` → dados ficam como `unattributed` na gold até correção manual.
+
+**Workaround atual (2026-06-15):** detecção e INSERT manuais via `C:\Temp\add_mgid_campaigns_jun2026.py`. Rodado manualmente após auditoria — 6 campanhas de jun/2026 adicionadas (Einstein, Senar ×2, Amigo, Stoquinho, Banco Cora). `stg.mgid_delivery` agora 100% atribuído.
+
+**Solução planejada:** novo job Python no orchestrador `mgid_link_new_campaigns`, roda após `mgid_firstlevel_campaigns`:
+1. Detecta campanhas em `raw.mgid_stats_daily` (últimos 7 dias) sem entrada em `platform_client_links`
+2. Infere `client_id` pelo nome da campanha (CASE WHEN keyword map)
+3. Insere como `pending_confirmation` (match confiante) ou `unresolved` (ambíguo)
+4. Loga para revisão humana semanal
+
+**Plataformas afetadas:** somente MGID (campaignid por flight). MediaSmart (eventid por advertiser) e Siprocal (advertiser string) mudam só ao onboarbar cliente novo — manual é suficiente.
+
+**Pré-requisito:** coordenar com Shiro para adicionar job ao orchestrador, ou criar Cloud Scheduler independente.
+
+---
+
+## M3. `raw.mgid_stats_daily` com 1.95× duplicação no raw
+
+**Identificado:** 2026-06-15 (auditoria)
+**Impacto:** Baixo — `stg.mgid_delivery` (T3) e `stg.mgid_revenue` (T8) já aplicam `ROW_NUMBER() OVER (PARTITION BY day, campaignid ORDER BY raw_ingested_at DESC)` para dedup. STG entrega 2.344 rows únicos corretamente.
+
+**Causa:** Job A usa `WRITE_APPEND` (comportamento correto para ingestão diária). O backfill foi executado em múltiplos triggers sobrepostos, acumulando ~2.222 linhas duplicadas.
+
+| Tabela | Total rows | Grains únicos | Fator dup |
+|---|---|---|---|
+| `raw.mgid_stats_daily` | 4.566 | 2.344 | 1.95× |
+
+**Ação:** Dedup pontual `SELECT DISTINCT *` reduz raw para 2.344 rows. Não urgente pois a STG já corrige. Executar junto com próxima janela de manutenção.
+```sql
+CREATE OR REPLACE TABLE `adframework.raw.mgid_stats_daily`
+AS SELECT DISTINCT * FROM `adframework.raw.mgid_stats_daily`;
+```
 
 ---
 
