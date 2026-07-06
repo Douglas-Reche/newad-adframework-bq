@@ -22,9 +22,13 @@ CREATE OR REPLACE TABLE `adframework.core.dim_client`
   -- Metadados
   notes         STRING,              -- observações internas
 
+  -- Hierarquia pai-filho (ex: Amigo é sub-cliente de TecPar)
+  parent_client_id  STRING,  -- NULL = cliente raiz; FK self-referencial para dim_client.client_id
+  client_level      INT64,   -- 1 = raiz, 2 = sub-cliente, NULL = raiz implícita (legados sem hierarquia definida)
+
   -- Controle de carga
   seed_loaded_at TIMESTAMP
 )
 OPTIONS (
-  description = 'Dimensao canonica de clientes Newad. client_id e imutavel. Fonte: core/seeds/clients.csv no repo newad-adframework-bq.'
+  description = 'Dimensao canonica de clientes Newad. client_id e imutavel. Fonte: core/seeds/clients.csv no repo newad-adframework-bq. ATENCAO: CREATE OR REPLACE TABLE recria do zero — nunca executar em producao sem backup. Para adicionar colunas: ALTER TABLE ... ADD COLUMN IF NOT EXISTS.'
 );

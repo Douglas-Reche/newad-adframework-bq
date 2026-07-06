@@ -1,92 +1,49 @@
--- stg.ms_delivery (T6)
--- Fato de entrega MediaSmart unificado com ms_client_id resolvido.
--- Grain: day + event_id + campaign_id + strategy_id + conversion_source
--- Fontes:
---   raw.mediasmart_delivery → histórico ago/2025–mai/24/2026 (job morto)
---   raw.mediasmart_daily    → ativo mai/25/2026–hoje (31 cols, nomes antigos)
+-- stg.ms_delivery
+-- T4 STG MediaSmart -- grain: 1 linha por (date, campaign_id, creative_id).
 --
--- Ambas as fontes usam colunas com nomes antigos (eventid, controlid, strategyid)
--- porque o aat-console do Shiro aplica mapeamento inverso antes de carregar.
--- O vínculo ms_client_id vem de JOIN com stg.ms_clients via eventid = ms_event_id.
+-- event_id: raw.ms_delivery.client_id na verdade e o Event ID da MS (nome
+-- ambiguo escolhido na RAW, ver raw/ddl/ms_delivery.sql linha 24) -- renomeado
+-- aqui pra nao confundir com o client_id real (core.dim_client).
 --
--- SUBSTITUI: stg.mediasmart_delivery (legado, sem ms_client_id)
--- DROP stg.mediasmart_delivery SOMENTE após gold.fact_delivery migrar para esta view.
--- Depende de: stg.ms_clients (T1)
+-- client_id: COALESCE(campanha, advertiser) -- fallback duplo introduzido em
+-- 2026-07-06 para corrigir 81.8% NULL causado por raw.ms_campaigns conter
+-- apenas campanhas ativas (WRITE_TRUNCATE diario). raw.ms_delivery acumula
+-- historico de 121 campanhas; raw.ms_campaigns so tem as 13 ativas hoje.
+-- Solucao: se campaign_id nao esta em stg.ms_campaigns (campanha historica),
+-- pega client_id via join direto com stg.ms_advertisers pelo event_id que JA
+-- existe em raw.ms_delivery.client_id. Preserva formato/goal_type quando
+-- a campanha esta no catalogo; fica NULL apenas para campanhas que sairao do
+-- catalogo E cujo nome nao contem keyword de formato -- gap residual aceitavel.
+--
+-- formato/goal_type: herdados de stg.ms_campaigns quando disponivel, NULL
+-- para campanhas historicas sem entry no catalogo. gold.fact_delivery agrupa
+-- NULL formato separado (nao filtra) -- visivel como "formato desconhecido".
+--
+-- 6/938 (0,6%) creative_id nao batem com stg.ms_creatives -- gap aceitavel,
+-- LEFT JOIN preserva a linha mesmo sem match.
 
 CREATE OR REPLACE VIEW `adframework.stg.ms_delivery` AS
-
-WITH delivery_union AS (
-  -- histórico: ago/2025 → mai/24/2026
-  SELECT
-    SAFE_CAST(day AS DATE)              AS day,
-    eventid                             AS event_id,
-    controlid                           AS campaign_id,
-    strategyid                          AS strategy_id,
-    strategyname                        AS strategy_name,
-    conversion_source,
-    SAFE_CAST(impressions      AS INT64) AS impressions,
-    SAFE_CAST(clicks           AS INT64) AS clicks,
-    SAFE_CAST(video_start      AS INT64) AS video_start,
-    SAFE_CAST(video_25_viewed  AS INT64) AS video_25,
-    SAFE_CAST(video_50_viewed  AS INT64) AS video_50,
-    SAFE_CAST(video_75_viewed  AS INT64) AS video_75,
-    SAFE_CAST(video_completion AS INT64) AS video_complete,
-    SAFE_CAST(conversions_1    AS INT64) AS conversions_1,
-    SAFE_CAST(conversions_2    AS INT64) AS conversions_2,
-    SAFE_CAST(conversions_3    AS INT64) AS conversions_3,
-    SAFE_CAST(conversions_4    AS INT64) AS conversions_4,
-    SAFE_CAST(conversions_5    AS INT64) AS conversions_5,
-    'delivery'                          AS source_table
-  FROM `adframework.raw.mediasmart_delivery`
-  WHERE day IS NOT NULL
-
-  UNION ALL
-
-  -- ativo: mai/25/2026 → hoje
-  SELECT
-    SAFE_CAST(day AS DATE)              AS day,
-    eventid                             AS event_id,
-    controlid                           AS campaign_id,
-    strategyid                          AS strategy_id,
-    strategyname                        AS strategy_name,
-    conversion_source,
-    SAFE_CAST(impressions      AS INT64) AS impressions,
-    SAFE_CAST(clicks           AS INT64) AS clicks,
-    SAFE_CAST(video_start      AS INT64) AS video_start,
-    SAFE_CAST(video_25_viewed  AS INT64) AS video_25,
-    SAFE_CAST(video_50_viewed  AS INT64) AS video_50,
-    SAFE_CAST(video_75_viewed  AS INT64) AS video_75,
-    SAFE_CAST(video_completion AS INT64) AS video_complete,
-    SAFE_CAST(conversions_1    AS INT64) AS conversions_1,
-    SAFE_CAST(conversions_2    AS INT64) AS conversions_2,
-    SAFE_CAST(conversions_3    AS INT64) AS conversions_3,
-    SAFE_CAST(conversions_4    AS INT64) AS conversions_4,
-    SAFE_CAST(conversions_5    AS INT64) AS conversions_5,
-    'daily'                             AS source_table
-  FROM `adframework.raw.mediasmart_daily`
-  WHERE day IS NOT NULL
-    AND SAFE_CAST(day AS DATE) > DATE('2026-05-24')
-)
-
 SELECT
-  d.day,
-  cl.ms_client_id,
-  d.campaign_id   AS ms_campaign_id,
-  d.strategy_id   AS ms_strategy_id,
-  d.strategy_name AS ms_strategy_name,
-  d.conversion_source,
+  d.date,
+  d.client_id AS event_id,
+  d.campaign_id,
+  d.creative_id,
+  COALESCE(c.client_id, a.client_id) AS client_id,
+  c.formato,
+  c.goal_type,
   d.impressions,
   d.clicks,
-  d.video_start,
-  d.video_25,
-  d.video_50,
-  d.video_75,
-  d.video_complete,
   d.conversions_1,
   d.conversions_2,
   d.conversions_3,
   d.conversions_4,
   d.conversions_5,
-  d.source_table
-FROM delivery_union d
-LEFT JOIN `adframework.stg.ms_clients` cl ON cl.ms_event_id = d.event_id;
+  d.video_start,
+  d.video_25,
+  d.video_50,
+  d.video_75,
+  d.video_complete,
+  SAFE_DIVIDE(d.clicks, d.impressions) AS ctr
+FROM `adframework.raw.ms_delivery` d
+LEFT JOIN `adframework.stg.ms_campaigns` c ON c.campaign_id = d.campaign_id
+LEFT JOIN `adframework.stg.ms_advertisers` a ON a.event_id = d.client_id;
