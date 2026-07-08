@@ -1,63 +1,84 @@
 -- gold.fact_io_plan
--- VIEW que expande core.io_plan_manual (grain: flight × cliente)
--- para grain diário (1 linha por dia × cliente) — alinhado com gold.fact_delivery.
+-- Grain: client_id + report_date + formato + platform.
+-- Expande cada linha de stg.io_plan (grain = voo) em 1 linha por dia de
+-- calendario dentro do voo, distribuindo planned_spend/impressions/clicks
+-- linearmente (/ flight_days).
 --
--- Distribuição: linear (valor_flight ÷ dias_flight por dia).
--- Justificativa: padrão de mercado para planejamento. Versão futura pode ponderar
--- por dia da semana se a equipe de operações fornecer histórico de distribuição.
+-- platform entra na granularidade (alem de formato) -- CONFIRMADO contra
+-- dado real 2026-06-24: client_id+formato+dia sozinho tem 212 dias com 2
+-- unit_price/buy_model diferentes coexistindo (ex: TecPar "Push - MGID"
+-- R$0,35 vs "Push - App Targeting SIPROCAL" R$0,80, rodando juntos em
+-- jan-mar/2026 -- nao e erro, sao 2 estrategias/plataformas genuinamente
+-- diferentes).
 --
--- JOIN com fact_delivery:
---   ON p.client_id = d.client_id AND p.report_date = d.day
+-- platform_resolved: PLATFORM_RULES do sync_drive mapeia Push como 'unknown'
+-- por padrao (seguro globalmente). Para clientes onde confirmamos que o Push
+-- roda na Siprocal, corrigimos aqui por client_id para o JOIN com fact_delivery
+-- funcionar. Adicionar novos clientes conforme confirmado.
 --
--- Uso no Power BI:
---   SUM(planned_impressions_daily) sobre filtro de data = total projetado para o período.
---   Pacing % = SUM(impressions) / SUM(planned_impressions_daily) × 100
---   Funciona para qualquer corte: dia, semana, mês, flight, customizado.
+-- unit_price: trazido de volta (passthrough) -- usado em gold.fact_pacing
+-- pra calcular investimento_realizado (impressions/clicks reais x preco).
 --
--- Flights Cora cruzam meses calendário (ciclo 11→10):
---   Para "Junho 2026" o Power BI vai somar:
---     dias 01-10 Jun → tail do flight "11 Mai→10 Jun"
---     dias 11-30 Jun → head do flight "11 Jun→10 Jul"
---   O resultado pro-rateado é matematicamente correto mas pode surpreender o comercial.
---   ⚠️ COMERCIAL [FLIGHTS]: revisar se o dashboard deve mostrar por flight ou por mês calendário.
---
--- Limitações conhecidas:
---   planned_spend_net  = NULL para TecPar e Cora Jan-Abr (sem arquivo líquido disponível)
---   planned_impressions = NULL para Cora Jan-Mar (impressões não extraídas do arquivo)
---
--- Fonte da verdade: core.io_plan_manual
--- Ver pendências completas: core/ddl/io_plan_manual.sql
+-- goal_type: regra platform+formato via core.dict_format (igual ao pipeline
+-- de entrega). NAO via buy_model da planilha (pouco confiavel).
+-- Fallback dict_fallback: quando platform='unknown', busca goal_type so por
+-- formato -- mas apenas se o resultado for inequivoco (MIN=MAX, ou seja, o
+-- mesmo formato tem o mesmo goal_type em todas as plataformas cadastradas).
+-- Se ambiguo, fica NULL. CTE pre-computado para evitar subquery correlacionada.
 
 CREATE OR REPLACE VIEW `adframework.gold.fact_io_plan` AS
-
+WITH expanded AS (
+  SELECT
+    p.client_id,
+    p.formato,
+    CASE
+      WHEN p.platform = 'unknown' AND UPPER(p.formato) = 'PUSH'
+        AND p.client_id IN ('banco_cora_fe13d78a')
+      THEN 'siprocal'
+      ELSE p.platform
+    END AS platform,
+    p.unit_price,
+    day AS report_date,
+    p.planned_spend / p.flight_days AS planned_spend_daily,
+    SAFE_DIVIDE(p.planned_impressions, p.flight_days) AS planned_impressions_daily,
+    SAFE_DIVIDE(p.planned_clicks, p.flight_days) AS planned_clicks_daily
+  FROM `adframework.stg.io_plan` p,
+  UNNEST(GENERATE_DATE_ARRAY(p.flight_start, p.flight_end)) AS day
+  WHERE p.client_id IS NOT NULL
+),
+dict_fallback AS (
+  -- goal_type por formato apenas quando inequivoco entre plataformas.
+  -- Window function evita o problema de "aggregation of aggregation" do BQ.
+  SELECT DISTINCT formato,
+    IF(COUNT(DISTINCT goal_type) OVER (PARTITION BY formato) = 1, goal_type, NULL) AS goal_type
+  FROM `adframework.core.dict_format`
+),
+with_goal AS (
+  SELECT
+    e.client_id,
+    e.report_date,
+    e.formato,
+    e.platform,
+    e.unit_price,
+    e.planned_spend_daily,
+    e.planned_impressions_daily,
+    e.planned_clicks_daily,
+    COALESCE(df1.goal_type, df_fb.goal_type) AS goal_type
+  FROM expanded e
+  LEFT JOIN `adframework.core.dict_format` df1
+    ON df1.platform = e.platform AND UPPER(df1.formato) = UPPER(e.formato)
+  LEFT JOIN dict_fallback df_fb
+    ON UPPER(df_fb.formato) = UPPER(e.formato)
+)
 SELECT
-  m.client_id,
-  d                                                                    AS report_date,
-  m.flight_start,
-  m.flight_end,
-  DATE_DIFF(m.flight_end, m.flight_start, DAY) + 1                    AS flight_days,
-
-  -- ── Valores diários (base para filtros de período no Power BI) ────────────
-  ROUND(SAFE_DIVIDE(m.planned_impressions,
-    DATE_DIFF(m.flight_end, m.flight_start, DAY) + 1))                AS planned_impressions_daily,
-
-  ROUND(SAFE_DIVIDE(m.planned_clicks,
-    DATE_DIFF(m.flight_end, m.flight_start, DAY) + 1))                AS planned_clicks_daily,
-
-  ROUND(SAFE_DIVIDE(CAST(m.planned_spend_gross AS FLOAT64),
-    DATE_DIFF(m.flight_end, m.flight_start, DAY) + 1), 2)             AS planned_spend_gross_daily,
-
-  ROUND(SAFE_DIVIDE(CAST(m.planned_spend_net AS FLOAT64),
-    DATE_DIFF(m.flight_end, m.flight_start, DAY) + 1), 2)             AS planned_spend_net_daily,
-
-  -- ── Totais do flight (para comparação full-flight ou auditoria) ───────────
-  m.planned_impressions                                                AS planned_impressions_flight,
-  m.planned_clicks                                                     AS planned_clicks_flight,
-  m.planned_spend_gross                                                AS planned_spend_gross_flight,
-  m.planned_spend_net                                                  AS planned_spend_net_flight,
-
-  m.plan_version,
-  m.source_file
-
-FROM `adframework.core.io_plan_manual` m
-CROSS JOIN UNNEST(GENERATE_DATE_ARRAY(m.flight_start, m.flight_end)) AS d;
+  client_id,
+  report_date,
+  formato,
+  platform,
+  unit_price,
+  goal_type,
+  SUM(planned_spend_daily)       AS planned_spend_daily,
+  SUM(planned_impressions_daily) AS planned_impressions_daily,
+  SUM(planned_clicks_daily)      AS planned_clicks_daily
+FROM with_goal
+GROUP BY client_id, report_date, formato, platform, unit_price, goal_type;
