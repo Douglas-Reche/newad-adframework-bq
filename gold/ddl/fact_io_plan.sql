@@ -13,8 +13,9 @@
 --
 -- platform_resolved: PLATFORM_RULES do sync_drive mapeia Push como 'unknown'
 -- por padrao (seguro globalmente). Para clientes onde confirmamos que o Push
--- roda na Siprocal, corrigimos aqui por client_id para o JOIN com fact_delivery
--- funcionar. Adicionar novos clientes conforme confirmado.
+-- roda em uma plataforma especifica, a regra fica em
+-- core.advertiser_platform_rules (nao hardcoded aqui). Adicionar novas regras
+-- naquela tabela + re-executar o DDL dela.
 --
 -- unit_price: trazido de volta (passthrough) -- usado em gold.fact_pacing
 -- pra calcular investimento_realizado (impressions/clicks reais x preco).
@@ -31,12 +32,7 @@ WITH expanded AS (
   SELECT
     p.client_id,
     p.formato,
-    CASE
-      WHEN p.platform = 'unknown' AND UPPER(p.formato) = 'PUSH'
-        AND p.client_id IN ('banco_cora_fe13d78a')
-      THEN 'siprocal'
-      ELSE p.platform
-    END AS platform,
+    COALESCE(r.platform_to, p.platform) AS platform,
     p.unit_price,
     day AS report_date,
     p.planned_spend / p.flight_days AS planned_spend_daily,
@@ -44,6 +40,10 @@ WITH expanded AS (
     SAFE_DIVIDE(p.planned_clicks, p.flight_days) AS planned_clicks_daily
   FROM `adframework.stg.io_plan` p,
   UNNEST(GENERATE_DATE_ARRAY(p.flight_start, p.flight_end)) AS day
+  LEFT JOIN `adframework.core.advertiser_platform_rules` r
+    ON r.client_id = p.client_id
+    AND r.platform_from = p.platform
+    AND r.formato = UPPER(p.formato)
   WHERE p.client_id IS NOT NULL
 ),
 dict_fallback AS (
