@@ -1,7 +1,33 @@
 # Problemas Conhecidos — AdFramework BigQuery
 
-> Última atualização: 2026-06-15 — MS eventid NULL corrigido (rename fix + deploy 00249-c4j); backfill Mai 25-26 e Jun 11-15 concluídos; STG 3 plataformas 100% atribuído.
+---
+> **📋 REESTRUTURAÇÃO EM ANDAMENTO — 2026-06-16**
+> Os issues listados abaixo referem-se à pipeline **anterior ao reset de 2026-06-16**.
+> Issues G1/G2/G3 são sobre tabelas que serão reconstruídas do zero — considere-os encerrados no contexto do rebuild.
+> Novos issues do rebuild serão documentados aqui conforme surgirem. Plano: [bq_restructuring_plan.md](bq_restructuring_plan.md)
+---
+
+> Última atualização: 2026-06-16 — Gold layer completa: G1 e G2 resolvidos durante execução; G3 aberto (TecPar MS strategies sem mapeamento de category). 5 tabelas gold deployadas.
 > Autor: Douglas Reche
+
+---
+
+## ⚠️ Aberto — Gold layer
+
+| # | Problema | Impacto | Ação |
+|---|---|---|---|
+| G4 | **TecPar — Display/Retargeting (MediaSmart) e Native/Push (MGID) com ZERO entrega apesar de R$284k planejado** — `raw.ms_delivery` tem 0 linhas para `tecpar_edfcc744`. `stg.mg_delivery` também tem 0 linhas. IO Plan tem Display+Retargeting MS (R$71k+R$71k) e Native+Push MGID (R$69k+R$3,9k) planejados ago/25→jun/26. Causa provável: campanhas MediaSmart e MGID do TecPar estão cadastradas com `client_id` diferente no raw (possivelmente sob Amigo ou outro identificador), ou nunca foram ativadas nessas plataformas. | R$284k de budget planejado sem nenhuma entrega visível no pipeline — pacing completamente cego para esses formatos | Confirmar com TecPar/Shiro se campanhas Display/Retargeting/Native realmente rodaram. Se sim, identificar qual `client_id` ou `advertiser_id` está sendo usado no raw MS/MGID e adicionar em `core.platform_client_links`. |
+| G5 | **TecPar — Push/unknown vs siprocal: mesmo padrão da Cora** — IO Plan tem R$60k planejado para Push com `platform='unknown'`. Entrega Siprocal chega como `platform='siprocal'`. JOIN falha, gerando duas linhas separadas por dia em vez de uma. | R$60k de Push planejado sem correspondência com entrega Siprocal existente | Confirmar que Push TecPar roda na Siprocal (alta probabilidade). Se confirmado, adicionar `'tecpar_edfcc744'` ao CASE WHEN em `gold/ddl/fact_io_plan.sql` (mesmo fix aplicado para Cora em 2026-07-08, commit `c1c3935`). |
+| G6 | **Amigo — 138 linhas com formato NULL (MediaSmart jul→nov/2025)** — Campanhas MediaSmart do Amigo que entregaram nesse período não existem em `raw.ms_campaigns` (histórico deletado antes do ETL ser configurado para o cliente). `fact_delivery` resolve client_id mas não consegue mapear formato. | 12,6M impressões sem formato nem goal_type — invisíveis para análise por formato | Identificar os campaign_ids dessas 138 linhas no raw MS e inserir manualmente em `core.campaign_format_map` com o formato correto (Display/Retargeting). Ou aceitar como gap histórico irrecuperável. |
+| G7 | **Amigo — sem IO Plan (100% sem budget)** — Amigo nunca teve budget cadastrado no pipeline. Todas as 1.059 linhas em `fact_pacing` têm `planned_spend=NULL`, `unit_price=NULL`, `investimento_realizado=NULL`. Amigo funciona apenas como monitoring (entrega existe, budget não). | Impossível calcular pacing, eficiência ou investimento realizado para Amigo | Cadastrar IO Plan de Amigo via `sync_drive.py` quando disponível. |
+| G3 | **TecPar + outros clientes MS sem mapeamento em `core.campaign_format_map`** — TecPar tem 4 MS strategy IDs (`ry1h8hhlhf0znig3hxzlqutd6b79r9jo`, `htoerticevccicdmokurvgiz63gaceq6`, `j7xxmkmf46ghxst10lgcnxkxta0gitrj`, `4epumrvsxkwnmod4txxfmlex6zh7mkda`) não presentes no mapa. Na `gold.fact_delivery`, essas strategies ficam com `category = 'OTHER'` e não joinam com `gold.fact_io_plan` via `fact_pacing` (TecPar DISPLAY/RETARGETING/NATIVE têm plan mas sem delivery na pacing). | Pacing por category inoperante para TecPar MS | Adicionar os 4 strategy IDs de TecPar em `core.campaign_format_map` com o formato correto (DISPLAY / VIDEO / RETARGETING). Douglas confirma qual ID é qual estratégia. |
+
+## ✅ Resolvidos em 2026-06-16
+
+| # | Problema | Resolução |
+|---|---|---|
+| G1 | **`gold.fact_io_plan` — campo `unit_price` ausente** | `s.unit_price` adicionado ao SELECT em `gold/ddl/fact_io_plan.sql` + redeploy. Verificado: unit_price = 3.9 para Cora PUSH. |
+| G2 | **`gold/ddl/dim_campaign.sql` quebrado** — referenciava `stg.mediasmart_delivery` (legado), usava `campaign_id` para Siprocal, sem campo `category` | Rebuild completo: fontes corrigidas (`stg.ms_delivery`, `stg.mgid_campaigns`, `stg.siprocal_delivery`); category via JOIN `core.campaign_format_map` para MS, constantes para MGID/Siprocal; GROUP BY garante PK única. |
 
 ---
 
