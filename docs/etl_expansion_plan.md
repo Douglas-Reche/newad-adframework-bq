@@ -1,5 +1,13 @@
 # ETL Expansion Plan — Novas Dimensões e Métricas
 
+---
+> **📋 REESTRUTURAÇÃO EM ANDAMENTO — 2026-06-16**
+> A pipeline de entrega (RAW/STG/GOLD) está sendo reconstruída do zero.
+> Os jobs e tabelas referenciados neste documento serão revisados após o rebuild base estar estável.
+> Roadmap ainda válido como intenção — os nomes de tabelas e schemas precisarão ser atualizados.
+> Plano de rebuild: [bq_restructuring_plan.md](bq_restructuring_plan.md)
+---
+
 > Criado em: 2026-06-08  
 > Atualizado em: 2026-06-09  
 > Status: Planejado — implementação depende de alinhamento com Shiro (orchestrator)

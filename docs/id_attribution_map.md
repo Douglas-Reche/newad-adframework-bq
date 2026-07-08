@@ -1,6 +1,14 @@
 # Mapa de Atribuição de IDs — RAW → client_id
 
-> Última atualização: 2026-06-11
+---
+> **⚠️ LEGADO — PRÉ-REBUILD 2026-06-16 ⚠️**
+> Este documento descreve a pipeline **anterior ao reset completo de 2026-06-16**.
+> Tabelas, views, schemas e colunas aqui descritos **foram dropados e não existem mais no BigQuery**.
+> Mantenha para consulta histórica — **não use como referência para desenvolvimento novo.**
+> Plano atual: [bq_restructuring_plan.md](bq_restructuring_plan.md) · [CHANGELOG.md](../CHANGELOG.md)
+---
+
+> Última atualização: 2026-06-15
 > Autor: Douglas Reche
 > Propósito: Para cada tabela RAW, mostra exatamente onde o `client_id` é resolvido, onde delivery se perde como `unattributed`, e quais IDs precisam de ação.
 > Complementa: `column_lineage_map.md` (linhagem de colunas) | `pipeline_complete_map.md` (grain e dependências)
@@ -68,8 +76,8 @@ Um `eventid` = uma conta MediaSmart = um cliente NewAd. Toda campanha criada sob
 ### Estado atual dos vínculos
 ```
 14 eventids mapeados em platform_client_links:
-  ✅ 10 active
-  ⚠️  3 pending_confirmation (Amigo, Stocco, Dr Consulta RJ, Caloi)
+  ✅ 12 active  (Amigo ativado 2026-06-08; Stocco + Dr Consulta RJ ativados 2026-06-15)
+  ⚠️  1 pending_confirmation  (Caloi)
   ❌  1 unresolved — sem client_id — entrega vai para 'unattributed'
 ```
 
@@ -86,9 +94,9 @@ Um `eventid` = uma conta MediaSmart = um cliente NewAd. Toda campanha criada sob
 | `newad_brazil-mew7x...` | `efi_bank_ee79e91b` | ✅ active | — |
 | `newad_brazil-0ormck...` | `fox_lux_55ed8992` | ✅ active | — |
 | `newad_brazil-plbe1...` | `dooing_994db77e` | ✅ active | — |
-| `newad_brazil-oqdfn...` | `amigo_db1c2f0c` | ⚠️ pending | Aguarda confirmação Amigo vs TecPar |
-| `newad_brazil-a5e1o...` | `dr_consulta_rj_11040bf9` | ⚠️ pending | Aguarda confirmação Dr Consulta SP vs RJ |
-| `newad_brazil-4au3o...` | `stocco_b712c66e` | ⚠️ pending | Aguarda confirmação Stocco vs Stoquinho |
+| `newad_brazil-oqdfn...` | `amigo_db1c2f0c` | ✅ active | Ativado 2026-06-08 — Amigo é sub-cliente legítimo de TecPar |
+| `newad_brazil-a5e1o...` | `dr_consulta_rj_11040bf9` | ✅ active | Ativado 2026-06-15 — dim_client status=active confirmado |
+| `newad_brazil-4au3o...` | `stocco_b712c66e` | ✅ active | Ativado 2026-06-15 — dim_client status=active confirmado |
 | `newad_brazil-fqpt3...` | `caloi_8ac28140` | ⚠️ pending | Aguarda confirmação comercial |
 | `newad_brazil-neu83...` | ❌ **NULL — unresolved** | ❌ unresolved | **Pardini OU Ocupacional — decidir e separar** |
 
@@ -268,11 +276,11 @@ Não há risco de atribuição aqui. O risco é de mapeamento incorreto da pasta
 | `townhouses_bc40f009` | ✅ active | ❌ | ✅ 1 | ❌ | Só MGID |
 | `dr_consulta_215378ef` | ✅ active | ❌ | ✅ 4 | ✅ | Sem MS |
 | `ocupacional_98c851f5` | ✅ active | ❌ | ❌ | ❌ | **⛔ ZERO vínculos — 100% unattributed** |
-| `amigo_db1c2f0c` | ⚠️ pending | ⚠️ pending | ⚠️ 39 pending | ⚠️ pending | Aguarda confirmação Amigo vs TecPar |
+| `amigo_db1c2f0c` | ✅ active | ✅ active | ✅ 39 active | ✅ active | Ativado 2026-06-08 — sub-cliente TecPar confirmado |
 | `tecpar_edfcc744` | ⚠️ pending | ❌ | ❌ | ⚠️ pending | Só Siprocal AMIGOTECPAR (compartilhado) |
-| `stocco_b712c66e` | ⚠️ pending | ⚠️ pending | ⚠️ 3 pending | ❌ | Aguarda Stocco vs Stoquinho |
-| `stoquinho_56a6ee2a` | ⚠️ pending | ❌ | ⚠️ 4 pending | ❌ | Aguarda Stocco vs Stoquinho |
-| `dr_consulta_rj_11040bf9` | ⚠️ pending | ⚠️ pending | ⚠️ 3 pending | ❌ | Aguarda Dr Consulta SP vs RJ |
+| `stocco_b712c66e` | ✅ active | ✅ active | ✅ 3 active | ❌ | Ativado 2026-06-15 |
+| `stoquinho_56a6ee2a` | — | ❌ | ⚠️ 4 pending | ❌ | Aguarda separação Stocco vs Stoquinho |
+| `dr_consulta_rj_11040bf9` | ✅ active | ✅ active | ✅ 3 active | ❌ | Ativado 2026-06-15 |
 | `bet7k_b777ab9c` | ⚠️ pending | ❌ | ⚠️ 4 pending | ❌ | Aguarda confirmação comercial |
 | `lab2lab_efb1cb34` | ⚠️ pending | ❌ | ⚠️ 1 pending | ❌ | Aguarda confirmação comercial |
 | `caloi_8ac28140` | ⚠️ pending | ⚠️ pending | ⚠️ 2 pending | ❌ | Aguarda confirmação comercial |

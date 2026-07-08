@@ -1,5 +1,13 @@
 # Column Lineage Map — RAW → STG → CORE → GOLD
 
+---
+> **⚠️ LEGADO — PRÉ-REBUILD 2026-06-16 ⚠️**
+> Este documento descreve a pipeline **anterior ao reset completo de 2026-06-16**.
+> Tabelas, views, schemas e colunas aqui descritos **foram dropados e não existem mais no BigQuery**.
+> Mantenha para consulta histórica — **não use como referência para desenvolvimento novo.**
+> Plano atual: [bq_restructuring_plan.md](bq_restructuring_plan.md) · [CHANGELOG.md](../CHANGELOG.md)
+---
+
 > Última atualização: 2026-06-11  
 > Autor: Douglas Reche  
 > Propósito: Rastrear transformação **coluna a coluna** por todas as camadas do pipeline. Identifica onde informações são perdidas antes de chegar nos KPIs.  

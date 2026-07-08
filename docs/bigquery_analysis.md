@@ -1,4 +1,12 @@
 # AdFramework — Análise Completa BigQuery + GitHub
+
+---
+> **⚠️ LEGADO — PRÉ-REBUILD 2026-06-16 ⚠️**
+> Este documento descreve a pipeline **anterior ao reset completo de 2026-06-16**.
+> Tabelas, views, schemas e colunas aqui descritos **foram dropados e não existem mais no BigQuery**.
+> Mantenha para consulta histórica — **não use como referência para desenvolvimento novo.**
+> Plano atual: [bq_restructuring_plan.md](bq_restructuring_plan.md) · [CHANGELOG.md](../CHANGELOG.md)
+---
 > Auditoria profunda: redundâncias, duplicatas, linhagem, custos e proposta de otimização
 > Atualizado: 2026-04-30 | Projeto GCP: `adframework` (striped-bonfire-489318)
 

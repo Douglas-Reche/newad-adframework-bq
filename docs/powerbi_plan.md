@@ -1,4 +1,12 @@
 # AdFramework — Plano Completo Power BI
+
+---
+> **⚠️ LEGADO — PRÉ-REBUILD 2026-06-16 ⚠️**
+> Este documento descreve tabelas gold **anteriores ao reset de 2026-06-16** (nomes como `fct_delivery_daily` e schemas hoje inexistentes).
+> Os nomes de tabelas, colunas e medidas DAX aqui descritos precisarão ser revisados após o rebuild.
+> Mantenha para consulta histórica — **não use como referência para desenvolvimento novo.**
+> Plano atual: [bq_restructuring_plan.md](bq_restructuring_plan.md) · [CHANGELOG.md](../CHANGELOG.md)
+---
 > Documento técnico de implementação | Projeto: `adframework` (GCP) | Atualizado: 2026-04-29
 
 ---

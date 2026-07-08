@@ -1,5 +1,12 @@
 # newad-adframework-bq
 
+---
+> **⚠️ REESTRUTURAÇÃO EM ANDAMENTO — 2026-06-16 ⚠️**
+> A pipeline RAW/STG/GOLD foi **resetada e está sendo reconstruída do zero** devido a inconsistências estruturais acumuladas na ingestão (normalize_data no RAW, all-STRING, schema enforcement silencioso).
+> Plano de rebuild: [`docs/bq_restructuring_plan.md`](docs/bq_restructuring_plan.md) · Backup core: [`docs/core_config_backup.md`](docs/core_config_backup.md)
+> Documentos com schema antigo estão marcados com banner `⚠️ LEGADO` — **não use para desenvolvimento novo.**
+---
+
 Repositório de SQL, DDLs e seeds do **BigQuery AdFramework NewAD**.
 Mantido por Douglas Reche — fonte da verdade para schema, migrações e IDs canônicos.
 
@@ -20,7 +27,7 @@ RAW  →  STG  →  CORE  →  GOLD
 
 | Camada | Tipo | Responsabilidade |
 |--------|------|-----------------|
-| **RAW** | Tabelas físicas | Ingestão crua do ETL — grain original, tudo STRING |
+| **RAW** | Tabelas físicas | Ingestão crua do ETL — grain original, tipos nativos (INT64/FLOAT64/DATE), sanitização mínima de colunas |
 | **STG** | Views | Typing correto (DATE, INT64, FLOAT64), normalização por plataforma |
 | **CORE** | Tabelas + Views | Atribuição de `client_id`, IO binding, regras de negócio |
 | **GOLD** | Views | Output analítico por cliente — consumido pelo dashboard |

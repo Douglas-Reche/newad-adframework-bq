@@ -1,6 +1,7 @@
 # MediaSmart API Reference
 
 > Criado em: 2026-06-11
+> Última atualização: 2026-06-16 (pesquisa sobre goal_type e limites históricos)
 > Tipo: **Resumo estruturado para uso no ETL** — não é a documentação completa
 > Fonte primária: `API_Doc_MediaSmart.md` (documentação oficial completa, 4.601 linhas)
 > Status: ✅ ATUAL — cobre analytics, drilldowns, KPIs, management; incompleto em seções de Publisher Lists, Geolists, Deals
@@ -380,3 +381,73 @@ Conforme documentação oficial (API_Doc_MediaSmart.md): *"A strategy is a campa
 
 ### Criativo via analytics
 Para obter delivery por criativo, usar `drilldown` com `creativeid` ou `creativetype` ou `size` no custom-report.
+
+---
+
+## Pesquisas e descobertas (sessões de desenvolvimento)
+
+> Esta seção documenta achados que **não constam explicitamente na doc oficial** — descobertos via análise do Campaign Body (API_Doc_MediaSmart.md linha 2179+) e testes em produção.
+
+---
+
+### Goal Type — como funciona na API (pesquisa 2026-06-16)
+
+**Contexto:** A UI da MediaSmart exibe um campo "Goal type" (ex: CPC, CPA, CPM, CPV) com um "Value" (ex: R$ 0.3). Verificamos se existe um campo `goal_type` dedicado na API.
+
+**Resultado:** Não existe campo `goal_type` como string standalone. A documentação oficial não lista nenhum campo com esse nome no Campaign Body. O campo `goal` existe na resposta da API (`raw.mediasmart_campaigns.goal`) mas estava vazio (`{}`) para campanhas antigas do account — pode estar populado em campanhas mais recentes, mas **não é o lugar canônico do dado**.
+
+**Onde o dado realmente vive:** dentro do objeto `deals_and_pricing`, que já é capturado integralmente como JSON em `raw.mediasmart_campaigns.deals_and_pricing`. Estrutura:
+
+```json
+{
+  "deals_and_pricing": {
+    "cpm": 10.0,       // presente em todos; bid inicial
+    "cpc": 0.3,        // se preenchido → Goal type = CPC
+    "cpa": 3.8,        // se preenchido → Goal type = CPA
+    "cpv": 10.0,       // se preenchido → Goal type = CPV
+    "event_number_for_cpa": 3,   // qual slot conv1–5 usar para CPA
+    "cpv_event": "videocomplete", // evento de vídeo para CPV
+    "deal_policy": "plc",         // off / plc (placement) / per (performance)
+    "exchange_breakdown": false
+  }
+}
+```
+
+**Inferência do goal_type no SQL:**
+```sql
+CASE
+  WHEN JSON_VALUE(deals_and_pricing, '$.cpa') IS NOT NULL THEN 'CPA'
+  WHEN JSON_VALUE(deals_and_pricing, '$.cpc') IS NOT NULL THEN 'CPC'
+  WHEN JSON_VALUE(deals_and_pricing, '$.cpv') IS NOT NULL THEN 'CPV'
+  ELSE 'CPM'
+END AS goal_type,
+COALESCE(
+  SAFE_CAST(JSON_VALUE(deals_and_pricing, '$.cpa') AS FLOAT64),
+  SAFE_CAST(JSON_VALUE(deals_and_pricing, '$.cpc') AS FLOAT64),
+  SAFE_CAST(JSON_VALUE(deals_and_pricing, '$.cpv') AS FLOAT64),
+  SAFE_CAST(JSON_VALUE(deals_and_pricing, '$.cpm') AS FLOAT64)
+) AS goal_value
+```
+
+**Status de implementação:** ⏳ pendente — dado já está em `raw.mediasmart_campaigns`, falta adicionar parse na transformação `stg.ms_campaigns`.
+
+---
+
+### Limites históricos de dados (pesquisa 2026-06-16)
+
+**Pergunta:** a API suporta pulls históricos? Até quando conseguimos puxar dados passados?
+
+**Resultado:** A API **não documenta limite explícito** de retenção histórica. Os exemplos da documentação oficial usam `from=2015-02-23` como data mínima de exemplo — sugerindo que dados de pelo menos 2015 estão disponíveis para contas antigas.
+
+**Na prática para o nosso account (`newad_brazil`):**
+
+| Endpoint / drilldown | Dado mais antigo disponível | Observação |
+|---|---|---|
+| `/api/analytics/custom-report` (geral) | Desde o início da conta | Sem limite documentado |
+| `delivery_by_hour` (drilldown `hour`) | **2026-05-28** | API retorna vazio para datas anteriores — confirmado em produção |
+| Demais drilldowns (device, geo, os, publisher, creative) | 2026-01-01 | Testado via backfill — dados disponíveis; não testamos datas anteriores |
+| `raw.mediasmart_delivery` (job legado Shiro) | 2025-08-01 | Primeira campanha ativa do account |
+
+**Conclusão:** o limite real não é da API — é de quando o account teve campanhas ativas. Qualquer data anterior à primeira campanha retornará vazio. Não existe restrição de janela (ex: "máximo 90 dias") documentada ou observada.
+
+**Implicação para backfills futuros:** podemos puxar qualquer período a partir de ago/2025 (início das campanhas) sem restrição de API. A única exceção é `delivery_by_hour`, que só tem dados a partir de 2026-05-28.

@@ -1,5 +1,13 @@
 # Registro de Clientes — AdFramework
 
+---
+> **⚠️ LEGADO — PRÉ-REBUILD 2026-06-16 ⚠️**
+> Os `client_id`s listados aqui usam o formato antigo (`nwd_` prefix).
+> O novo formato canônico é `{slug}_{8hex}` (ex: `banco_cora_fe13d78a`) — conforme `core.dim_client`.
+> Fonte de verdade atual: [core_config_backup.md](core_config_backup.md) · `core.dim_client` no BigQuery.
+> Mantenha para consulta histórica — **não use os IDs deste arquivo para desenvolvimento novo.**
+---
+
 > Última atualização: 2026-05-12
 
 ## Clientes com entrega real confirmada

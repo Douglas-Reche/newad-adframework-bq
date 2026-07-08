@@ -1,5 +1,13 @@
 # ETL: Cora Google Sheets → BigQuery
 
+---
+> **⚠️ LEGADO — PRÉ-REBUILD 2026-06-16 ⚠️**
+> Este script sincroniza para `adframework.gold_cora`, dataset que será dropado no rebuild.
+> A nova arquitetura lê Cora via pipeline padrão RAW→STG→GOLD unificado.
+> Mantenha para consulta histórica — **não executar este script no ambiente atual.**
+> Plano atual: [../../docs/bq_restructuring_plan.md](../../docs/bq_restructuring_plan.md)
+---
+
 Sync automático das 13 abas da planilha Cora para `adframework.gold_cora` no BigQuery.
 
 ## Arquivos

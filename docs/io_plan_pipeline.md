@@ -1,7 +1,14 @@
 # IO Plan Pipeline — Design e Histórico Completo
 
-> Criado em: 2026-06-09 | Última atualização: 2026-06-14
-> Status: **RAW ✅ (Drive sync ativo, 14 clientes mapeados) | Core ✅ (core.io_plan_manual) | Gold ⚠️ (fact_io_plan existe mas com bug de duplicação — ver seção de limitações)**
+---
+> **📋 REESTRUTURAÇÃO EM ANDAMENTO — 2026-06-16**
+> O IO Plan em si (Drive → RAW → `gold.fact_io_plan`) é **independente** do rebuild de entrega e continua válido.
+> Porém referências a tabelas de delivery (`stg.mediasmart_delivery`, etc.) neste documento são do schema antigo.
+> Valide nomes de tabelas antes de usar em desenvolvimento. Plano: [bq_restructuring_plan.md](bq_restructuring_plan.md)
+---
+
+> Criado em: 2026-06-09 | Última atualização: 2026-06-24
+> Status: **RAW ✅ (Drive sync ativo, 295 linhas) | STG ✅ (`stg.io_plan` recriada 2026-06-24 — substitui a `stg.io_plan_drive` antiga, arquivada em `stg/ddl/_legacy/`) | Gold ⚠️ (`gold.fact_io_plan` ainda referencia o schema antigo — revisar antes de usar)**
 
 ---
 
@@ -225,6 +232,26 @@ Baseada no `unit_price` máximo das linhas com `impressions_cpm` preenchido:
 
 ---
 
+## STG Layer — `stg.io_plan` ✅ CRIADA E VALIDADA (2026-06-24)
+
+Substitui a `stg.io_plan_drive` antiga (arquivada em `stg/ddl/_legacy/io_plan_drive.sql` — tinha um bug: forçava `Push` sempre = `siprocal`, contradito pelo dado real `"Push - MGID"`).
+
+**Grain:** `(client_id, drive_folder, strategy_name, flight_start)`, dedup pelo snapshot mais recente (`ROW_NUMBER` por `snapshot_at DESC`). Filtra linhas sem `flight_start`/`flight_end`/`monthly_spend`.
+
+**`formato`** extraído de `strategy_name` (texto livre da planilha) via busca de keyword — vocabulário igual ao de entrega (`Display/Video/Retargeting/Native/Push`) + `AppInstall` (exclusivo do plano). **Não reusa o campo `format` já existente na RAW** (esse vem da planilha em vocabulário diferente, ex: `"Banner IAB"`, `"Push Banner"` — preservado como `creative_format_label`).
+
+**Sem `goal_type`** — decisão do usuário (2026-06-24): `goal_type` é conceito de campanha/entrega (`ms_campaigns`/`mg_campaigns`/`sp_campaigns`), não de planejamento. `core.dict_format` ganhou `AppInstall`→`CPI` (`platform='io_plan'`) mesmo assim, pra ficar disponível quando algum consumidor precisar cruzar plano com entrega.
+
+**`platform`** corrigido em relação à RAW (sem mudar o parser `sync_drive.py`): `PLATFORM_RULES` procura substring exata `"push siprocal"`, que não bate com o dado real `"Push - App Targeting SIPROCAL"` (texto no meio) — 91/295 linhas caíam em `unknown`. Fix na STG: `contém 'SIPROCAL' → siprocal`, `contém 'MGID' → mgid`. Resolve 7/91. **Os outros 84 (`Push`/`AppInstall` genéricos) não têm sinal de plataforma no texto — limitação real do dado.**
+
+**Resultado real:** dedup reduz 295→**125 linhas**. **125/125 (100%) com `formato`. 96/125 (77%) com `platform` resolvido.** DDL: `stg/ddl/io_plan.sql`.
+
+**Confirmado nesta sessão:** RAW tem grupos com até 14 snapshots idênticos da mesma linha de plano (7 cópias por sync, 2 syncs) — bug do parser (L1, ver abaixo) ainda presente. STG mascara corretamente via dedup (0 duplicatas confirmadas no resultado final), mas o parser não foi corrigido na fonte.
+
+⚠️ **`gold.fact_io_plan` ainda não foi atualizada** para consumir `stg.io_plan` — hoje deriva de `core.io_plan_manual`, que por sua vez ainda lê de `raw.io_plan_drive_snapshot` direto (não passa pela STG nova). Revisar a cadeia completa ao reconstruir o Gold.
+
+---
+
 ## Core Layer — `core.io_plan_manual`
 
 **Write mode:** DELETE por `client_id + plan_version='DRIVE-SYNC'` + INSERT
@@ -321,6 +348,12 @@ O parser só extrai datas quando a aba tem o padrão `DD MÊS A DD MÊS`. Planil
 
 **Fix possível:** fallback usando `drive_folder` (`2026/JANEIRO` → Jan 1–31) para planilhas de mês único. Multi-mês exige cuidado.
 
+### L1b — Duplicação de linhas por sync (raiz: parser itera abas sem filtrar pelo mês) — CONFIRMADO AINDA PRESENTE (2026-06-24)
+
+`parse_xlsx` em `sync_drive.py` itera `wb.sheetnames` sem filtrar pela aba certa do `drive_folder` — duplica cada linha de estratégia por sync. Verificado nesta sessão: grupos com até **14 snapshots idênticos** da mesma linha (`client_id+drive_folder+strategy_name+flight_start`) — na prática **7 cópias por sync**, em 2 syncs (não 14 syncs genuínos). Mesmo `source_file`/`monthly_spend`/`impressions` em todas as cópias.
+
+**Impacto:** `raw.io_plan_drive_snapshot` infla com lixo (295 linhas reais → não sabido quantas seriam sem duplicação). `stg.io_plan` mascara corretamente via dedup (`ROW_NUMBER` por snapshot mais recente — confirmado 0 duplicatas no resultado final), mas o parser não foi corrigido na fonte. Fix fica pendente — não bloqueia consumo via STG.
+
 ### L2 — Duplicação de valores quando há múltiplos arquivos para o mesmo período (RESOLVIDA PARCIALMENTE)
 
 Antes de 2026-06-14, `find_plano_files` pegava todos os xlsx, incluindo RAFA + cópias renomeadas. O core somava todos, resultando em múltiplos do valor real (R$157.500 ao invés de R$78.750 para o período 11 Mai–10 Jun Cora).
@@ -331,9 +364,9 @@ Fix deployado em `ff9dfe2`: regra "mais recente por pasta". Próximo sync de Cor
 
 Planilhas com linhas CPM e CPC na mesma aba: `max(unit_price_cpm)` pode misturar taxas de CPC em colunas de CPM. Resultado: `spend_type` pode ser classificado como `net` quando é `gross`.
 
-### L4 — Sem breakdown de estratégia no core e gold
+### L4 — Sem breakdown de estratégia no core e gold (PARCIALMENTE RESOLVIDA — 2026-06-24)
 
-`core.io_plan_manual` agrega todas as estratégias em uma linha por voo. Para análise por estratégia (DISPLAY vs NATIVE), consultar diretamente a raw.
+`core.io_plan_manual` agrega todas as estratégias em uma linha por voo — ainda assim. Mas agora existe `stg.io_plan` com grain por estratégia (`formato`/`goal_type` incluídos) — para análise por formato (Display vs Native), consultar `stg.io_plan` em vez da raw direto. `core`/`gold` continuam agregados; decidir se vale a pena dar grain de estratégia a eles também ao reconstruir o Gold.
 
 ### L5 — `planned_spend_net` NULL para a maioria dos clientes
 

@@ -1,5 +1,13 @@
 # Siprocal STG Layer — Design e Histórico Completo
 
+---
+> **⚠️ LEGADO — PRÉ-REBUILD 2026-06-16 ⚠️**
+> Este documento descreve a pipeline **anterior ao reset completo de 2026-06-16**.
+> Tabelas, views, schemas e colunas aqui descritos **foram dropados e não existem mais no BigQuery**.
+> Mantenha para consulta histórica — **não use como referência para desenvolvimento novo.**
+> Plano atual: [bq_restructuring_plan.md](bq_restructuring_plan.md) · [CHANGELOG.md](../CHANGELOG.md)
+---
+
 > Criado em: 2026-06-14 | Última atualização: 2026-06-14
 > Status: **RAW completa ✅ (1.093 linhas, 2025-08-22 → 2026-06-11) | STG redesenhada ✅ (siprocal_client_id resolvido, 11/11 clientes atribuídos) | Próximo: gold layer**
 
