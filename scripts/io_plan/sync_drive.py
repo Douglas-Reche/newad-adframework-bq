@@ -25,6 +25,7 @@ import logging
 import os
 import re
 import sys
+import calendar
 from datetime import date, datetime, timezone
 from typing import Optional
 
@@ -101,7 +102,7 @@ MONTH_PT = {
     "DEZ": 12, "DEZEMBRO": 12,
 }
 
-SKIP_SHEETS = {"RESUMO", "SUMMARY", "SUGESTAO", "SUGESTÃO", "INDICADORES", "TEMPLATE", "COPIA", "CÓPIA", "COPY"}
+SKIP_SHEETS = {"RESUMO", "SUMMARY", "SUGESTAO", "SUGESTOES", "SUGESTÃO", "SUGESTÕES", "INDICADORES", "TEMPLATE", "COPIA", "CÓPIA", "COPY"}
 
 
 # ─── TEXT HELPERS ─────────────────────────────────────────────────────────────
@@ -132,6 +133,39 @@ def _month_num(token: str) -> Optional[int]:
         if t2[:length] in MONTH_PT:
             return MONTH_PT[t2[:length]]
     return None
+
+
+def _find_quarterly_tab(wb, target_month: int) -> Optional[str]:
+    """Return the sheet name matching 'PLANO JAN A MAR' / 'JAN A MAR' / etc. for target_month.
+    Searches for the 'MON A MON' pattern anywhere in the tab name (handles 'PLANO' prefix).
+    Returns None if no quarterly-style tab exists (e.g. V3 files with day-range tabs)."""
+    for name in wb.sheetnames:
+        upper = _deaccent(name).upper().strip()
+        m = re.search(r"\b([A-Z]{3})\s+A\s+([A-Z]{3})\b", upper)
+        if m:
+            s = MONTH_PT.get(m.group(1))
+            e = MONTH_PT.get(m.group(2))
+            if s and e and s <= target_month <= e:
+                return name
+    return None
+
+
+def _dates_from_drive_path(drive_path: str):
+    """Derive (flight_start, flight_end) from 'YYYY/MONTHNAME' drive_folder string."""
+    parts = (drive_path or "").upper().split("/")
+    if len(parts) < 2:
+        return None, None
+    year_str = parts[0].strip()
+    month_key = _deaccent(parts[1]).upper().strip()
+    if not year_str.isdigit():
+        return None, None
+    year = int(year_str)
+    month = MONTH_PT.get(month_key)
+    if not month:
+        return None, None
+    start = date(year, month, 1)
+    end = date(year, month, calendar.monthrange(year, month)[1])
+    return start, end
 
 
 def parse_flight_label(label: str, default_year: int = 2026):
@@ -254,24 +288,54 @@ def parse_xlsx(file_bytes: bytes, client_id: str, source_file: str,
     wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
     rows_out = []
 
-    for sheet_name in wb.sheetnames:
+    # Determine target month from drive_path (e.g. "2026/JANEIRO" → month=1)
+    path_parts = (drive_path or "").upper().split("/")
+    target_month = MONTH_PT.get(_deaccent(path_parts[1]).upper()) if len(path_parts) > 1 else None
+
+    # Try to find a quarterly tab ("JAN A MAR", "ABR A JUN", etc.) for this month.
+    # If found, restrict processing to that single tab and derive dates from drive_path.
+    # If not found (e.g. V3 files with day-range tabs), fall through to existing logic.
+    quarterly_tab = _find_quarterly_tab(wb, target_month) if target_month else None
+    quarterly_dates = _dates_from_drive_path(drive_path) if quarterly_tab else (None, None)
+    sheets_to_process = [quarterly_tab] if quarterly_tab else wb.sheetnames
+
+    for sheet_name in sheets_to_process:
         ws = wb[sheet_name]
         sn_upper = _deaccent(sheet_name).upper()
         if any(skip in sn_upper for skip in SKIP_SHEETS):
             continue
 
-        # Extract flight label from sheet name or cell A1
-        flight_label = None
-        cell_a1 = ws.cell(1, 1).value
-        label_candidates = [sheet_name, str(cell_a1) if cell_a1 else ""]
-        for candidate in label_candidates:
-            if re.search(r"\d{1,2}\s+[A-Z]{3}", candidate.upper()):
-                flight_label = candidate
-                break
+        # For quarterly tabs: use drive_path dates and the tab name as label.
+        # For day-range tabs: extract flight label from sheet name or cell A1 (existing logic).
+        if quarterly_tab:
+            flight_label = sheet_name
+            flight_start, flight_end = quarterly_dates
+        else:
+            flight_label = None
+            cell_a1 = ws.cell(1, 1).value
+            label_candidates = [sheet_name, str(cell_a1) if cell_a1 else ""]
+            for candidate in label_candidates:
+                if re.search(r"\d{1,2}\s+[A-Z]{3}", candidate.upper()):
+                    flight_label = candidate
+                    break
 
-        flight_start, flight_end = None, None
-        if flight_label:
-            flight_start, flight_end = parse_flight_label(flight_label, default_year=default_year)
+            flight_start, flight_end = None, None
+            if flight_label:
+                flight_start, flight_end = parse_flight_label(flight_label, default_year=default_year)
+
+            # Drive folder = official plan for that month.
+            # For day-range tabs (e.g. "11 MAI A 10 JUN"), only keep the tab if its
+            # flight_start falls in the same month as drive_folder. This prevents
+            # multi-month files (V3 MAI-JUL) from contributing data to months that
+            # don't yet have an official plan folder in Drive.
+            if target_month and flight_start and flight_start.month != target_month:
+                continue
+
+            # Final fallback: if no dates parsed from tab name, derive from drive_folder.
+            # Handles files with single generic tabs (e.g. TecPar "PLANO CUIABÁ", "ABRIL", "MAIO").
+            # Rule: file in a month's Drive folder = official plan for that month, regardless of tab name.
+            if flight_start is None and target_month:
+                flight_start, flight_end = _dates_from_drive_path(drive_path)
 
         # Find header row: first row where we can map ≥2 keys
         header_row = None
@@ -347,13 +411,16 @@ def parse_xlsx(file_bytes: bytes, client_id: str, source_file: str,
 
 # ─── BQ OPERATIONS ────────────────────────────────────────────────────────────
 
-def get_last_sync(bq: bigquery.Client, source_file: str) -> Optional[datetime]:
+def get_last_sync(bq: bigquery.Client, source_file: str, drive_folder: str) -> Optional[datetime]:
     result = list(bq.query(
         "SELECT MAX(snapshot_at) AS ts"
         " FROM `adframework.raw.io_plan_drive_snapshot`"
-        " WHERE source_file = @f",
+        " WHERE source_file = @f AND drive_folder = @d",
         job_config=bigquery.QueryJobConfig(
-            query_parameters=[bigquery.ScalarQueryParameter("f", "STRING", source_file)]
+            query_parameters=[
+                bigquery.ScalarQueryParameter("f", "STRING", source_file),
+                bigquery.ScalarQueryParameter("d", "STRING", drive_folder),
+            ]
         ),
     ).result())
     if result and result[0].ts:
@@ -559,7 +626,7 @@ def sync_client(drive_svc, bq_client: bigquery.Client,
 
     for f in files:
         drive_mod = datetime.fromisoformat(f["modified_time"].replace("Z", "+00:00"))
-        last_sync = get_last_sync(bq_client, f["file_name"])
+        last_sync = get_last_sync(bq_client, f["file_name"], f["drive_path"])
 
         if not force and last_sync and last_sync >= drive_mod:
             log.info(f"    SKIP {f['file_name']} (last synced {last_sync.date()}, Drive mod {drive_mod.date()})")

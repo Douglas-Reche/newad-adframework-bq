@@ -2,13 +2,34 @@
 Reads Cora Google Sheet via HTTP Sheets API (using gcloud user token)
 and uploads all 13 tabs to gold_cora in BigQuery.
 """
-import subprocess, re, io, json
+import os, re, io, json
 import requests
 import pandas as pd
 from google.cloud import bigquery
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 
-# Get token from gcloud
-token = subprocess.check_output(["cmd","/c","gcloud auth print-access-token"], text=True).strip()
+OAUTH_CLIENT_FILE = r"C:\Temp\io-plan-oauth-client.json"
+OAUTH_TOKEN_FILE  = r"C:\Temp\io-plan-token.json"
+SCOPES = [
+    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/cloud-platform",
+]
+
+creds = None
+if os.path.exists(OAUTH_TOKEN_FILE):
+    creds = Credentials.from_authorized_user_file(OAUTH_TOKEN_FILE, SCOPES)
+if not creds or not creds.valid:
+    if creds and creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+    else:
+        from google_auth_oauthlib.flow import InstalledAppFlow
+        flow = InstalledAppFlow.from_client_secrets_file(OAUTH_CLIENT_FILE, SCOPES)
+        creds = flow.run_local_server(port=0)
+    with open(OAUTH_TOKEN_FILE, "w") as f:
+        f.write(creds.to_json())
+
+token = creds.token
 HEADERS = {"Authorization": f"Bearer {token}"}
 SPREADSHEET_ID = "1Y94CavDyMXnIy9sLyqcTP8yKdANiQ1j1RzZBzHi7YHk"
 
