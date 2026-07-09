@@ -52,16 +52,22 @@ extracted AS (
       WHEN LOWER(strategy_name) LIKE '%siprocal%' THEN 'siprocal'
       WHEN LOWER(strategy_name) LIKE '%mgid%' THEN 'mgid'
       ELSE platform
-    END AS platform_fixed
+    END AS platform_fixed,
+    -- Registros históricos de TecPar pertencem a Amigo (sub-cliente).
+    -- Planos novos já entrarão diretamente como amigo_db1c2f0c.
+    CASE
+      WHEN client_id = 'tecpar_edfcc744' THEN 'amigo_db1c2f0c'
+      ELSE client_id
+    END AS client_id_resolved
   FROM deduped
 )
 SELECT
   TO_HEX(MD5(CONCAT(
-    COALESCE(e.client_id, ''), '|',
+    COALESCE(e.client_id_resolved, ''), '|',
     COALESCE(e.drive_folder, ''), '|',
     COALESCE(e.strategy_name, '')
   ))) AS plan_line_id,
-  e.client_id,
+  e.client_id_resolved AS client_id,
   e.drive_folder,
   e.source_file,
   e.spend_type,
