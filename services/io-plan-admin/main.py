@@ -136,10 +136,16 @@ def index(token: Optional[str] = Query(default=None)):
 
 @app.post("/sync")
 async def sync(request: Request):
-    form = await request.form()
-    token = form.get("token") or request.query_params.get("token")
-    client_filter = form.get("client") or request.query_params.get("client")
-    force = (form.get("force") or request.query_params.get("force", "")).lower() == "true"
+    content_type = request.headers.get("content-type", "")
+    if "form" in content_type:
+        form = await request.form()
+        token = form.get("token") or request.query_params.get("token")
+        client_filter = form.get("client") or request.query_params.get("client")
+        force = (form.get("force") or request.query_params.get("force", "")).lower() == "true"
+    else:
+        token = request.query_params.get("token")
+        client_filter = request.query_params.get("client")
+        force = request.query_params.get("force", "").lower() == "true"
 
     _check_token(token)
 
