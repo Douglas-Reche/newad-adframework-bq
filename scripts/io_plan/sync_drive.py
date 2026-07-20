@@ -52,8 +52,8 @@ PERSONAL_NAME_TOKENS = {"RAFA", "GESSIANE"}
 
 # Drive folder name → canonical client_id
 # Mapeamento auditado em 2026-06-14 cruzando pastas do Drive root com core.dim_client.
-# TEC PAR aponta para tecpar_edfcc744; Amigo (amigo_db1c2f0c) é sub-cliente e vive
-# dentro da pasta TEC PAR — não tem pasta própria no Drive root.
+# TEC PAR aponta para amigo_db1c2f0c (reestruturação 2026-07); todos os planos
+# nessa pasta são do Amigo Cuiabá. tecpar_edfcc744 não tem planos próprios no Drive.
 # DÚVIDA ABERTA: LABTOLAB PARDINI — pode ser pardini_60395024, lab2lab_efb1cb34 ou ambos.
 # PENDENTE: PHISALIA — cliente ainda não cadastrado em dim_client.
 CLIENT_MAP = {
@@ -70,7 +70,7 @@ CLIENT_MAP = {
     "OCUPACIONAL":    "ocupacional_98c851f5",
     "PATIO MEDEIROS": "patio_medeiros_874a0358",
     "STOCCO":         "stocco_b712c66e",
-    "TEC PAR":        "tecpar_edfcc744",
+    "TEC PAR":        "amigo_db1c2f0c",
 }
 
 # Strategy name keywords → platform (checked via substring, case-insensitive, no accents)
