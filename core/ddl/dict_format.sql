@@ -12,7 +12,7 @@
 --
 -- goal_type válidos e suas fórmulas de investimento_realizado (gold.fact_pacing):
 --   CPM → (impressions × unit_price) / 1000
---   CPC → (clicks × unit_price) / 1000
+--   CPC → clicks × unit_price (sem dividir por 1000 — confirmado pelo usuário 2026-07-08, ver gold/ddl/fact_pacing.sql)
 --   CPI → NULL (sem fórmula confirmada — AppInstall)
 --
 -- ATENÇÃO: CREATE OR REPLACE TABLE aqui recria a tabela do zero.

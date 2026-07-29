@@ -117,7 +117,6 @@ Criadas 2026-06-11. Endpoint `/api/analytics/custom-report` — schema flexível
 
 | Tabela | DDL | Notas |
 |--------|-----|-------|
-| `siprocal_raw_sheet` | `raw/ddl/siprocal_raw_sheet.sql` | Snapshot da planilha Siprocal |
 | `io_plan_drive_snapshot` | `raw/ddl/io_plan_drive_snapshot.sql` | IO Plans do Google Drive (grain: estratégia × flight) |
 
 ---

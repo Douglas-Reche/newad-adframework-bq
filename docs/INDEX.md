@@ -75,14 +75,14 @@
 | `mediasmart_stg_design.md` | ❌ LEGADO | 2026-06-12 | Design STG MediaSmart do schema antigo — **tabelas dropadas** |
 | `mgid_stg_design.md` | ❌ LEGADO | 2026-06-14 | Design STG MGID do schema antigo — **tabelas dropadas** |
 | `siprocal_stg_design.md` | ❌ LEGADO | 2026-06-14 | Design STG Siprocal do schema antigo — **tabelas dropadas** |
-| `gold_layer_build_plan.md` | ❌ LEGADO | 2026-06-16 | Gold layer do schema antigo — **tabelas dropadas** |
-| `column_lineage_map.md` | ❌ LEGADO | 2026-06-11 | Linhagem de colunas do schema antigo — não reflete o novo design |
-| `id_attribution_map.md` | ❌ LEGADO | 2026-06-15 | Mapa de atribuição de IDs do schema antigo |
-| `pipeline_complete_map.md` | ❌ LEGADO | 2026-06-03 | Mapa completo do pipeline antigo |
+| `_legacy/gold_layer_build_plan.md` | ❌ LEGADO | 2026-06-16 | Gold layer do schema antigo — **tabelas dropadas**. Movido para `_legacy/` em 2026-07-29 (auditoria de consistência) |
+| `_legacy/column_lineage_map.md` | ❌ LEGADO | 2026-06-11 | Linhagem de colunas do schema antigo — não reflete o novo design. Movido para `_legacy/` em 2026-07-29 |
+| `_legacy/id_attribution_map.md` | ❌ LEGADO | 2026-06-15 | Mapa de atribuição de IDs do schema antigo. Movido para `_legacy/` em 2026-07-29 |
+| `_legacy/pipeline_complete_map.md` | ❌ LEGADO | 2026-06-03 | Mapa completo do pipeline antigo — inclui `raw.siprocal_raw_sheet`, tabela que **já não existe** no BigQuery. Movido para `_legacy/` em 2026-07-29 |
 | `client_registry.md` | ❌ LEGADO | 2026-05-12 | IDs no formato `nwd_` (antigo) — fonte de verdade atual: `core.dim_client` e `core_config_backup.md` |
 | `adframework_erd_mermaid.md` | ❌ LEGADO | 2026-05-13 | ERD do schema antigo |
-| `id_quality_issues.md` | ❌ LEGADO | 2026-05-12 | Análise de IDs do schema antigo |
-| `id_dependency_map.md` | ❌ LEGADO | 2026-05-13 | Mapa de dependências do schema antigo |
+| `_legacy/id_quality_issues.md` | ❌ LEGADO | 2026-05-12 | Análise de IDs do schema antigo. Movido para `_legacy/` em 2026-07-29 |
+| `_legacy/id_dependency_map.md` | ❌ LEGADO | 2026-05-13 | Mapa de dependências do schema antigo. Movido para `_legacy/` em 2026-07-29 |
 | `erd_attribution_chain.md` | ❌ LEGADO | 2026-05-13 | Attribution chain do schema antigo (usa views do Shiro) |
 | `erd_flow_overview.md` | ❌ LEGADO | 2026-05-13 | Flow overview do schema antigo |
 | `powerbi_plan.md` | ❌ LEGADO | 2026-04-29 | Plano Power BI com nomes de tabelas do schema antigo |

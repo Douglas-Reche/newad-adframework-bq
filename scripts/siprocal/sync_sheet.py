@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """
-Siprocal Sheet Sync
+LEGADO — NÃO EXECUTAR.
+-----------------------
+Descontinuado em 2026-06-14 quando o SiproCalConnector entrou em produção
+(orchestrator.py, repo adframework/adframework_python). Ver docs/known_issues.md
+issue C1. A tabela de destino original (raw.siprocal_raw_sheet) já não existe
+no BigQuery — este script não tem mais para onde escrever.
+
+Siprocal Sheet Sync (histórico)
 -------------------
 Reads raw_daily tab from the Siprocal Google Sheet and appends only
 new days (> current max in BQ) to raw.siprocal_delivery.
