@@ -16,7 +16,14 @@
 -- dado real, gerando #DIV/0! em linhas sem nenhum outro valor.
 --
 -- Grain: 1 linha por (data, campanha, criativo) na planilha
--- Ingestao: WRITE_TRUNCATE diario (replace total -- mesma planilha sempre)
+-- Ingestao: incremental (WRITE_APPEND, so chaves novas) desde 2026-08-03.
+-- Antes disso era WRITE_TRUNCATE diario (replace total). A mudanca manteve a
+-- resiliencia a correcoes retroativas do Siprocal na planilha: toda run ainda
+-- compara a planilha inteira contra o que ja esta aqui (custo irrelevante,
+-- tabela pequena); uma chave existente com valor diferente NUNCA e sobrescrita
+-- automaticamente -- vai para raw.sp_delivery_pending_corrections para revisao
+-- manual. Ver adframework_python/src/orchestrator.py:_run_siprocal_daily e
+-- src/connectors/siprocal.py:diff_rows().
 
 CREATE OR REPLACE TABLE `adframework.raw.sp_delivery`
 (
