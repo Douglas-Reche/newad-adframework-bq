@@ -6,6 +6,59 @@
 
 ---
 
+## 2026-08-04 — Sistema de documentação em 3 saltos + farol permanente no hub
+
+**Autor:** Douglas Reche
+
+### Resumo
+
+Duas frentes: (1) formalização do fluxo de documentação Git+Notion (o próprio sistema
+que gera este changelog), (2) farol de status permanente na tela principal do hub.
+Narrativa completa em Notion — tasks "Sistema de Documentação em Duas Camadas (Git +
+Notion)" e "Hub de Gerenciamento BigQuery (douglas-data-hub)".
+
+### O que foi feito
+
+1. **`core/OWNERSHIP.yaml` criado do zero** — fonte única de "essa tabela/view do
+   dataset `core` é do pipeline / é do Admin UI do Shiro". 18 objetos (10 pipeline + 8
+   Shiro), auditado ao vivo contra `core.INFORMATION_SCHEMA.TABLES`. `CLAUDE.md`,
+   `backend.md` e `hub-frontend.md` agora apontam pra lá em vez de manter cópia própria
+   da lista.
+2. **`CLAUDE.md`** — fluxo de documentação em 3 saltos (agente especializado →
+   orquestrador → agent `docs` → confirmação de volta; nenhum agente especializado chama
+   `docs` direto), critério de pré-registro no Notion, critério MÃE vs. task única,
+   cadência de checkpoint em MÃE longa, passo 0 do orquestrador (checar Notion por
+   MÃEs/tasks abertas antes de começar), correção de auto-contradição na tabela de
+   Regras Absolutas.
+3. **`docs/_pending_purge.md` criado (vazio)** — processo de expurgo semanal: arquivo de
+   "análise pontual" nunca é deletado na hora, é flagueado e só removido após revisão em
+   lote confirmada pelo usuário no fim da semana.
+4. **Farol permanente no hub** (`hub/app.py`, ~linhas 537-566) — 3 colunas visíveis sem
+   clicar em nenhuma aba: saúde do pipeline (pior status entre camadas), contador de
+   Propostas de Mudança pendentes (`core.change_proposals WHERE status='pending'`),
+   custo do mês corrente. Sem resumo de Notion na tela (decisão do Douglas). Testado
+   localmente (HTTP 200 + `py_compile`), sem redeploy.
+
+### Arquivos alterados
+
+- `core/OWNERSHIP.yaml` (novo), `docs/_pending_purge.md` (novo)
+- `CLAUDE.md`, `.claude/agents/backend.md`, `.claude/agents/hub-frontend.md`, `.claude/agents/docs.md`
+- `hub/app.py`, `hub/README.md`
+
+### Pendências
+
+Nenhum commit feito ainda — aguardando confirmação do usuário. Achado paralelo (não
+aplicado, fora deste repo): lógica de retry/rate-limit duplicada entre os conectores
+MediaSmart (8 ocorrências de `RATE_LIMIT_DELAY`/`MAX_RETRIES`/`time.sleep`) e MGID (13
+ocorrências) em `adframework_python/src/connectors/` — repositório `adframework`
+(monorepo aat_console), não `newad-adframework-bq`. Cada conector reimplementa o próprio
+loop de retry em vez de compartilhar via `adframework_python/src/base.py`. Candidato a
+refatoração futura, não urgente, não aplicado — registrado aqui só como nota cruzada
+porque foi levantado na mesma sessão; não entra em `docs/known_issues.md` (que é
+escopado à pipeline BigQuery deste repo).
+
+---
+
 ## 2026-07-01 — Incidente encerrado: RAW MS restaurada, STG/Gold 100% operacional (todas as 3 plataformas)
 
 **Autor:** Douglas Reche

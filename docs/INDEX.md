@@ -18,6 +18,8 @@
 |---|---|---|---|
 | `../CHANGELOG.md` | ✅ ATUAL | 2026-06-18 | Histórico completo de decisões e mudanças — sempre atualizar |
 | `INDEX.md` | ✅ ATUAL | 2026-06-18 | Este arquivo |
+| `../core/OWNERSHIP.yaml` | ✅ ATUAL | 2026-08-03 | Fonte única de ownership dos objetos do dataset `core` (pipeline / Admin UI do Shiro / legado). 18 objetos, auditado ao vivo contra `core.INFORMATION_SCHEMA.TABLES`. `CLAUDE.md`, `.claude/agents/backend.md` e `.claude/agents/hub-frontend.md` referenciam este arquivo em vez de manter cópia própria da lista |
+| `_pending_purge.md` | ✅ ATUAL | 2026-08-03 | Fila central de arquivos flagueados como "análise pontual" aguardando expurgo semanal em lote — vazio no momento da criação |
 | `raw_layer_design.md` | ✅ ATUAL | 2026-06-18 | **PONTO DE PARTIDA DO REBUILD** — design oficial da nova RAW layer: T1–T7, campos, grains, core.dict_format, tamanhos de imagem, IO Plan tratamentos |
 | `session_handoff_2026-06-18.md` | ✅ ATUAL | 2026-06-18 | **Handoff de sessão** — estado atual, próximos passos T1 MGID+Siprocal, regras de orquestração, pendências |
 | `../raw/ddl/ms_advertisers.sql` | ✅ ATUAL | 2026-06-18 | DDL T1 MS — `raw.ms_advertisers` — 8 campos, WRITE_TRUNCATE |

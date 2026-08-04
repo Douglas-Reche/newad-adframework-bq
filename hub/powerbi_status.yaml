@@ -1,0 +1,16 @@
+# Status manual dos Power BI em desenvolvimento (nao conecta na API do Power BI, e so um tracker).
+# Edite este arquivo direto quando o status de um dashboard mudar.
+# status: planejado | em_build | revisao | publicado
+
+dashboards:
+  - nome: "Power BI Cora"
+    owner: "Douglas"
+    status: em_build
+    ultima_atualizacao: "2026-07-10"
+    notas: "Modelo atual e MVP com Excel; migrando para gold layer BQ"
+
+  - nome: "Power BI TecPar"
+    owner: "Douglas"
+    status: em_build
+    ultima_atualizacao: "2026-07-09"
+    notas: "Reestruturacao TecPar/Amigo pausada; delivery+IO Plan remapeados"

@@ -1,0 +1,7 @@
+streamlit>=1.38
+google-cloud-bigquery>=3.25
+google-auth>=2.34
+pyyaml>=6.0
+pandas>=2.2
+db-dtypes>=1.2
+openpyxl>=3.1

@@ -1,0 +1,83 @@
+# core/OWNERSHIP.yaml
+# Fonte única de "essa tabela/view é do pipeline do Douglas / é do Admin UI do Shiro /
+# é legado desabilitado". backend.md, hub-frontend.md e o CLAUDE.md raiz referenciam
+# este arquivo em vez de manter cópia própria da lista — nunca duplicar aqui.
+#
+# Auditado ao vivo contra o BigQuery em 2026-08-03 (dataset core, INFORMATION_SCHEMA.TABLES).
+# owner: "pipeline" | "shiro_admin_ui" | "legacy_disabled"
+
+objects:
+  # --- Pipeline do Douglas ---
+  - name: dict_format
+    dataset: core
+    owner: pipeline
+    notes: "Regra global (platform,formato) -> goal_type"
+  - name: campaign_format_map
+    dataset: core
+    owner: pipeline
+  - name: dim_client
+    dataset: core
+    owner: pipeline
+  - name: io_plan_manual
+    dataset: core
+    owner: pipeline
+  - name: platform_client_links
+    dataset: core
+    owner: pipeline
+  - name: advertiser_platform_rules
+    dataset: core
+    owner: pipeline
+    notes: "Regra de remapeamento de plataforma por anunciante (ex: Cora Push -> siprocal)"
+  - name: historical_overrides_delivery
+    dataset: core
+    owner: pipeline
+    notes: "Override historico Cora, escopo fechado Jan-Jul/2026 -- ver hub/README.md"
+  - name: change_proposals
+    dataset: core
+    owner: pipeline
+    notes: "Fila generica de propostas de mudanca (detectar->propor->aprovar->aplicar). Primeira consumidora: Siprocal."
+  - name: vw_delivery_unattributed
+    dataset: core
+    owner: pipeline
+    type: view
+  - name: vw_platform_campaign_links
+    dataset: core
+    owner: pipeline
+    type: view
+
+  # --- Admin UI do Shiro -- NUNCA referenciar no pipeline gold ---
+  - name: io_manager_v2
+    dataset: core
+    owner: shiro_admin_ui
+  - name: io_line_bindings_v2
+    dataset: core
+    owner: shiro_admin_ui
+  - name: io_binding_registry_v4
+    dataset: core
+    owner: shiro_admin_ui
+    type: view
+  - name: io_line_bindings_enriched_v2
+    dataset: core
+    owner: shiro_admin_ui
+    type: view
+  - name: io_manager_enriched_v2
+    dataset: core
+    owner: shiro_admin_ui
+    type: view
+  - name: io_registry_v4
+    dataset: core
+    owner: shiro_admin_ui
+    type: view
+  - name: proposals
+    dataset: core
+    owner: shiro_admin_ui
+    notes: "NAO confundir com core.change_proposals (pipeline, nome parecido de proposito diferente)"
+  - name: proposal_lines
+    dataset: core
+    owner: shiro_admin_ui
+
+# Como manter atualizado:
+# - Antes de assumir que essa lista está completa, rode:
+#   SELECT table_name, table_type FROM core.INFORMATION_SCHEMA.TABLES ORDER BY table_name
+#   e confira se apareceu algo novo não listado aqui.
+# - Objeto novo em `core` sem dono óbvio -> perguntar ao usuário antes de classificar.

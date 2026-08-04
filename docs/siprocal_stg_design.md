@@ -6,6 +6,13 @@
 > Tabelas, views, schemas e colunas aqui descritos **foram dropados e não existem mais no BigQuery**.
 > Mantenha para consulta histórica — **não use como referência para desenvolvimento novo.**
 > Plano atual: [bq_restructuring_plan.md](bq_restructuring_plan.md) · [CHANGELOG.md](../CHANGELOG.md)
+>
+> **Nota 2026-08-03:** apesar do aviso acima, boa parte do conteúdo deste documento
+> (conector, orquestração, decisões de design) **ainda reflete a arquitetura real**,
+> exceto o nome da tabela: `raw.siprocal_delivery`/`stg.siprocal_delivery` descritos
+> aqui **hoje se chamam `raw.sp_delivery`/`stg.sp_delivery`** (arquivos
+> `raw/ddl/sp_delivery.sql` e `stg/ddl/sp_delivery.sql`). Ver seção **"Atualização
+> 2026-08-03 — ingestão incremental"** abaixo para o estado atual da RAW.
 ---
 
 > Criado em: 2026-06-14 | Última atualização: 2026-06-14
@@ -460,11 +467,11 @@ O advertiser `NEWAD_AMIGOTECPAR_BR_*` extrai a chave `AMIGOTECPAR`, que mapeia p
 
 A Google Sheet da Siprocal tem apenas impressions e clicks. Custo/revenue/ROI não estão disponíveis. Se a Siprocal disponibilizar esses dados no futuro, requer nova coluna na sheet + update do schema RAW + STG.
 
-### L4 — WRITE_TRUNCATE = histórico limitado ao que está na sheet
+### L4 — ✅ RESOLVIDO 2026-08-03 — WRITE_TRUNCATE = histórico limitado ao que está na sheet
 
-A sheet `raw_daily` contém atualmente 2025-08-22 → 2026-06-11. Se a Siprocal remover linhas antigas da sheet, esses dados serão perdidos do BQ no próximo run. Não há mecanismo de backup incremental.
+~~A sheet `raw_daily` contém atualmente 2025-08-22 → 2026-06-11. Se a Siprocal remover linhas antigas da sheet, esses dados serão perdidos do BQ no próximo run. Não há mecanismo de backup incremental.~~
 
-**Mitigação possível:** Mudar para `WRITE_APPEND` + dedup por grain no STG — mas requer confirmação de que a sheet não vai repetir linhas com valores alterados (o que tornaria o dedup ambíguo).
+Resolvido exatamente pela mitigação já prevista aqui (`WRITE_APPEND` + dedup), com um refinamento: em vez de dedup silencioso, qualquer linha já existente que mudou de valor vira uma **proposta de aprovação manual** em `core.change_proposals`, nunca é sobrescrita sozinha. Ver seção "Atualização 2026-08-03" abaixo.
 
 ### L5 — `creative_type` sem dado na fonte atual
 
@@ -519,3 +526,58 @@ O "PI Externo" (coluna A da sheet) não é único por cliente: o valor `38` apar
    - `raw.siprocal_sheet_ext` — C2 em `known_issues.md`
 
 3. **Monitorar sheet** — a Siprocal atualiza manualmente. Se pararem, o BQ fica desatualizado sem alarme. Considerar alerta de data (`MAX(day) < hoje - 3 dias`).
+
+---
+
+## Atualização 2026-08-03 — ingestão incremental + fila de propostas de mudança
+
+**Motivação:** o L4 acima (WRITE_TRUNCATE sem histórico) foi resolvido, mas o motivo não
+foi só volume — foi principalmente **rastreabilidade**. A Siprocal às vezes corrige um
+número já reportado; com WRITE_TRUNCATE isso acontecia silenciosamente (o run seguinte
+já vinha com o valor novo, sem registro de que algo mudou). A correção abaixo resolve
+os dois problemas ao mesmo tempo.
+
+### O que mudou
+
+- **`raw.sp_delivery` (nome atual de `raw.siprocal_delivery`) virou append-only estrito.**
+  Nunca mais `DELETE`/`UPDATE`. O job (`orchestrator._run_siprocal_daily`, ainda no mesmo
+  arquivo) agora:
+  1. Lê a planilha inteira (`SiproCalConnector.fetch_raw_rows()` — sem mudança).
+  2. Lê o que já existe em `raw.sp_delivery`, mas deduplicado por chave — só a versão mais
+     recente por `(coluna_1, data, campanha, criativo)`, via
+     `BigQueryService.fetch_rows(dedupe_by=..., order_by="raw_ingested_at")` (novo método).
+  3. Classifica cada linha da planilha em `new` / `changed` / `ambiguous_keys`
+     (`SiproCalConnector.diff_rows()`, novo, puro/sem I/O).
+  4. `new` → `INSERT` direto (`WRITE_APPEND`) em `raw.sp_delivery`.
+  5. `changed`/`ambiguous_keys` → **nunca tocam `raw.sp_delivery`**. Viram propostas em
+     `core.change_proposals` (tabela nova, genérica — ver `core/ddl/change_proposals.sql`),
+     com dedup contra propostas já `pending`/`rejected`/`approved`/`applied` para não
+     recriar a mesma proposta toda run.
+- **`stg.sp_delivery` (nome atual de `stg.siprocal_delivery`) ganhou `QUALIFY ROW_NUMBER()
+  OVER (PARTITION BY ... ORDER BY raw_ingested_at DESC) = 1`** — resolve a versão vigente
+  por chave antes de qualquer parse. Sem isso, uma chave corrigida (2 linhas físicas em
+  `raw`) apareceria duplicada na STG.
+- **Aprovação/rejeição de propostas é feita no hub** (`douglas-data-hub`, aba "Propostas
+  de Mudança"), não no backend. Aprovar = `INSERT` da linha corrigida em `raw.sp_delivery`
+  (nunca DELETE/UPDATE, preservando o histórico nativo) + marca a proposta como `applied`.
+  Rejeitar = só marca `status='rejected'`, `raw.sp_delivery` fica intocado.
+
+### Por que `core.change_proposals` e não `raw.sp_delivery_pending_corrections`
+
+A tabela foi desenhada genérica de propósito (dataset `core`, não `raw` — é governança/
+workflow, não dado bruto). Siprocal é a primeira consumidora (`source='siprocal_diff'`),
+mas o desenho serve qualquer fonte futura que precise do mesmo padrão "detectou
+divergência → pendente de aprovação → só aplica depois de aprovado" (candidato natural:
+fila de regras de negócio por cliente, ainda não construída).
+
+### Arquivos afetados por esta mudança
+
+- `adframework_python/src/bigquery.py` — `fetch_rows()` (novo).
+- `adframework_python/src/connectors/siprocal.py` — `diff_rows()` (novo, função de módulo).
+- `adframework_python/src/orchestrator.py` — `_run_siprocal_daily` + `_propose_siprocal_changes` (novo).
+- `raw/ddl/sp_delivery.sql` — comentário atualizado (schema em si não mudou).
+- `stg/ddl/sp_delivery.sql` — `QUALIFY ROW_NUMBER()` adicionado.
+- `core/ddl/change_proposals.sql` — novo.
+- `hub/app.py` — aba "Propostas de Mudança" (implementada em sessão separada).
+
+Commits: `6c397d1` (monorepo `adframework_python`), `1c64192` (`newad-adframework-bq`).

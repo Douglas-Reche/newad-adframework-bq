@@ -1,0 +1,59 @@
+# Mapa dos jobs de ingestão diária (ETL rodando no Cloud Run do Shiro: adframework-etl)
+# Este hub NAO dispara nada aqui -- so cruza o status Firestore/manual com o freshness real da tabela BQ.
+# Atualizar manualmente quando o mapa de jobs mudar (ver memoria project_etl_daily_jobs).
+
+jobs:
+  - doc_id: mediasmart_daily_daily
+    label: "MediaSmart - Delivery diario"
+    table: raw.ms_delivery
+    schedule: diario
+
+  - doc_id: mediasmart_delivery_by_geo
+    label: "MediaSmart - Delivery por geo"
+    table: raw.ms_delivery_by_geo
+    schedule: diario
+
+  - doc_id: mediasmart_delivery_by_device
+    label: "MediaSmart - Delivery por device"
+    table: raw.ms_delivery_by_device
+    schedule: diario
+
+  - doc_id: mediasmart_delivery_by_hour
+    label: "MediaSmart - Delivery por hora"
+    table: raw.ms_delivery_by_hour
+    schedule: diario
+
+  - doc_id: mgid_daily_daily
+    label: "MGID - Delivery diario"
+    table: raw.mg_delivery
+    schedule: diario
+
+  - doc_id: mgid_stats_by_geo
+    label: "MGID - Delivery por geo"
+    table: raw.mg_delivery_by_geo
+    schedule: diario
+
+  - doc_id: mgid_stats_by_device
+    label: "MGID - Delivery por device"
+    table: raw.mg_delivery_by_device
+    schedule: diario
+
+  - doc_id: mgid_stats_by_hour
+    label: "MGID - Delivery por hora"
+    table: raw.mg_delivery_by_hour
+    schedule: diario
+
+  - doc_id: siprocal_daily_external
+    label: "Siprocal - Delivery (WRITE_TRUNCATE)"
+    table: raw.sp_delivery
+    schedule: diario
+
+  - doc_id: mgid_firstlevel_campaigns
+    label: "MGID - Campanhas (periodico)"
+    table: raw.mg_campaigns
+    schedule: periodico
+
+  - doc_id: mgid_firstlevel_creatives
+    label: "MGID - Criativos/teasers (periodico)"
+    table: raw.mg_teasers
+    schedule: periodico
