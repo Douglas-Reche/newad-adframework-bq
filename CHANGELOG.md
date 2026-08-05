@@ -6,6 +6,104 @@
 
 ---
 
+## 2026-08-04 — SCD2 (versionamento) — passo 3 de 5: JOINs versionados via funções `core.resolve_*` + `fact_io_plan` ao vivo
+
+**Autor:** Douglas Reche (via backend)
+
+### Resumo
+
+Continuação do checkpoint anterior (schema + backfill, passos 1-2). Este passo troca o
+JOIN direto com o estado atual das tabelas de regra por chamadas a 3 funções SQL novas
+que resolvem a regra vigente na data do dado (`as_of_date`), e aplica isso ao vivo em
+`gold.fact_io_plan`. Decisão registrada como ADR — ver `docs/adr/0001-versionamento-scd2-regras-negocio-via-funcoes-resolve.md`.
+
+### O que foi feito
+
+- 3 funções SQL novas em `core`: `core.resolve_dict_format(platform, formato,
+  as_of_date)`, `core.resolve_dict_format_fallback(formato, as_of_date)`,
+  `core.resolve_platform_rule(client_id, platform_from, formato, as_of_date)`.
+- `gold/ddl/fact_io_plan.sql` reescrito para usar `core.resolve_platform_rule` em vez de
+  JOIN direto com `core.advertiser_platform_rules`.
+- Swap feito ao vivo na view real (não em cópia): validado com `EXCEPT DISTINCT` nos
+  dois sentidos + agregados (COUNT, SUM spend/impressions/clicks, COUNTIF goal_type
+  NULL) idênticos à baseline, 2 execuções `--nouse_cache`, tolerância de 6 casas
+  decimais (ruído de ponto flutuante do BigQuery). View de teste temporária
+  (`gold.fact_io_plan_v2_test`) deletada após confirmação.
+
+### Achado — limitação conhecida, não corrigida agora
+
+`stg.ms_campaigns`, `stg.mg_campaigns`, `stg.sp_campaigns` resolvem `goal_type` via
+`core.dict_format` em grain de campanha, sem coluna de data utilizável para o filtro de
+versionamento. Registrado em `docs/known_issues.md` (V2).
+
+### Ainda não feito
+
+Passos 4-5 não iniciados.
+
+### Arquivos afetados
+
+`core/ddl/resolve_dict_format.sql`, `core/ddl/resolve_dict_format_fallback.sql`,
+`core/ddl/resolve_platform_rule.sql`, `gold/ddl/fact_io_plan.sql`,
+`docs/adr/0001-versionamento-scd2-regras-negocio-via-funcoes-resolve.md`. Não commitado
+nesta sessão de documentação — commit pendente do lado backend.
+
+---
+
+## 2026-08-04 — SCD2 (versionamento) em `core.dict_format`, `core.campaign_format_map`, `core.advertiser_platform_rules` — passos 1-2 de 5 (schema + backfill)
+
+**Autor:** Douglas Reche (via backend)
+
+### Resumo
+
+Checkpoint intermediário da sub-task "Analisar resiliência e rastreabilidade da camada
+Gold" (Notion). Objetivo final: as 3 tabelas de regra de negócio do `core` (que hoje só
+guardam o estado atual da regra) passam a guardar histórico versionado, para que
+reprocessamentos retroativos usem a regra vigente na época do dado, não a regra atual.
+Narrativa completa e passo a passo em Notion.
+
+### O que foi feito (passos 1-2 de 5)
+
+1. **Schema:** `effective_from DATE NOT NULL`, `effective_to DATE` adicionados via
+   `ALTER TABLE` (não destrutivo, tabelas não recriadas) em `core.dict_format` (8
+   linhas), `core.campaign_format_map` (18 linhas), `core.advertiser_platform_rules` (1
+   linha). Confirmado ao vivo via `INFORMATION_SCHEMA.COLUMNS`.
+2. **Backfill:** `effective_from = DATE '2025-01-01'` uniforme nas 3 tabelas — data
+   escolhida por preceder qualquer dado real do pipeline (`raw.ms_delivery` começa
+   2025-01-29). Decisão deliberada de **não** usar `confirmed_at`/`created_at` por linha:
+   em `advertiser_platform_rules`, a regra Cora/Push cobre `stg.io_plan` desde
+   `flight_start=2025-04-01` mas só foi confirmada/documentada em 2026-07-08 — usar essa
+   data como `effective_from` faria a regra "sumir" retroativamente para Abr/2025–Jul/2026
+   assim que o passo 3 (views filtrando por `effective_from`) entrar em produção.
+   Sanidade confirmada em duplicidade (backend + verificação independente via `bq query`):
+   0 linhas com `effective_from IS NULL`, 0 linhas com `effective_from != '2025-01-01'`
+   nas 3 tabelas.
+3. **Procedimento operacional novo, documentado inline nos 3 `.sql`:** trocar uma regra
+   passa a ser `UPDATE effective_to` da linha antiga (fecha a validade) + `INSERT` de
+   linha nova com `effective_from` = hoje — nunca mais `UPDATE` do valor de uma linha
+   existente. O bloco de `DELETE+INSERT` total em `advertiser_platform_rules.sql` foi
+   comentado (não apagado), com nota explicando por que não deve ser re-executado como
+   estava (falta a coluna nova no INSERT, e destruiria o backfill aplicado via `ALTER
+   TABLE`/`UPDATE`).
+4. **Achado paralelo corrigido:** `core/ddl/dict_format.sql` estava com drift de schema —
+   colunas `notes`, `confirmed_by`, `created_at` já existiam ao vivo no BQ mas não
+   estavam no arquivo commitado (mesmo padrão de "shadow object" já visto em
+   `campaign_format_map`, ver `docs/audit_pipeline_consistency_2026-07-29.md` §8.4).
+   Sincronizado como parte desta mudança. Ver `docs/known_issues.md` (entrada nova).
+
+### Ainda não feito
+
+Passo 3 (atualizar os JOINs nas views STG/gold pra filtrar por
+`effective_from`/`effective_to` em vez de ler a tabela inteira) — zero mudança de
+comportamento observável até lá. Passos 4-5 não iniciados.
+
+### Arquivos afetados
+
+`core/ddl/dict_format.sql`, `core/ddl/campaign_format_map.sql`,
+`core/ddl/advertiser_platform_rules.sql`. Não commitado nesta sessão de documentação —
+commit pendente do lado backend.
+
+---
+
 ## 2026-08-04 — Sistema de documentação em 3 saltos + farol permanente no hub
 
 **Autor:** Douglas Reche

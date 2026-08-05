@@ -222,11 +222,74 @@ Se não existir task pra aquele trabalho ainda, crie uma antes de registrar a en
 
 **4a e 4b não são dois sistemas — são a mesma database vista de dois jeitos.** A "task"
 de 4a (onde mora a narrativa/decisão) **é uma linha da database de Tarefas de 4b** (onde
-mora o Kanban/Timeline) — mesmo objeto Notion, não dois mecanismos paralelos. A narrativa
-fica escrita no **corpo da página daquela linha**; o Kanban/Timeline de 4b é só a
-visualização dela. Quando for registrar uma decisão (4a), você está escrevendo dentro de
-uma task que também aparece no board/timeline (4b) — nunca crie uma "página de decisão"
-solta fora da database de Tarefas.
+mora o Kanban/Timeline) — mesmo objeto Notion, não dois mecanismos paralelos. Quando for
+registrar uma decisão (4a), você está escrevendo dentro de uma task que também aparece no
+board/timeline (4b) — nunca crie uma "página de decisão" solta fora da database de
+Tarefas.
+
+**`Task Description` (propriedade) vs. corpo da página — não confundir, erro já cometido
+uma vez (2026-08-03, corrigido em 2026-08-04):**
+- `Task Description` é **só um resumo curto, 1-2 linhas, estático** — o que a task é, não
+  o histórico do que aconteceu nela. Não escreva narrativa, achado de subagente, nem
+  atualização de progresso aí.
+- **Toda narrativa/atualização/achado vai no corpo da página** (`notion-update-page` com
+  `command: insert_content`, nunca `update_properties` pra isso) — organizado com headers
+  (`##`) por data ou por evento, ex: `## 2026-08-04 — Backend entregou X`. É esse corpo
+  que acumula o histórico completo da task conforme o trabalho avança (ver gatilho acima).
+  **Nunca deixe o corpo da página em branco** enquanto a task tiver qualquer atualização
+  registrada — se só existe na propriedade, não está registrado do jeito certo.
+- Teste rápido antes de escrever: se o conteúdo tem mais de 2 frases ou registra "o que
+  aconteceu" (não "o que é"), é corpo da página, não `Task Description`.
+
+**Datas — `Data Inicio` e `Due Date` são obrigatórias na criação, em duas etapas:**
+
+1. **Na criação:** sugira `Due Date` baseado em **complexidade estimada da task** (não só
+   um placeholder por prioridade — pense quanto trabalho aquilo realmente representa), e
+   defina `Prioridade` pelo quão crítico é (🚨/⚡/⚖️/🚀, critério já registrado acima).
+   Nunca deixe `Due Date` em branco — se a complexidade for genuinamente difícil de
+   estimar (ex: bloqueada por terceiro, escopo ainda incerto), sugira mesmo assim e deixe
+   explícito no corpo da página que é estimativa, não confirmada.
+2. **Ao iniciar a task de verdade** (o momento em que `Status` muda pra `In progress`,
+   não antes) — **revalida o prazo**: a estimativa da criação ainda é real, ou precisa
+   ajustar agora que o trabalho está sendo entendido de perto? Esse é o checkpoint pra
+   corrigir estimativa ruim, não silenciosamente deixar uma `Due Date` desatualizada
+   parada na task.
+
+**Erro já cometido uma vez (2026-08-04, corrigido): não espalhar prazo pelo mês por
+prioridade.** "Descoberto hoje" não significa "prazo em 3 semanas" só porque a prioridade
+é ⚖️/🚀 — um achado novo precisa ser endereçado o quanto antes, o prazo reflete quanto
+tempo o trabalho **em si** leva, não uma fila artificial por categoria de prioridade.
+
+**Estime a complexidade como se fosse feito manualmente, sem IA — não a velocidade real de
+execução com o Claude Code.** Isso é uma decisão deliberada do usuário: o Kanban/Timeline
+é mostrado pra chefes, e um prazo que reflete "minutos porque a IA fez" não representa o
+valor real do trabalho nem justifica a função — o prazo tem que refletir o esforço que um
+analista levaria fazendo à mão (pesquisa, desenho, validação, alinhamento com stakeholder),
+mesmo que na prática, com IA, saia mais rápido. Isso não é inflar prazo artificialmente —
+é estimar o trabalho pelo padrão certo de comparação. Se a complexidade for **genuinamente
+trivial mesmo manual** (ex: mudar uma constante no código), o prazo continua curto — o
+critério é "quanto isso levaria de verdade", não "sempre estender".
+
+Nunca deixar sem nenhuma data — uma tracker com `Due Date` ausente não serve pra Timeline
+nem pra visão de reunião (que é o propósito de 4b). O ponto não é acertar de primeira, é
+sempre ter uma data + revalidar no momento certo em vez de nunca revisitar.
+
+**Verificação obrigatória depois de criar/atualizar um lote de tasks — não confiar só em
+"lembrar de preencher":** rode uma query de conferência antes de considerar o lote
+terminado (caso real, 2026-08-04: 9 de 13 tasks ficaram sem `Data Inicio` mesmo com essa
+regra já escrita — a regra sozinha não pegou o erro, só a query pegou):
+
+```sql
+SELECT "Task" FROM "<data_source_id>"
+WHERE "Parent item" = '["<url da MÃE do lote>"]'
+  AND ("date:Data Inicio:start" IS NULL
+    OR "date:Due Date:start" IS NULL
+    OR "date:Data Inicio:start" > "date:Due Date:start")
+```
+
+Resultado vazio = lote limpo. Isso é parte do trabalho de criar/atualizar tasks, não uma
+etapa extra opcional — mesmo princípio de "auditar antes de assumir" que vale pro resto
+do projeto inteiro.
 
 **4a. Segundo cérebro de decisão/negócio (texto, escopo estreito)**
 
@@ -312,6 +375,17 @@ frente de trabalho genuinamente nova.
 (preencha `StakeHolder` com quem é o bloqueio) — não confundir com `Not started` (que é
 "ainda não começou", sem bloqueio externo).
 
+**`Blocked by`/`Blocking`:** quando uma task só faz sentido começar depois de **outra task
+do tracker** terminar (não uma pessoa/decisão externa — isso é `Waiting`+`StakeHolder`),
+use esses dois campos de relação — já existem na database, não são novos. Preencher dos
+dois lados (a task que bloqueia recebe `Blocking`, a bloqueada recebe `Blocked by`) — não
+confiar em sincronização automática entre os dois campos. É isso que faz a Timeline
+desenhar a seta de dependência de verdade entre as tasks.
+
+**Toda view Timeline criada precisa de `SORT BY "Data Inicio" ASC` explícito na
+`configure`** — não confiar que o Notion ordena sozinho por padrão. A view nova (não a
+antiga sem essa configuração) é a que deve ser usada/linkada dali pra frente.
+
 **`Mostrar Chefes`:** só `YES` pra marcos/entregas em nível de "o que foi construído ou
 qual decisão foi tomada" — nunca pra detalhe técnico de implementação interna, mesmo que
 importante (ex: hoje o Hub e o Sistema de Documentação foram `YES`; a reconciliação
@@ -319,6 +393,44 @@ interna do Siprocal foi `NO`, apesar de ser trabalho real e relevante).
 
 **`StakeHolder`:** marque a pessoa responsável ou o bloqueio, não só quem "participou" —
 é o que permite filtrar "o que está na mesa do Rafael" numa reunião.
+
+### Manutenção periódica — como identificar e tratar task morta
+
+Isso não é só criação, é limpeza recorrente (extraído da limpeza real de 2026-08-04, que
+achou 6 MÃEs na raiz de BigQuery Governance, várias com conteúdo morto). Rode esse
+critério quando o usuário pedir uma limpeza, ou periodicamente ao fechar um ciclo:
+
+**Como classificar uma task antiga (`Not started`/`In progress` há muito tempo, prazo já
+passado há semanas/meses):**
+1. **Ler o conteúdo real** (corpo da página) antes de decidir — nunca julgar só pelo
+   Status/nome. Já aconteceu de uma task "Not started" ter 4 sub-itens `Done` reais (a
+   MÃE só nunca teve o próprio status atualizado) — isso não é lixo, é história esquecida.
+2. **Corpo vazio (`<blank-page>`) ou só um título solto sem estrutura real** → candidata a
+   morta de verdade.
+3. **Corpo com conteúdo substancial mas claramente superado** (ex: design que foi refeito
+   depois, plano que nunca foi executado e a decisão mudou de rumo) → não é morta, é
+   **encerrada** — fechar como `Done`, não apagar.
+4. Verificar também se o `Macro-Projeto` bate com o escopo real da task — já achamos task
+   sobre Luckbet e sobre portfólio amplo classificadas em `BigQuery Governance` por engano.
+
+**O que fazer com cada categoria (não existe ferramenta de deletar página individual —
+só `in_trash` de database inteira):**
+- **Morta de verdade** → renomear com prefixo `[MORTA]` + motivo curto entre parênteses,
+  limpar `Data Inicio`/`Due Date` (tira da Timeline). Avisar o usuário que pode deletar
+  manualmente pela interface do Notion quando quiser — buscar por `[MORTA]` acha todas de
+  uma vez.
+- **Encerrada/superada** → `Status: Done`, limpar as datas (mesma razão: não precisa mais
+  aparecer na Timeline), e uma entrada no corpo da página (`## <data> — Superada`)
+  explicando o porquê, não só o status mudando silenciosamente.
+- **Container vazio com filhos reais** (uma task "guarda-chuva" sem conteúdo próprio, mas
+  com sub-itens que têm substância) → não apagar o container só porque ele é vazio, os
+  filhos dependem da relação `Parent item`. Fechar o container junto (mesmo critério de
+  "encerrada"), manter a árvore intacta.
+- **Estrutura de página paralela à database** (ex: uma página-hub que ainda lista páginas
+  soltas de PM antigo) → nunca deletar as páginas referenciadas sem antes rebaixar os
+  links pra uma seção "Arquivo histórico" explícita no hub — tentar `replace_content` sem
+  isso falha de propósito (o Notion recusa apagar página filha sem confirmação), é a
+  proteção funcionando, não um bug pra contornar.
 
 **Dívida retroativa conhecida (4a):** o Notion não foi atualizado desde 06/18 — não tente
 reconstruir um registro cronológico completo desse período. Capture (perguntando ao

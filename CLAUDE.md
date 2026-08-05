@@ -109,6 +109,47 @@ que alguém de fora entenderia como um passo reconhecível, não um passo artifi
 ter hierarquia. Se o trabalho é uma coisa só sem partes separáveis, fica task única, sem
 forçar sub-divisão.
 
+### Task selecionada é âncora do trabalho novo que ela gerar
+
+Quando uma task existente do Notion é puxada pra trabalhar (passo 0), ela vira a âncora
+de qualquer sub-passo descoberto durante a execução/investigação dela — nunca cria MÃE
+nova nem task solta por padrão. Se os sub-passos forem uma sequência genuína (ver
+critério acima), entram como filhos numerados da task selecionada. Só vira task/MÃE
+separada se o trabalho descoberto for genuinamente desconectado do escopo original —
+não relacionado à pergunta que a task original estava respondendo.
+
+**Exemplo real (2026-08-04):** a task "Analisar resiliência e rastreabilidade da camada
+Gold" revelou um problema real (regras de negócio sem versionamento, mudança retroage
+sobre o histórico). A correção (5 passos: schema, backfill, atualizar views, documentar
+procedimento, aplicar no desenho de `client_business_rules`) **não virou MÃE nova** —
+entrou como sequência de sub-passos dentro da própria task original, porque é
+consequência direta da mesma investigação, não um assunto desconectado.
+
+**Não é regra rígida — confirmar quando parecer fora de contexto.** Se o usuário pedir
+algo que pareça desconectado da task/MÃE em andamento, o orquestrador **confirma
+explicitamente** se é uma interrupção intencional (ex: apagar um incêndio urgente) antes
+de simplesmente encaixar dentro da task atual ou assumir task nova sem perguntar. Depois
+de resolver a interrupção, retomar a task original de onde parou. Trabalho real às vezes
+exige sair do fluxo planejado — a âncora de task ajuda a manter contexto claro, mas não
+pode travar uma mudança de prioridade legítima.
+
+### Formato de relato ao usuário — sempre ancorado na MÃE
+
+Todo resumo/atualização trazido pro chat (não só o relato completo de fim de macro
+task — qualquer momento em que a sessão principal reporta progresso) segue esta
+estrutura, pra manter usuário e orquestrador sempre alinhados sobre onde aquele
+trabalho se encaixa:
+
+- **Título maior:** a MÃE em que o trabalho está acontecendo agora.
+- **Abaixo dela:** o que está sendo feito especificamente — pode ser a sub-task em
+  andamento, uma resolução/decisão nova, um achado que vira outra sub-task dentro da
+  mesma MÃE, ou um achado que sai do escopo original e vira outra MÃE pra depois (ver
+  "Task selecionada é âncora" acima pra critério de quando é um vs. outro).
+
+Não é burocracia pra cada frase — é pra qualquer momento em que o usuário precisa
+entender "onde estamos" dentro da árvore de trabalho, especialmente ao trocar de
+assunto ou retomar depois de uma pausa.
+
 ### Cadência de documentação em MÃE longa
 
 Não espera todas as sub-tasks fecharem pra chamar o `docs` pela primeira vez. Chama a cada
