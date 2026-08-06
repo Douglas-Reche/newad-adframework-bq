@@ -44,6 +44,15 @@ objects:
     dataset: core
     owner: pipeline
     type: view
+  - name: client_reporting_source_config
+    dataset: core
+    owner: pipeline
+    notes: "SCD2, criada 2026-08-05 (MVP staging x producao) -- por client_id, decide override vs dado real da plataforma. Consumida por core.resolve_reporting_source()."
+  - name: resolve_reporting_source
+    dataset: core
+    owner: pipeline
+    type: function
+    notes: "Criada 2026-08-05 junto com client_reporting_source_config -- generaliza o hardcode de gold.vw_fact_delivery_reporting."
 
   # --- Admin UI do Shiro -- NUNCA referenciar no pipeline gold ---
   - name: io_manager_v2

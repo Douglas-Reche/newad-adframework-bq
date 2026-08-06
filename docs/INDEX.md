@@ -88,11 +88,11 @@
 | `erd_attribution_chain.md` | ❌ LEGADO | 2026-05-13 | Attribution chain do schema antigo (usa views do Shiro) |
 | `erd_flow_overview.md` | ❌ LEGADO | 2026-05-13 | Flow overview do schema antigo |
 | `powerbi_plan.md` | ❌ LEGADO | 2026-04-29 | Plano Power BI com nomes de tabelas do schema antigo |
-| `auditoria_shiro_2026-05-26.md` | ❌ LEGADO | 2026-05-26 | Auditoria com Shiro — schema antigo, views do Admin UI |
-| `bigquery_analysis.md` | ❌ LEGADO | 2026-04-30 | Auditoria BQ abr/26 — estado antes do rebuild |
-| `bigquery_cleanup_proposal.md` | ❌ LEGADO | 2026-04-30 | Proposta de limpeza abr/26 — superada pelo DROP total |
-| `prod_audit_and_restructuring_plan.md` | ❌ LEGADO | 2026-04-30 | Plano de reestruturação abr/26 — superado pelo rebuild de jun/16 |
-| `gold_mvp_apresentacao.md` | ❌ LEGADO | 2026-04-28 | Apresentação MVP gold abr/26 — arquitetura superada |
+| `_legacy/auditoria_shiro_2026-05-26.md` | ❌ LEGADO | 2026-05-26 | Auditoria com Shiro — schema antigo, views do Admin UI. Movido para `_legacy/` em 2026-08-05 (referência histórica, classificação confirmada por Douglas) |
+| `bigquery_analysis.md` | 🗑️ PENDING_PURGE | 2026-04-30 | Auditoria BQ abr/26 — estado antes do rebuild. Flagueado para expurgo em 2026-08-05, sem fato novo a migrar (coberto por `bq_restructuring_plan.md`) — ver `_pending_purge.md` |
+| `bigquery_cleanup_proposal.md` | 🗑️ PENDING_PURGE | 2026-04-30 | Proposta de limpeza abr/26 — superada pelo DROP total. Flagueado para expurgo em 2026-08-05, sem fato novo a migrar — ver `_pending_purge.md` |
+| `_legacy/prod_audit_and_restructuring_plan.md` | ❌ LEGADO | 2026-04-30 | Plano de reestruturação abr/26 — superado pelo rebuild de jun/16. Movido para `_legacy/` em 2026-08-05 (referência histórica, classificação confirmada por Douglas) |
+| `_legacy/gold_mvp_apresentacao.md` | ❌ LEGADO | 2026-04-28 | Apresentação MVP gold abr/26 — arquitetura superada. Movido para `_legacy/` em 2026-08-05 (referência histórica — pergunta bloqueante sobre bug do Admin UI desconsiderada por Douglas, não vamos mais tocar no Admin UI) |
 | `viability_assessment_terça.md` | ❌ LEGADO | 2026-05-05 | Ata reunião viabilidade mai/26 — contexto histórico |
 
 ---
@@ -105,6 +105,7 @@
 | 📋 **REBUILD** | Parcialmente válido — lógica de negócio correta, mas referências de schema de entrega precisam ser revisadas após o rebuild. Valide nomes de tabelas antes de usar. |
 | ❌ **LEGADO** | Schema, tabelas ou views **foram dropados** no rebuild de 2026-06-16. Consulte apenas como referência histórica. **Não use para desenvolvimento.** |
 | 📦 **HISTÓRICO** | Documento de época — descreve o estado em uma data específica. Valor como referência de decisões e evolução do projeto. |
+| 🗑️ **PENDING_PURGE** | Análise pontual, valor já migrado (ou confirmado sem fato novo). Aguardando expurgo semanal em lote — ver `_pending_purge.md`. Nunca deletado sem confirmação explícita do usuário. |
 
 ---
 

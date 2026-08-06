@@ -1,3 +1,9 @@
+---
+status: pending_purge
+flagged_at: 2026-08-05
+migrated_to: bq_restructuring_plan.md (nenhum fato novo)
+---
+
 # AdFramework — Análise Completa BigQuery + GitHub
 
 ---

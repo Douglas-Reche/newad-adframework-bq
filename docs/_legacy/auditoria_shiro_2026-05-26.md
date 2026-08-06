@@ -5,7 +5,8 @@
 > Este documento descreve a pipeline **anterior ao reset completo de 2026-06-16**.
 > Tabelas, views, schemas e colunas aqui descritos **foram dropados e não existem mais no BigQuery**.
 > Mantenha para consulta histórica — **não use como referência para desenvolvimento novo.**
-> Plano atual: [bq_restructuring_plan.md](bq_restructuring_plan.md) · [CHANGELOG.md](../CHANGELOG.md)
+> Plano atual: [bq_restructuring_plan.md](../bq_restructuring_plan.md) · [CHANGELOG.md](../../CHANGELOG.md)
+> Movido para `docs/_legacy/` em 2026-08-05 (referência histórica confirmada por Douglas).
 ---
 **Data:** 2026-05-26  
 **Elaborado por:** Douglas Reche  
