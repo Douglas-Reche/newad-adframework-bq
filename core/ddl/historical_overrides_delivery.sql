@@ -1,0 +1,23 @@
+-- MOVIDA para stg/ddl/historical_overrides_delivery.sql em 2026-08-06.
+-- --------------------------------------------------------------------
+-- Este arquivo existia para ALTER TABLE core.historical_overrides_delivery
+-- (adicionando a coluna `conversions`, ver historico abaixo). Dado
+-- normalizado (impressions/clicks/conversions por dia/plataforma/cliente)
+-- nao pertence a CORE -- CORE fica reservado para tabelas de regra/config
+-- pequenas e mantidas manualmente (dict_format, campaign_format_map,
+-- advertiser_platform_rules, client_reporting_source_config). Decisao do
+-- usuario ao corrigir o teste ponta-a-ponta em douglas-bq-staging (task
+-- "Ambientes Staging x Producao").
+--
+-- A tabela agora vive em `adframework.stg.historical_overrides_delivery`
+-- -- ver stg/ddl/historical_overrides_delivery.sql para o schema completo
+-- e o historico de mudancas anteriores a esta migracao de camada.
+--
+-- `core.client_reporting_source_config` NAO mudou de lugar (continua em
+-- core/ddl/client_reporting_source_config.sql) -- e a tabela de regra
+-- (toggle ativo/inativo + datas), nao dado de entrega.
+--
+-- Este arquivo e mantido como stub (nao apagado sem rastro) seguindo a
+-- pratica do repo de nao remover DDL sem deixar historico auditavel.
+-- Nao contem nenhuma instrucao SQL executavel de proposito -- nao deve
+-- mais ser passado para apply_ddl.py.

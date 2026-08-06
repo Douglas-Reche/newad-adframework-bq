@@ -6,6 +6,385 @@
 
 ---
 
+## 2026-08-06 — Fix do bug `apply_ddl.py --project` (swap indevido de `stg`/`raw`) + gold inteiro espelhado em `douglas-bq-staging` + paridade 100% confirmada contra produção
+
+**Autor:** Douglas Reche (via backend) — preparação para reunião do dia (Power BI plugado
+em staging, mesmos números que produção, pré-requisito antes de qualquer teste de dado
+histórico).
+
+### 1. Bug corrigido — `swap_project()` trocava `stg`/`raw` indevidamente
+
+Achado no teste de ontem (2026-08-05): aplicar `gold/ddl/fact_delivery.sql` com
+`--project douglas-bq-staging` gerava `` `douglas-bq-staging.stg.ms_delivery` ``
+(tabela inexistente) em vez de manter `` `adframework.stg.ms_delivery` ``.
+`swap_project()` (`scripts/deploy/apply_ddl.py`, ~linha 190) trocava TODAS as ocorrências
+literais de `adframework.`, sem distinguir dataset.
+
+**Fix:** constante `PHYSICAL_DATASETS = {"core", "gold"}` adicionada no topo do arquivo;
+`swap_project()` reescrita para só trocar o project id em referências a esses 2 datasets
+(fisicamente espelhados por projeto). `raw`/`stg` nunca trocam — sempre leitura
+cross-project de `adframework`, evitando duplicar ingestão. Confirmado com `--dry-run`
+contra `gold/ddl/fact_delivery.sql` e `gold/ddl/fact_delivery_by_device.sql`.
+
+### 2. Override de teste desligado (SCD2, não deletado)
+
+`douglas-bq-staging.core.client_reporting_source_config` tinha `override_active = TRUE`
+pra `banco_cora_fe13d78a` (ativado no teste de ontem, com dado sintético em
+`stg.historical_overrides_delivery`, `impressions` 999001+). Desligado via SCD2: linha
+antiga fechada com `effective_to = CURRENT_DATE()`, nova linha inserida com
+`override_active = FALSE`, `effective_from = CURRENT_DATE()`, `effective_to = NULL`.
+Dado sintético permanece na tabela (não apagado) mas confirmado que não é mais lido
+(ver paridade abaixo).
+
+### 3. Drift corrigido — `gold/ddl/dim_campaign.sql` sem `CAST(start_date/end_date AS DATE)`
+
+Ao tentar aplicar `dim_campaign.sql` em staging, falhou com
+`Column 8 in UNION ALL has incompatible types: STRING, STRING, DATE`
+(`stg.ms_campaigns.start_date`/`end_date` são `STRING` na fonte; `stg.mg_campaigns` já é
+`DATE`). Comparado com `INFORMATION_SCHEMA.VIEWS.view_definition` da view **ao vivo em
+produção**: o `CAST` já existia lá — o arquivo commitado no repo estava desatualizado
+(mesma classe de drift do `dict_format`, ver `known_issues.md` V1). `CAST(... AS DATE)`
+adicionado nos 2 primeiros ramos do `UNION ALL`, sincronizando com produção.
+
+### 4. Gold inteiro espelhado em staging
+
+Confirmada a lista real dos 8 objetos gold oficiais via `INFORMATION_SCHEMA.TABLES` de
+produção (não assumida): `dim_advertiser`, `dim_campaign`, `fact_delivery`,
+`fact_delivery_by_device`, `fact_delivery_by_size`, `fact_delivery_creative`,
+`fact_io_plan`, `fact_pacing` — mais `vw_fact_delivery_reporting` (9º objeto vivo em
+produção, fora da lista dos 8 oficiais, não tocado). Dependências `core` lidas de cada
+arquivo (não assumidas) e aplicadas em staging antes: `dim_client`, `dict_format`,
+`advertiser_platform_rules` (tabelas — dado copiado de produção, ver item 5),
+`resolve_dict_format`, `resolve_dict_format_fallback`, `resolve_platform_rule`,
+`resolve_reporting_source` (funções). Todos aplicados via
+`apply_ddl.py --env=test --project=douglas-bq-staging`, texto idêntico ao repo.
+
+**Exceção pontual, documentada em `known_issues.md`**: `gold/ddl/fact_delivery.sql` e
+`core/ddl/resolve_reporting_source.sql` referenciam
+`` `adframework.stg.historical_overrides_delivery` `` hardcoded — tabela que **não existe
+em produção ainda** (produção roda a versão antiga de `fact_delivery.sql`, 3 fontes, sem
+essa 4ª fonte — confirmado ao vivo). Aplicados em staging com essa única referência
+apontando para `douglas-bq-staging.stg.historical_overrides_delivery` (cópia local do
+arquivo, não commitada — o repo continua com a referência cross-project correta para
+quando a migração for promovida). Seguro para hoje porque `override_active = FALSE` faz
+a 4ª fonte contribuir 0 linhas independente de qual tabela ela lê.
+
+### 5. Drift corrigido — cópia de `dim_client`/`dict_format` por `SELECT *` corrompeu dado
+
+`core.dim_client` de produção tem 1 coluna a mais (`newad_account_id`) que o DDL
+commitado. `core.dict_format` tem `formato`/`platform` em ordem trocada entre produção e
+o DDL commitado. `INSERT INTO ... SELECT *` (posicional) entre os dois schemas
+**corrompeu silenciosamente** o dado copiado para staging (`platform`/`formato` trocados
+de coluna — mesmo tipo `STRING`, sem erro). Descoberto por conferência manual antes dos
+testes de paridade. Corrigido: staging alterado (`ALTER TABLE ADD COLUMN
+newad_account_id`) e ambas as tabelas recarregadas com `INSERT`/lista explícita de
+colunas. Ver `known_issues.md` R5 para o achado completo + ação recomendada (sincronizar
+`dim_client.sql` commitado com o schema real).
+
+### 6. Paridade validada — resultado
+
+- `gold.fact_delivery` (agregado `client_id, platform, formato`, SUM
+  impressions/clicks/conversions): `EXCEPT DISTINCT` nos 2 sentidos = **0 linhas**. Match
+  exato.
+- `gold.fact_pacing` (mesmo agregado + realized_impressions/clicks/conversions,
+  planned_spend_daily, investimento_realizado): `EXCEPT DISTINCT` bruto = 16 linhas, 100%
+  ruído de ponto flutuante (`FLOAT64` não-associativo, diferença na 11ª casa decimal) —
+  com `ROUND(..., 2)` (precisão do Power BI) = **0 linhas**. Confirmado.
+- **Bytes processados no total (todas as queries de validação/cópia desta sessão):
+  ~50 MB** (3 execuções de `EXCEPT DISTINCT` de ~16,5 MB cada + cópias pequenas de
+  `dim_client`/`dict_format`/`advertiser_platform_rules`) — muito abaixo da cota de
+  10GB/dia de staging.
+
+**Arquivos tocados:** `scripts/deploy/apply_ddl.py` (fix `swap_project`),
+`gold/ddl/dim_campaign.sql` (fix CAST), `douglas-bq-staging.core.client_reporting_source_config`
+(SCD2 — override OFF), `douglas-bq-staging.core.{dim_client,dict_format,advertiser_platform_rules}`
+(dado copiado de produção), `douglas-bq-staging.gold.*` (8 objetos aplicados),
+`docs/known_issues.md` (R3, R4, R5 + seção de paridade).
+
+---
+
+## 2026-08-06 — Correção de 2 achados críticos do teste ponta-a-ponta em `douglas-bq-staging`: bug de correlated subquery em `resolve_reporting_source` + `historical_overrides_delivery` movida de `core` para `stg`
+
+**Autor:** Douglas Reche (via backend)
+
+Um teste ponta-a-ponta real (não sintético/isolado) rodou contra `douglas-bq-staging` e
+encontrou 2 problemas bloqueantes na feature de override histórico por cliente
+(`core.resolve_reporting_source`/`gold.fact_delivery`/`core.client_reporting_source_config`,
+desenhada em 2026-08-05). Ambos corrigidos e reconfirmados em staging (não produção).
+
+### 1. Bug bloqueante — `core.resolve_reporting_source` quebrava em uso correlacionado real
+
+A função passava isolada (`client_id` constante), mas quebrava exatamente do jeito que
+`gold/ddl/fact_delivery.sql` a chama de fato — correlacionada por linha, dentro do `WHERE`,
+com `client_id`/`date` vindo de uma tabela externa (`stg.ms_delivery` etc.):
+
+```
+Correlated subqueries that reference other tables are not supported unless they can be
+de-correlated, such as by transforming them into an efficient JOIN.
+```
+
+**Reprodução confirmada em staging** (antes do fix), usando a própria tabela de override
+como outer table para simular a chamada correlacionada real:
+
+```sql
+SELECT day, client_id,
+  `douglas-bq-staging.core.resolve_reporting_source`(client_id, day, CURRENT_DATE()) AS src
+FROM `douglas-bq-staging.core.historical_overrides_delivery`
+WHERE `douglas-bq-staging.core.resolve_reporting_source`(client_id, day, CURRENT_DATE()) != 'override';
+-- Error in query string: ... Correlated subqueries that reference other tables are not
+-- supported unless they can be de-correlated, such as by transforming them into an
+-- efficient JOIN.
+```
+
+**Causa raiz confirmada** (não suposição): a versão anterior tinha 2 CTEs (`vigente`,
+`range_real`, cada uma lendo uma tabela diferente), referenciadas por **3 subqueries
+escalares separadas** dentro do `IF`/`AND` do `SELECT` final. Isso é correlação de **2
+níveis** (SELECT final → CTE → tabela), que o BigQuery não decorrelaciona automaticamente —
+mesmo cada subquery isolada sendo válida. `core.resolve_dict_format`/`core.resolve_platform_rule`
+(já em produção, funcionam com uso correlacionado real) usam **1 único `SELECT` flat** —
+1 nível de correlação.
+
+**Fix:** `core/ddl/resolve_reporting_source.sql` reescrita como um único `SELECT` flat, com
+as duas tabelas combinadas via `LEFT JOIN` no mesmo `FROM`, e a decisão calculada por
+agregação (`LOGICAL_OR`/`MIN`/`MAX`) sobre esse JOIN — mesmo padrão estrutural de
+`resolve_dict_format`, generalizado para 2 tabelas.
+
+**Teste pós-fix confirmado em staging**, mesma forma de chamada correlacionada (`WHERE` +
+`SELECT`), 3 casos (cliente com override dentro do range, cliente com override fora do
+range, cliente sem nenhuma linha de override cadastrada):
+
+```
+[
+  {"client_id": "banco_cora_fe13d78a", "day": "2026-02-11", "resolved": "override", "union_behavior": "INCLUDED_AS_OVERRIDE"},
+  {"client_id": "banco_cora_fe13d78a", "day": "2026-03-01", "resolved": "platform",  "union_behavior": "EXCLUDED_FROM_PLATFORM_UNION"},
+  {"client_id": "cliente_sem_override_xyz", "day": "2026-02-11", "resolved": "platform", "union_behavior": "EXCLUDED_FROM_PLATFORM_UNION"}
+]
+```
+
+Sem erro, e nenhum caso retornou `NULL` (contrato "sempre 'platform' ou 'override', nunca
+NULL" preservado — inclusive para cliente sem nenhuma linha em `historical_overrides_delivery`,
+graças à semântica de agregação sem `GROUP BY` sobre 0 linhas).
+
+**Teste adicional simulando o `UNION ALL` completo de `fact_delivery.sql`** (dado "de
+plataforma" fake com `impressions=1` vs. override real com `impressions=999001-999003`, para
+o mesmo `client_id`+dias): confirmou que o override **substitui** (não soma, não duplica) o
+dado de plataforma dentro do range (2026-02-10 a 2026-02-12), e que fora do range
+(2026-03-01) o dado de plataforma passa intacto — 1 linha por dia, sem perda nem duplicata.
+
+### 2. `historical_overrides_delivery` movida de `core` para `stg`
+
+Decisão do Douglas: dado normalizado de entrega (impressions/clicks/conversions por
+dia/plataforma/cliente) pertence a `stg`, seguindo a convenção do resto do pipeline
+(`stg.ms_delivery`/`stg.mg_delivery`/`stg.sp_delivery`). `core` fica reservado para tabela de
+regra/config pequena e mantida manualmente (`dict_format`, `campaign_format_map`,
+`advertiser_platform_rules`, `client_reporting_source_config`). **`client_reporting_source_config`
+não mudou de lugar** — é o toggle ativo/inativo + datas, não dado de entrega.
+
+**Arquivos alterados:**
+- `stg/ddl/historical_overrides_delivery.sql` — novo, schema completo (idêntico ao anterior,
+  incluindo `conversions`).
+- `core/ddl/historical_overrides_delivery.sql` — virou stub apontando para o novo local (não
+  apagado sem rastro).
+- `core/ddl/resolve_reporting_source.sql` — passa a ler de `stg.historical_overrides_delivery`.
+- `gold/ddl/fact_delivery.sql` — 4ª fonte do `UNION ALL` atualizada.
+- `scripts/deploy/load_historical_override.py` — `TABLE_ID` atualizado.
+- `hub/app.py` — `OVERRIDE_TABLE` atualizado (única constante usada por toda a aba
+  "Configuração de Overrides por Cliente", nenhuma outra referência hardcoded encontrada).
+
+**Migração testada em staging:** tabela `stg.historical_overrides_delivery` criada em
+`douglas-bq-staging`, as 3 linhas de teste existentes migradas de `core` (`INSERT ... SELECT
+*`), função `resolve_reporting_source` redeployada via `apply_ddl.py --env=test
+--project=douglas-bq-staging` apontando para `stg`, e o teste do `UNION ALL` completo (item 1
+acima) reconfirmado funcionando **depois** da migração, sem regressão.
+
+**Não tocado, fora de escopo desta correção** (2 achados menores do mesmo teste, pendentes
+de priorização do Douglas — ver `docs/known_issues.md`): bug do `apply_ddl.py --project`
+trocando dataset `stg`/`raw` indevidamente em certos casos; falta de grão `platform` em
+`core.client_reporting_source_config`.
+
+**Arquivos:** `core/ddl/resolve_reporting_source.sql`, `core/ddl/historical_overrides_delivery.sql`,
+`stg/ddl/historical_overrides_delivery.sql`, `gold/ddl/fact_delivery.sql`,
+`scripts/deploy/load_historical_override.py`, `hub/app.py`, `docs/known_issues.md` (S2
+atualizado para resolvido, R1/R2 adicionados).
+
+**Nenhuma mudança em produção (`adframework`)** — tudo testado e aplicado só em
+`douglas-bq-staging`.
+
+---
+
+## 2026-08-06 — Recuperação de desenho perdido na compactação: RAW-landing do histórico em staging + análise humana/IA por cliente (peça não construída)
+
+**Autor:** Douglas Reche (via conversa recuperada, sem agente)
+
+A conversa da madrugada de 2026-08-05→06 foi compactada antes de um pedaço do desenho do
+Nível 3 (histórico por cliente) ser escrito em qualquer lugar — nem Notion, nem código, nem
+`known_issues.md`. Só sobreviveu no resumo compactado como forma ("landing em raw + análise
+humana/IA + normalização"), sem o detalhe. O Douglas recuperou o trecho literal da conversa
+original e eu reconciliei contra o código real do backend.
+
+**Decisão original (agora registrada por completo pela primeira vez):** a "ferramenta de
+carga de dado histórico" não é uma peça só — são duas:
+1. **Landing RAW literal em `douglas-bq-staging`** — comercial manda a planilha, sobe crua no
+   Hub sem nenhum tratamento, vira tabela RAW literal dentro do projeto de staging (não
+   produção — é trabalho de descoberta/construção, mora em staging por desenho). O Hub mostra
+   a estrutura real (colunas, amostra, contagem) só pra apoiar a análise.
+2. **Análise humana/IA + normalização versionada por cliente** — não automatizável de
+   antemão (cada planilha de cliente chega num formato diferente); o resultado é um
+   mapeamento específico daquele cliente, versionado como código, que transforma o dado cru
+   na estrutura de `core.historical_overrides_delivery` sem perder a RAW original (que
+   permanece intacta como prova/fonte de reprocessamento).
+
+**O que o backend construiu de fato (`scripts/deploy/load_historical_override.py`) é só a
+peça 2, e assumindo que a normalização já aconteceu inteiramente fora do BigQuery** — o
+script exige um arquivo já normalizado como entrada, falha alto e cedo se as colunas não
+baterem exatamente. Não existe peça 1 (landing RAW, visualização de estrutura no Hub) em
+lugar nenhum ainda. Registrado como item aberto — ver `docs/known_issues.md` item S4.
+
+**Lição de processo, também registrada em memória:** durante conversa de desenho ativo,
+documentar cada decisão de arquitetura assim que ela é tomada dentro da própria troca, não
+esperar o desenho "fechar" pra escrever tudo de uma vez — é isso que causou esta perda.
+
+---
+
+## 2026-08-06 — Staging real (`douglas-bq-staging`) travado com guardrails confirmados + redesenho genérico do fluxo de histórico por cliente + CODEOWNERS
+
+**Autor:** Douglas Reche (via backend + docs)
+
+Madrugada de trabalho (2026-08-05→06) sobre o desenho "Ambientes Staging x Produção"
+(sub-task Notion `3b39d0f6-219e-81b5-8a68-f59272811d3e`) saiu do papel: projeto GCP novo
+criado (`douglas-bq-staging`, billing próprio `Douglas_Reche_Teste_Stag`, moeda CAD) e
+2 guardrails de custo confirmados ao vivo via `gcloud` (não só aplicados — reconferidos
+nesta sessão):
+
+- Cota física de query: `gcloud alpha services quota list --service=bigquery.googleapis.com
+  --consumer=projects/douglas-bq-staging` → `bigquery.googleapis.com/quota/query/usage`
+  com `effectiveLimit: "10240"` (MiB/dia, = 10GB/dia).
+- Orçamento: `gcloud billing budgets list --billing-account=01D8BC-CCDAB6-591463` → budget
+  `56d5f1d6-4757-4531-9132-68bc98ea6f64` ("douglas-bq-staging - teto CAD10"), CAD$10/mês,
+  alertas em 50/90/100% (`thresholdRules`).
+
+Desenho: staging não duplica ingestão — lê `raw`/`stg` de produção via cross-project query
+direto; só `core`/`gold` ganham estrutura própria em staging quando o teste exigir escrever
+algo novo. `scripts/deploy/apply_ddl.py` ganhou `--project` (aponta a aplicação de DDL para
+um projeto GCP alternativo — tratado como projeto de teste inteiro, sem sufixo `_test`) e
+`--rollback <change_id>` (reaplica `previous_definition` capturada em
+`core.schema_change_log`, que ganhou as colunas `previous_definition` e `commit_hash`).
+
+**Teste ponta-a-ponta com caso real (histórico Cora/TecPar) em andamento** pelo agente
+backend em paralelo a este registro — infra confirmada travada, mas o teste ainda não tem
+resultado confirmado nesta sessão. Não tratar como "validado" até confirmação.
+
+**Redesenho do fluxo de dados históricos por cliente** (gatilho foi Cora/TecPar, mas o
+desenho generalizou para qualquer cliente):
+
+- `core.historical_overrides_delivery` ganhou coluna `conversions FLOAT64`
+  (`core/ddl/historical_overrides_delivery.sql`) — antes só existia isolada em
+  `gold.vw_fact_delivery_reporting`; passou a integrar direto em `gold.fact_delivery`
+  porque `gold.fact_pacing` lê de `fact_delivery`, não da view isolada — o override
+  precisava estar na fonte raiz, não numa view derivada.
+- Tabela nova `core.client_reporting_source_config` (SCD2):
+  `client_id, override_active, effective_from, effective_to, reason, confirmed_by,
+  confirmed_at` — **sem coluna de data de corte manual**: o range de validade do override
+  é derivado ao vivo por MIN/MAX sobre os dados carregados em
+  `historical_overrides_delivery`, não configurado à mão. Só existe o toggle booleano
+  `override_active`, controlável pelo Hub.
+- Função nova `core.resolve_reporting_source(client_id, day, as_of_date)` → `'override'`
+  ou `'platform'`, usada linha a linha em `gold/ddl/fact_delivery.sql` (reescrita: agora
+  4 fontes no UNION — mediasmart/mgid/siprocal filtradas por `!= 'override'` e
+  `historical_overrides_delivery` filtrada por `= 'override'`).
+- Hub (`hub/app.py`, aba "Overrides Históricos") ganhou seção "Configuração de Overrides
+  por Cliente": mostra o range MIN/MAX ao vivo carregado por cliente + toggle que escreve
+  linha SCD2 em `core.client_reporting_source_config`. **O fluxo antigo de upload
+  específico do Cora (`CORA_CLIENT_ID` fixo, janela Jan-Jun/2026) foi mantido como está,
+  não generalizado** — decisão pendente de confirmação do Douglas.
+
+**Próximo item anunciado, não iniciado:** regras de negócio por cliente ou globais,
+ativáveis/desativáveis por período — reconecta com `core.client_business_rules` (decisão
+pendente antiga). Retomar só depois de staging + histórico validados ponta-a-ponta.
+
+**CODEOWNERS criado em ambos os repos** (Tier B do desenho de proteção 2026-08-05) —
+formaliza, não builda nada:
+- `newad-adframework-bq/CODEOWNERS`: `/raw/ /stg/ /core/ /gold/ /marts/ /share/
+  /scripts/deploy/ /hub/` → `@Douglas-Reche`.
+- Monorepo do Shiro (`rshiro-newad/adframework`): só
+  `adframework_python/src/connectors/siprocal.py @Douglas-Reche` — arquivos compartilhados
+  com o Shiro deliberadamente fora (Tier A, mecanismo de aviso ainda não construído).
+- **Branch protection NÃO habilitada em nenhum dos dois repos ainda** — os arquivos
+  CODEOWNERS sozinhos não bloqueiam merge até "Require a pull request before merging" +
+  "Require review from Code Owners" serem ligados no GitHub (Settings > Branches). Pendência
+  explícita, não concluída.
+
+**Arquivos:** `core/ddl/client_reporting_source_config.sql`,
+`core/ddl/resolve_reporting_source.sql`, `core/ddl/historical_overrides_delivery.sql`,
+`core/ddl/schema_change_log.sql`, `gold/ddl/fact_delivery.sql`, `hub/app.py`,
+`scripts/deploy/apply_ddl.py`, `CODEOWNERS`.
+
+---
+
+## 2026-08-05 (noite) — Investigação de ownership de código (Douglas vs. Shiro) no monorepo `adframework` + decisão de projeto GCP novo para staging
+
+**Autor:** Douglas Reche (via docs)
+
+Investigação de ownership real (não só localização de pasta) dentro do monorepo
+`rshiro-newad/adframework`, registrada na sub-task Notion `3b39d0f6-219e-8170-8e5b-c9ec1d923a72`:
+autoria via `git log` por arquivo em `adframework_python/src/` confirma que `connectors/siprocal.py`
+é o único arquivo 100% do Douglas (zero linhas do Shiro); `orchestrator.py`, `connectors/mediasmart.py`,
+`connectors/mgid.py`, `bigquery.py` e `sheets.py` têm sobreposição real de autoria; `etl_audit.py`,
+`db.py` e `base.py` nunca foram tocados pelo Douglas apesar de estarem na pasta "certa".
+`pixel_mvp.py`/`pixel_storage.py` e `governance_bridge/` (+ `scripts/mvp/*`) confirmados fora do
+pipeline dele — escrevem só em datasets `pixel`/`core_mvp`/`share_mvp`, não chamados pelo
+`orchestrator.py` real. A pasta `core/` (biblioteca Python compartilhada, não confundir com o
+dataset `core` do BigQuery) confirmada sem influência no pipeline ativo — só importada por
+`aat_console` e pelo `governance_bridge` morto.
+
+Reconfirmação de segurança: nenhuma das 8 views oficiais da gold (`gold/ddl/`) referencia
+`io_manager`/`io_binding_registry_v4` do Admin UI do Shiro — só os 2 arquivos workaround já
+confirmados mortos (`fct_cora_delivery_full.sql`, `fct_luckbet_delivery_full.sql`) tinham essa
+dependência (ver `docs/known_issues.md` A2, fechado). Verificação também confirmou que nenhum
+serviço Cloud Run/Cloud Scheduler aponta para `adframework-staging` hoje.
+
+**Decisão:** Douglas decidiu criar um projeto GCP novo do zero para o ambiente de staging (em
+vez de reaproveitar `adframework-staging`, que carrega identidade/histórico do Admin UI mesmo
+limpo) — nome ainda não escolhido entre `adframework-bq-staging`/`newad-bq-staging`.
+
+Desenho de proteção em 2 tiers (Tier A — arquivos compartilhados: aviso via GitHub Action sem
+bloqueio; Tier B — código 100% do Douglas: `CODEOWNERS` + PR obrigatório) proposto mas **não
+construído** — aguardando 3 decisões do Douglas (canal de notificação do Tier A, confirmação de
+mais arquivos 100% dele além de `siprocal.py`, nome do projeto GCP novo). Auditoria futura
+completa de código compartilhado (função por função, "OWNERSHIP.yaml para Python") registrada
+como trabalho adiado, sem task de execução criada ainda.
+
+---
+
+## 2026-08-05 — Auditoria completa de linhagem gold/core (Fase A, só leitura) — 4 achados novos, Fase B pendente
+
+**Autor:** Douglas Reche (via backend + docs)
+
+`backend` leu por inteiro os 39 objetos SQL de `gold/*` e `core/*` (não só `*/ddl/`),
+cruzando contra `core/OWNERSHIP.yaml`, `docs/known_issues.md`, `docs/client_dashboard_map.md`
+e `docs/_legacy/id_dependency_map.md`. Relatório completo em
+`docs/pipeline_audit_2026-08-05.md`. Achados novos registrados em `docs/known_issues.md`
+como A2, A4, A5, C1 (todos ABERTOS, aguardando decisão do Douglas):
+
+- **A2** — `fct_luckbet_delivery_full.sql` tem a mesma dependência direta em
+  `core.io_binding_registry_v4` (Shiro) que o `fct_cora_delivery_full.sql` (A1) já
+  tinha sinalizada — nunca havia sido documentada para o Luckbet.
+- **A4** — `fct_newad_bet_daily.sql`, `fct_luckbet_delivery_daily.sql` e
+  `fct_delivery_daily_mvp.sql` leem `share.io_calc_daily_v4` (Shiro, fora do
+  `OWNERSHIP.yaml`); `fct_delivery_daily_mvp.sql` não tem filtro de `client_id` nenhum.
+- **A5** — `gold.fct_creative_daily` é referenciado por `fct_luckbet_creative_daily.sql`
+  mas não tem DDL em lugar nenhum do repo — objeto fantasma, mesma categoria do bug
+  já resolvido para `dict_format`/`campaign_format_map` em 2026-08-04.
+- **C1** — `docs/_legacy/id_dependency_map.md` está marcado como "tabelas dropadas,
+  não usar", mas descreve exatamente as cadeias Shiro que 6 views gold ativas hoje
+  ainda consomem — não dá para saber sem BigQuery ao vivo se o aviso está errado ou
+  se essas views estão quebradas em produção.
+
+Fase B (confirmar ao vivo no BigQuery) está bloqueada até o acesso ser destravado
+(previsto ~18h do mesmo dia). Nenhuma mudança de código/DDL/dado nesta sessão.
+
+---
+
 ## 2026-08-04 — SCD2 (versionamento) — passo 3 de 5: JOINs versionados via funções `core.resolve_*` + `fact_io_plan` ao vivo
 
 **Autor:** Douglas Reche (via backend)

@@ -24,6 +24,7 @@ import google.auth
 import pandas as pd
 import streamlit as st
 import yaml
+from google.api_core.exceptions import NotFound
 from google.auth import impersonated_credentials
 from google.cloud import bigquery
 
@@ -44,8 +45,29 @@ WRITER_SA_EMAIL = os.environ.get(
 CORA_CLIENT_ID = "banco_cora_fe13d78a"
 CORA_OVERRIDE_START = date(2026, 1, 1)
 CORA_OVERRIDE_END = date(2026, 6, 30)
-OVERRIDE_TABLE = f"{PROJECT_ID}.core.historical_overrides_delivery"
+OVERRIDE_TABLE = f"{PROJECT_ID}.stg.historical_overrides_delivery"
 OVERRIDE_TARGET_FIELDS = ["day", "platform", "formato", "goal_type", "impressions", "clicks", "investimento"]
+
+# Desenho fechado com o Douglas em 2026-08-05: generaliza o override historico
+# para qualquer cliente (nao mais so Cora). O range de cada cliente (MIN/MAX day)
+# vem SEMPRE ao vivo de OVERRIDE_TABLE, nunca de config digitada. O liga/desliga
+# (`override_active`) fica em core.client_reporting_source_config -- tabela SCD2
+# nova, construida pelo backend em paralelo (client_id, override_active,
+# effective_from, effective_to, reason, confirmed_by, confirmed_at). Pode ainda
+# nao existir em producao -- a secao abaixo trata isso sem quebrar.
+CLIENT_REPORTING_SOURCE_CONFIG_TABLE = f"{PROJECT_ID}.core.client_reporting_source_config"
+
+# Upload de Planilha Historica (landing RAW) -- peca (a) do desenho fechado em
+# 2026-08-05/06 para generalizar overrides historicos alem da Cora (ver
+# docs/known_issues.md item S4, repo newad-adframework-bq). Sobe a planilha
+# crua do comercial SEM NENHUM tratamento, pousa como RAW literal dentro do
+# projeto de STAGING (nao producao -- e trabalho de descoberta antes de decidir
+# como normalizar). O backend esta construindo essa infraestrutura (dataset
+# `raw` em douglas-bq-staging, schema de landing, script de carga) em paralelo
+# -- nomes exatos de dataset/tabela/funcao de carga AINDA NAO CONFIRMADOS nesta
+# sessao. Ver stage_raw_historical_upload() para o ponto de integracao isolado.
+RAW_LANDING_PROJECT_ID = "douglas-bq-staging"
+RAW_LANDING_DATASET = "raw"  # candidato -- confirmar com o backend quando o relato chegar
 
 # Fila generica de propostas de mudanca pendentes de aprovacao humana. Tabela
 # desenhada pelo backend para servir qualquer fonte futura (hoje so
@@ -412,6 +434,131 @@ def commit_override(df: pd.DataFrame, source_file: str, notes: str) -> int:
     return len(load_df)
 
 
+@st.cache_data(ttl=300)
+def load_client_options() -> pd.DataFrame:
+    """Lista de clientes ativos para popular dropdowns do hub -- fonte unica
+    core.dim_client (nunca lista hardcoded, mesmo padrao usado no resto do
+    hub para client_id). So leitura, SA principal."""
+    client = get_bq_client()
+    query = f"""
+    SELECT client_id, name
+    FROM `{PROJECT_ID}.core.dim_client`
+    WHERE status = 'active'
+    ORDER BY name
+    """
+    return client.query(query).to_dataframe()
+
+
+def stage_raw_historical_upload(raw_df: pd.DataFrame, client_id: str, source_filename: str) -> dict:
+    """PLACEHOLDER -- ponto de integracao isolado com a ferramenta de landing RAW
+    que o backend esta construindo em paralelo (peca 'a' do desenho fechado em
+    2026-08-05/06, ver docs/known_issues.md item S4). Quando o relato do backend
+    chegar (via orquestrador), substituir o corpo desta funcao pela chamada real
+    -- provavelmente equivalente a um load_table_from_dataframe contra
+    `douglas-bq-staging.raw.<tabela por cliente/arquivo>`, usando uma writer SA
+    IMPERSONADA com escopo NOVO nesse dataset (a writer SA atual do hub,
+    douglas-data-hub-writer-sa, so tem dataEditor em `adframework.core` e
+    `adframework.raw` -- projeto DIFERENTE de douglas-bq-staging, entao um
+    binding de IAM novo e necessario antes desta funcao poder escrever de
+    verdade -- ver hub/deploy.sh e nao rodar gcloud sem confirmar antes).
+
+    TODO: integrar com o script/infra real do backend assim que o relato
+    chegar -- ver docs/known_issues.md item S4 (newad-adframework-bq).
+
+    Por enquanto NAO escreve nada no BigQuery. Retorna um resultado local para a
+    tela de preview de estrutura continuar funcional sem depender do backend."""
+    return {
+        "staged": False,
+        "reason": "Integracao com a infra de landing do backend ainda nao existe (ver docs/known_issues.md S4).",
+        "would_be_table": f"{RAW_LANDING_PROJECT_ID}.{RAW_LANDING_DATASET}.<a_definir_pelo_backend>_{client_id}",
+        "n_rows": len(raw_df),
+        "columns": list(raw_df.columns),
+    }
+
+
+@st.cache_data(ttl=60)
+def load_override_delivery_summary() -> pd.DataFrame:
+    """Um cliente por linha: quantas linhas e o range real (MIN/MAX day) de
+    stg.historical_overrides_delivery (movida de core para stg em
+    2026-08-06 -- dado normalizado pertence a STG) -- calculado AO VIVO,
+    nunca digitado manualmente (decisao fechada 2026-08-05). So leitura, SA
+    principal."""
+    client = get_bq_client()
+    query = f"""
+    SELECT
+      client_id,
+      COUNT(*) AS n_linhas,
+      MIN(day) AS min_day,
+      MAX(day) AS max_day
+    FROM `{OVERRIDE_TABLE}`
+    GROUP BY client_id
+    ORDER BY client_id
+    """
+    return client.query(query).to_dataframe()
+
+
+@st.cache_data(ttl=60)
+def load_override_active_config() -> pd.DataFrame:
+    """Versao SCD2-vigente hoje (effective_to IS NULL) de
+    core.client_reporting_source_config -- um cliente por linha com o estado
+    atual do liga/desliga. NAO captura NotFound aqui de proposito -- a tabela
+    e nova (backend constroi em paralelo) e pode ainda nao existir; quem chama
+    trata esse caso explicitamente em vez de mascarar num df vazio sempre."""
+    client = get_bq_client()
+    query = f"""
+    SELECT client_id, override_active, effective_from, reason, confirmed_by, confirmed_at
+    FROM `{CLIENT_REPORTING_SOURCE_CONFIG_TABLE}`
+    WHERE effective_to IS NULL
+    """
+    return client.query(query).to_dataframe()
+
+
+def build_client_override_status(summary_df: pd.DataFrame, config_df: pd.DataFrame) -> pd.DataFrame:
+    """Junta o range real (historical_overrides_delivery) com o estado vigente
+    do liga/desliga (client_reporting_source_config). Pura -- sem I/O -- so
+    para poder testar o merge independente do BQ. Cliente sem linha de config
+    ainda (tabela nova / cliente nunca configurado) vira override_active=False."""
+    merged = summary_df.merge(config_df, on="client_id", how="left")
+    merged["override_active"] = merged["override_active"].fillna(False).astype(bool)
+    return merged
+
+
+def set_client_override_active(client_id: str, new_active: bool, reason: str) -> None:
+    """Grava o novo estado do liga/desliga como uma linha SCD2 NOVA em
+    core.client_reporting_source_config -- nunca UPDATE do valor em si: fecha
+    effective_to da linha vigente (se existir) e insere uma linha nova com
+    effective_from = hoje. Mesmo padrao SCD2 ja usado no resto do pipeline.
+    Usa a writer SA impersonada -- `core` ja esta no escopo dela (mesma usada
+    pelo override da Cora), nenhum binding de IAM novo necessario."""
+    client = get_writer_bq_client()
+
+    close_sql = f"""
+        UPDATE `{CLIENT_REPORTING_SOURCE_CONFIG_TABLE}`
+        SET effective_to = CURRENT_DATE()
+        WHERE client_id = @client_id AND effective_to IS NULL
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("client_id", "STRING", client_id)]
+    )
+    client.query(close_sql, job_config=job_config).result()
+
+    new_row = pd.DataFrame([{
+        "client_id": client_id,
+        "override_active": new_active,
+        "effective_from": date.today(),
+        "effective_to": None,
+        "reason": reason,
+        "confirmed_by": "Douglas",
+        "confirmed_at": datetime.now(timezone.utc),
+    }])
+    job = client.load_table_from_dataframe(
+        new_row,
+        CLIENT_REPORTING_SOURCE_CONFIG_TABLE,
+        job_config=bigquery.LoadJobConfig(write_disposition="WRITE_APPEND"),
+    )
+    job.result()
+
+
 def _parse_json_field(value):
     """Colunas JSON do BQ podem chegar como str (comum) ou ja como dict/list
     dependendo da versao do client -- normaliza para objeto Python em todos os casos."""
@@ -573,7 +720,7 @@ tab_freshness, tab_jobs, tab_powerbi, tab_costs, tab_browser, tab_query, tab_pro
     ":material/table_view: Navegador de Tabelas",
     ":material/terminal: Query Runner",
     ":material/fact_check: Propostas de Mudanca",
-    ":material/history: Overrides Historicos (Cora)",
+    ":material/history: Overrides Historicos",
 ])
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -989,10 +1136,14 @@ with tab_proposals:
                             st.error(f"Erro ao rejeitar: {exc}")
 
 # ─────────────────────────────────────────────────────────────────────────
-# Aba 8 -- Overrides Historicos (Cora): UNICO fluxo de escrita do hub que
-# ja existia antes desta aba. Escopo fechado por decisao explicita -- so
-# Cora, so Jan-Jun/2026, nunca vira pratica recorrente para outros clientes
-# (ver hub/README.md).
+# Aba 8 -- Overrides Historicos. Duas secoes:
+#   1) Upload da Cora (Jan-Jun/2026) -- fluxo original, escopo fechado, NAO
+#      generaliza (guarda-corpo em validate_override_scope).
+#   2) Config por cliente (2026-08-05) -- generaliza o liga/desliga do
+#      override para qualquer cliente que ja tenha dado carregado em
+#      stg.historical_overrides_delivery (movida de core em 2026-08-06),
+#      com range real calculado ao vivo
+#      e status em core.client_reporting_source_config (SCD2).
 # ─────────────────────────────────────────────────────────────────────────
 with tab_overrides:
     st.subheader("Overrides Historicos -- Banco Cora (Jan-Jun/2026)")
@@ -1062,10 +1213,183 @@ with tab_overrides:
                         "Confirmo que revisei o preview e a comparacao acima antes de commitar",
                         key="override_confirm_checkbox",
                     )
-                    if st.button("Confirmar carga em core.historical_overrides_delivery", disabled=not confirm, key="override_commit_btn"):
+                    if st.button("Confirmar carga em stg.historical_overrides_delivery", disabled=not confirm, key="override_commit_btn"):
                         try:
                             with st.spinner("Escrevendo (writer SA impersonada)..."):
                                 n_rows = commit_override(normalized_df, uploaded.name, notes)
-                            st.success(f"{n_rows} linha(s) inserida(s) em `core.historical_overrides_delivery`.")
+                            st.success(f"{n_rows} linha(s) inserida(s) em `stg.historical_overrides_delivery`.")
                         except Exception as exc:
                             st.error(f"Erro ao commitar: {exc}")
+
+    st.divider()
+    st.subheader("Upload de Planilha Historica (Landing RAW)")
+    st.caption(
+        "Peca (a) do desenho fechado em 2026-08-05/06 para generalizar overrides "
+        "historicos alem da Cora (ver docs/known_issues.md item S4): sobe a planilha "
+        "crua do comercial, SEM NENHUM tratamento -- nem validacao de coluna, nem "
+        "parsing -- como landing RAW literal dentro do projeto de STAGING "
+        "(`douglas-bq-staging`, nunca producao). Douglas + IA analisam a estrutura real "
+        "mostrada abaixo antes de construir o mapeamento de normalizacao (a peca 'b' -- "
+        "carrega dado ja normalizado -- ja existe em "
+        "`scripts/deploy/load_historical_override.py`, mas exige entrada ja mapeada 1:1 "
+        "para o schema final; esta secao aqui e o passo ANTES disso)."
+    )
+    st.warning(
+        ":material/warning: A infraestrutura de landing (dataset `raw` em "
+        "`douglas-bq-staging`, script de carga) esta sendo construida pelo backend em "
+        "paralelo, em outra sessao. O botao de confirmar abaixo ainda NAO grava dado "
+        "real no BigQuery -- e um placeholder isolado (`stage_raw_historical_upload`) "
+        "ate o relato do backend chegar. Selecao de cliente, upload e preview de "
+        "estrutura ja funcionam de verdade.",
+        icon=":material/warning:",
+    )
+
+    client_options = load_client_options()
+    if client_options.empty:
+        st.error("`core.dim_client` nao retornou nenhum cliente ativo -- nada para selecionar.")
+    else:
+        client_options = client_options.copy()
+        client_options["display"] = client_options["name"] + " (" + client_options["client_id"] + ")"
+        landing_client_display = st.selectbox(
+            "Cliente", client_options["display"].tolist(), key="landing_client_select"
+        )
+        landing_client_row = client_options[client_options["display"] == landing_client_display].iloc[0]
+        landing_client_id = landing_client_row["client_id"]
+
+        landing_upload = st.file_uploader(
+            "Planilha crua (.csv ou .xlsx) -- sobe exatamente como o comercial mandou, sem tratamento",
+            type=["csv", "xlsx"],
+            key="landing_upload",
+        )
+
+        if landing_upload is not None:
+            landing_raw_df = None
+            try:
+                landing_raw_df = read_uploaded_spreadsheet(landing_upload)
+            except Exception as exc:
+                st.error(f"Nao consegui ler o arquivo (formato invalido?): {exc}")
+
+            if landing_raw_df is not None:
+                if landing_raw_df.empty:
+                    st.error("Arquivo lido, mas esta vazio -- nada para subir.")
+                else:
+                    st.markdown("**Estrutura real do arquivo (sem nenhum tratamento)**")
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        st.metric("Total de linhas", len(landing_raw_df))
+                    with col_b:
+                        st.metric("Total de colunas", len(landing_raw_df.columns))
+                    st.caption("Colunas encontradas, na ordem do arquivo:")
+                    st.code(", ".join(str(c) for c in landing_raw_df.columns), language=None)
+                    st.caption("Amostra (10 primeiras linhas):")
+                    st.dataframe(landing_raw_df.head(10), use_container_width=True, hide_index=True)
+
+                    landing_confirm = st.checkbox(
+                        f"Confirmo que este arquivo e o historico cru de "
+                        f"**{landing_client_row['name']}** (`{landing_client_id}`) e deve subir "
+                        "como landing RAW literal, sem tratamento",
+                        key="landing_confirm_checkbox",
+                    )
+                    if st.button(
+                        "Confirmar upload para landing RAW",
+                        key="landing_commit_btn",
+                        disabled=not landing_confirm,
+                    ):
+                        result = stage_raw_historical_upload(landing_raw_df, landing_client_id, landing_upload.name)
+                        if result["staged"]:
+                            st.success(f"Landing gravado em `{result['would_be_table']}`.")
+                        else:
+                            st.info(
+                                f"Preview validado ({result['n_rows']} linha(s), "
+                                f"{len(result['columns'])} coluna(s) para `{landing_client_id}`) mas "
+                                f"AINDA NAO gravado no BigQuery -- {result['reason']}"
+                            )
+
+    st.divider()
+    st.subheader("Configuracao de Overrides por Cliente")
+    st.caption(
+        "Desenho fechado com o Douglas em 2026-08-05: generaliza o override historico para "
+        "qualquer cliente que ja tenha dado carregado em `stg.historical_overrides_delivery` "
+        "(hoje so a Cora, via o fluxo de upload acima -- mas essa secao ja funciona para "
+        "qualquer client_id que aparecer ali no futuro, sem mudanca de codigo). O range "
+        "(MIN/MAX day) e sempre calculado AO VIVO -- nunca digitado. O liga/desliga fica em "
+        "`core.client_reporting_source_config` (SCD2), tabela nova que o backend esta "
+        "construindo em paralelo."
+    )
+
+    delivery_summary = load_override_delivery_summary()
+
+    if delivery_summary.empty:
+        st.info("Nenhum cliente com dado carregado em `stg.historical_overrides_delivery` ainda.")
+    else:
+        config_table_missing = False
+        try:
+            active_config = load_override_active_config()
+        except NotFound:
+            active_config = pd.DataFrame(
+                columns=["client_id", "override_active", "effective_from", "reason", "confirmed_by", "confirmed_at"]
+            )
+            config_table_missing = True
+
+        if config_table_missing:
+            st.warning(
+                ":material/warning: `core.client_reporting_source_config` ainda nao existe no "
+                "BigQuery (o backend esta construindo o DDL em paralelo) -- o range real abaixo "
+                "funciona normalmente, mas o status de liga/desliga aparece como 'inativo' para "
+                "todo mundo ate a tabela existir, e o botao de gravar vai falhar com erro claro.",
+                icon=":material/warning:",
+            )
+
+        status_df = build_client_override_status(delivery_summary, active_config)
+
+        st.markdown("**Status atual por cliente**")
+        display_status = status_df.copy()
+        display_status["override_active"] = display_status["override_active"].map(
+            lambda v: "ativo" if v else "inativo"
+        )
+        st.dataframe(
+            display_status[
+                ["client_id", "n_linhas", "min_day", "max_day", "override_active", "effective_from", "reason"]
+            ],
+            use_container_width=True, hide_index=True,
+        )
+
+        st.markdown("**Alterar liga/desliga de um cliente**")
+        client_choice = st.selectbox(
+            "Cliente", sorted(status_df["client_id"].unique().tolist()), key="override_toggle_client"
+        )
+        current_row = status_df[status_df["client_id"] == client_choice].iloc[0]
+        current_active = bool(current_row["override_active"])
+        st.caption(
+            f"Estado atual: **{'ativo' if current_active else 'inativo'}** -- "
+            f"{current_row['n_linhas']} linha(s) carregada(s), {current_row['min_day']} a {current_row['max_day']}."
+        )
+        new_active = st.toggle("override_active", value=current_active, key="override_toggle_value")
+        reason = st.text_input("Motivo da mudanca", key="override_toggle_reason")
+        toggle_changed = new_active != current_active
+        if not toggle_changed:
+            st.caption("Nenhuma mudanca de estado selecionada -- mude o toggle acima para habilitar a gravacao.")
+        toggle_confirm = st.checkbox(
+            "Confirmo que revisei o estado atual e quero gravar esta mudanca (nova linha SCD2 em "
+            "`core.client_reporting_source_config`, fechando a linha vigente)",
+            key="override_toggle_confirm",
+            disabled=not toggle_changed,
+        )
+        if st.button(
+            "Gravar novo estado",
+            key="override_toggle_commit_btn",
+            disabled=not (toggle_changed and toggle_confirm),
+        ):
+            try:
+                with st.spinner("Escrevendo (writer SA impersonada)..."):
+                    set_client_override_active(client_choice, new_active, reason)
+                st.success(f"`{client_choice}` -> override_active={new_active}.")
+                load_override_active_config.clear()
+                st.rerun()
+            except NotFound:
+                st.error(
+                    "`core.client_reporting_source_config` ainda nao existe no BigQuery -- o "
+                    "backend precisa aplicar o DDL antes desse botao funcionar."
+                )
+            except Exception as exc:
+                st.error(f"Erro ao gravar: {exc}")

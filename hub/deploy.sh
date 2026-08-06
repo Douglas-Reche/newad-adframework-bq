@@ -62,7 +62,9 @@ fi
 
 # Bindings a nivel de DATASET (nao de projeto) -- so os datasets abaixo ganham
 # permissao de escrita para essa SA. Idempotente: pode rodar de novo sem duplicar.
-#   core -- Overrides Historicos (Cora)
+#   core -- Overrides Historicos (Cora) + Config de Overrides por Cliente
+#           (core.client_reporting_source_config, SCD2, 2026-08-05 -- ja
+#           coberta por este binding, nenhum novo necessario)
 #   raw  -- Propostas de Mudanca (aprovacao de source='siprocal_diff' insere em raw.sp_delivery)
 bq add-iam-policy-binding \
   --member="serviceAccount:${WRITER_SA_EMAIL}" \

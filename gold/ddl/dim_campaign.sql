@@ -12,6 +12,15 @@
 -- sp_campaigns nao tem campaign_name/status/start_date/end_date na fonte
 -- (Siprocal nao expoe essas datas por campanha) -- campaign_name usa
 -- campaign_id (ja e descritivo, ex: NEWAD_BANCOCORA_BR_FEV26), demais NULL.
+--
+-- 2026-08-06 -- CAST(start_date/end_date AS DATE) adicionado nos 2 primeiros
+-- ramos: sync de drift encontrado ao validar paridade staging vs producao
+-- (task "Ambientes Staging x Producao") -- a view AO VIVO em producao ja
+-- tinha esse CAST (stg.ms_campaigns.start_date/end_date sao STRING, nao
+-- DATE; sem o CAST o UNION ALL falha com "incompatible types: STRING,
+-- STRING, DATE"), mas o arquivo commitado neste repo estava sem ele --
+-- mesmo tipo de shadow-object ja documentado em core/ddl/dict_format.sql.
+-- Reportado ao usuario/orquestrador para follow-up (ver relato da task).
 
 CREATE OR REPLACE VIEW `adframework.gold.dim_campaign` AS
 WITH unioned AS (
@@ -23,8 +32,8 @@ WITH unioned AS (
     formato,
     goal_type,
     status,
-    start_date,
-    end_date
+    CAST(start_date AS DATE) AS start_date,
+    CAST(end_date AS DATE) AS end_date
   FROM `adframework.stg.ms_campaigns`
 
   UNION ALL
@@ -37,8 +46,8 @@ WITH unioned AS (
     formato,
     goal_type,
     status,
-    start_date,
-    end_date
+    CAST(start_date AS DATE) AS start_date,
+    CAST(end_date AS DATE) AS end_date
   FROM `adframework.stg.mg_campaigns`
 
   UNION ALL

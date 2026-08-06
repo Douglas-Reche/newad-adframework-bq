@@ -3,8 +3,9 @@
 Painel pessoal do pipeline BQ (`projeto adframework`). Mostra freshness das tabelas,
 status inferido dos jobs de ingestao diaria, um tracker manual dos Power BI em
 desenvolvimento, um navegador de schema/preview, um query runner, a fila de aprovacao de
-propostas de mudanca e a carga de overrides historicos da Cora. Nao depende de nenhum
-codigo do repo do Shiro (`rshiro-newad/adframework`).
+propostas de mudanca, a carga de overrides historicos da Cora e a configuracao de
+overrides por cliente (status/toggle sobre `core.client_reporting_source_config`). Nao
+depende de nenhum codigo do repo do Shiro (`rshiro-newad/adframework`).
 
 ## Farol permanente
 
@@ -28,8 +29,21 @@ A maioria das abas e 100% leitura, usando a SA principal (`douglas-data-hub-sa`,
 sempre via uma SA separada (`douglas-data-hub-writer-sa`) acessada por impersonation (sem
 chave JSON) -- nenhuma outra aba/funcao do app tem acesso a essa credencial:
 
-- **Overrides Historicos (Cora)** -- escreve em `core.historical_overrides_delivery`.
-  `dataEditor` escopado **so ao dataset `core`**.
+- **Overrides Historicos** (ex-"Overrides Historicos (Cora)", renomeada 2026-08 -- deixou
+  de ser so-Cora no nome porque a aba passou a mostrar qualquer cliente) -- escreve em
+  `core.historical_overrides_delivery`. `dataEditor` escopado **so ao dataset `core`**.
+  Ganhou uma secao nova, **Configuracao de Overrides por Cliente**: por `client_id`,
+  mostra quantas linhas existem em `core.historical_overrides_delivery`, o range real
+  (`MIN(day)`/`MAX(day)`, calculado ao vivo, nao digitado) e o status de
+  `override_active`, com um toggle liga/desliga. O toggle escreve em
+  `core.client_reporting_source_config`, sempre versionado SCD2 (fecha a linha anterior
+  com `effective_to`, insere linha nova, nunca `UPDATE` do valor). Usa a mesma writer SA
+  da aba (escopo `core`, sem binding de IAM novo). `core.client_reporting_source_config`
+  ainda esta sendo construida pelo backend em paralelo -- **nao existe em producao** no
+  momento desta entrada; a secao esta validada so com `python -m py_compile`, ainda sem
+  teste de ponta a ponta (falta a tabela + billing do `douglas-bq-staging`). O fluxo de
+  upload original da Cora (`CORA_CLIENT_ID`, janela Jan-Jun/2026 hardcoded, descrito
+  abaixo) foi mantido intocado.
 - **Propostas de Mudanca** -- fila generica sobre `core.change_proposals` (populada hoje
   pela reconciliacao incremental da Siprocal, `source='siprocal_diff'`). Aprovar sempre gera
   um **INSERT** (nunca UPDATE/DELETE) na tabela alvo indicada pela proposta (hoje sempre

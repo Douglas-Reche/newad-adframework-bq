@@ -1,0 +1,22 @@
+# CODEOWNERS — newad-adframework-bq
+#
+# Este repositorio e 100% do Douglas — nao ha colaboradores compartilhados
+# aqui hoje (diferente do monorepo do Shiro, rshiro-newad/adframework, onde
+# ha sobreposicao real de commits). Ainda assim, este arquivo formaliza a
+# aprovacao obrigatoria via Pull Request (Tier B do desenho de 2026-08-05:
+# "Ambientes Staging x Producao") para qualquer mudanca na arvore de dados
+# em producao — protege contra commit acidental/apressado, nao contra
+# terceiros (nao existem terceiros com acesso de escrita aqui hoje).
+#
+# Pre-requisito pra isso funcionar: habilitar "Require a pull request before
+# merging" + "Require review from Code Owners" na protecao da branch `main`
+# (GitHub Settings > Branches) — o arquivo sozinho nao bloqueia nada.
+
+/raw/              @Douglas-Reche
+/stg/               @Douglas-Reche
+/core/               @Douglas-Reche
+/gold/               @Douglas-Reche
+/marts/             @Douglas-Reche
+/share/             @Douglas-Reche
+/scripts/deploy/    @Douglas-Reche
+/hub/               @Douglas-Reche
