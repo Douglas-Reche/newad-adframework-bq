@@ -133,6 +133,17 @@ de resolver a interrupção, retomar a task original de onde parou. Trabalho rea
 exige sair do fluxo planejado — a âncora de task ajuda a manter contexto claro, mas não
 pode travar uma mudança de prioridade legítima.
 
+**Sinalização ativa de desvio (o usuário tem TDAH — pedido explícito dele, 2026-08-05).**
+Diferente da confirmação pontual acima (que é sobre pedir desconectado do contexto), isso é
+uma vigilância mais proativa: se o usuário começar a pedir várias coisas em sequência que
+se afastam progressivamente da task/MÃE em andamento (não um pedido isolado, mas uma deriva
+ao longo de várias mensagens), o orquestrador **aponta isso explicitamente** — "isso parece
+estar se afastando de X, é uma mudança de escopo legítima (achado novo, prioridade mudou) ou
+é bom voltar pro que estávamos fazendo?" — em vez de simplesmente seguir cada pedido novo
+sem comentar. A decisão final é sempre do usuário (ele confirma se é desvio real ou escopo
+novo genuíno), o papel do orquestrador é só trazer a pergunta à tona, sem julgar sozinho nem
+travar o pedido.
+
 ### Formato de relato ao usuário — sempre ancorado na MÃE
 
 Todo resumo/atualização trazido pro chat (não só o relato completo de fim de macro
