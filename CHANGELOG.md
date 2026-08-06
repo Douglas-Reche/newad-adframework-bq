@@ -6,6 +6,22 @@
 
 ---
 
+## 2026-08-06 (tarde) — Hub deployado + deploy automático via GitHub Action
+
+**Deploy manual executado com sucesso:** `douglas-data-hub-00005-z9g` no ar, servindo 100% do
+tráfego, com todas as mudanças de hoje (upload histórico, config de overrides, comparação lado
+a lado). `bq add-iam-policy-binding` bateu num bloqueio real do Google ("This feature requires
+allowlisting") ao aplicar os bindings de `douglas-bq-staging:raw/stg/core` — contornado via
+cliente Python do BigQuery (`AccessEntry`) em vez do `bq` CLI. `roles/bigquery.jobUser` no
+projeto de staging aplicado via `gcloud` normalmente.
+
+**Novo:** `.github/workflows/hub_deploy.yml` — dispara deploy automático em push na `main` que
+toca `hub/**`, mesmo padrão de auth do `cora_sheets_sync.yml` (chave de SA em secret do GitHub).
+**Pendente de confirmação antes de funcionar:** criar SA dedicada + chave JSON
+(`HUB_DEPLOY_SA_KEY`) e secret `HUB_PASSWORD` no GitHub — nenhum dos dois foi criado ainda.
+
+---
+
 ## 2026-08-06 — Novo agente `historical-data-analyst` + tela de comparação lado a lado no Hub
 
 **Agente novo:** `C:\Users\dougl\.claude\agents\historical-data-analyst.md` (só global) — especializado

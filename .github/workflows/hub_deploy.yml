@@ -1,0 +1,64 @@
+name: Deploy Data Hub (Cloud Run)
+
+# Deploy automatico do AdFramework Data Hub (hub/) sempre que mudanca real
+# chegar na main -- ate 2026-08-06 isso era sempre manual (hub/deploy.sh
+# rodado a mao). Mesmo padrao ja usado em cora_sheets_sync.yml (auth via
+# chave de SA guardada em secret do GitHub, nao Workload Identity Federation
+# -- WIF exigiria provisionar Pool/Provider novo, fora de escopo desta
+# automacao pontual).
+#
+# So dispara quando arquivo dentro de hub/ muda -- nao redeploya por causa de
+# mudanca em outro lugar do repo (raw/stg/core/gold/scripts/docs).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hub/**"
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Motivo do deploy manual"
+        required: false
+        default: "Deploy manual via workflow_dispatch"
+
+jobs:
+  deploy:
+    name: Build + Deploy douglas-data-hub
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: "${{ secrets.HUB_DEPLOY_SA_KEY }}"
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: adframework
+
+      - name: Deploy to Cloud Run
+        working-directory: hub
+        run: |
+          gcloud run deploy douglas-data-hub \
+            --project adframework \
+            --region southamerica-east1 \
+            --source . \
+            --service-account douglas-data-hub-sa@adframework.iam.gserviceaccount.com \
+            --allow-unauthenticated \
+            --min-instances=0 \
+            --max-instances=1 \
+            --memory=512Mi \
+            --set-env-vars="HUB_PASSWORD=${{ secrets.HUB_PASSWORD }},WRITER_SA_EMAIL=douglas-data-hub-writer-sa@adframework.iam.gserviceaccount.com"
+
+      - name: Show service URL
+        run: |
+          gcloud run services describe douglas-data-hub \
+            --project adframework \
+            --region southamerica-east1 \
+            --format='value(status.url)'
