@@ -62,10 +62,11 @@ fi
 
 # Bindings a nivel de DATASET (nao de projeto) -- so os datasets abaixo ganham
 # permissao de escrita para essa SA. Idempotente: pode rodar de novo sem duplicar.
-#   core -- Overrides Historicos (Cora) + Config de Overrides por Cliente
-#           (core.client_reporting_source_config, SCD2, 2026-08-05 -- ja
-#           coberta por este binding, nenhum novo necessario)
+#   core -- Propostas de Mudanca (core.change_proposals)
 #   raw  -- Propostas de Mudanca (aprovacao de source='siprocal_diff' insere em raw.sp_delivery)
+# Nota: Overrides Historicos (Cora) e Config de Overrides por Cliente
+# (stg.historical_overrides_delivery / core.client_reporting_source_config)
+# NAO usam estes bindings -- vivem em douglas-bq-staging, ver bloco abaixo.
 bq add-iam-policy-binding \
   --member="serviceAccount:${WRITER_SA_EMAIL}" \
   --role="roles/bigquery.dataEditor" \
@@ -75,6 +76,46 @@ bq add-iam-policy-binding \
   --member="serviceAccount:${WRITER_SA_EMAIL}" \
   --role="roles/bigquery.dataEditor" \
   "${PROJECT_ID}:raw" >/dev/null
+
+# Bindings em douglas-bq-staging (projeto SEPARADO de $PROJECT_ID) -- necessarios
+# porque, a partir de 2026-08-06, douglas-bq-staging virou o ambiente completo
+# onde roda TODO o fluxo de override historico antes de promover para producao:
+#   raw  -- landing da planilha crua (historical_uploads/_meta, ver
+#           stage_raw_historical_upload() em app.py)
+#   stg  -- historical_overrides_delivery (dado normalizado, override em si)
+#   core -- client_reporting_source_config (liga/desliga do override, SCD2)
+# Confirmado NAO rodado ainda (verificado 2026-08-06 via python bigquery client:
+# nenhum access_entry para writer-sa em nenhum dos 3 datasets, so o
+# projectWriters padrao) -- o app trata a falta disso com erro de permissao
+# claro em vez de estourar (ver stage_raw_historical_upload/commit_override/
+# set_client_override_active em app.py), mas sem este binding as escritas
+# reais falham. Rodar so apos confirmar com o Douglas (regra de IAM do hub).
+STAGING_PROJECT_ID="douglas-bq-staging"
+
+bq add-iam-policy-binding \
+  --member="serviceAccount:${WRITER_SA_EMAIL}" \
+  --role="roles/bigquery.dataEditor" \
+  "${STAGING_PROJECT_ID}:raw" >/dev/null
+
+bq add-iam-policy-binding \
+  --member="serviceAccount:${WRITER_SA_EMAIL}" \
+  --role="roles/bigquery.dataEditor" \
+  "${STAGING_PROJECT_ID}:stg" >/dev/null
+
+bq add-iam-policy-binding \
+  --member="serviceAccount:${WRITER_SA_EMAIL}" \
+  --role="roles/bigquery.dataEditor" \
+  "${STAGING_PROJECT_ID}:core" >/dev/null
+
+# A writer SA tambem precisa poder RODAR jobs de load/query contra as tabelas
+# de staging acima. O hub agora fatura essas 3 escritas direto em
+# douglas-bq-staging (get_staging_writer_bq_client() em app.py, 2026-08-06) --
+# NAO em $PROJECT_ID/adframework -- entao o jobUser correspondente e escopado
+# so ao projeto de staging (isolado, so o Douglas tem acesso la), nunca a
+# producao. dataEditor no dataset staging sozinho nao basta sem isto.
+gcloud projects add-iam-policy-binding "$STAGING_PROJECT_ID" \
+  --member="serviceAccount:${WRITER_SA_EMAIL}" \
+  --role="roles/bigquery.jobUser" >/dev/null
 
 # SA principal (read-only) ganha permissao de IMPERSONAR a writer SA -- nenhuma
 # chave JSON e criada/baixada. So a aba de Overrides usa essa impersonation.

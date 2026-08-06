@@ -6,6 +6,65 @@
 
 ---
 
+## 2026-08-06 — Escritas do hub em `douglas-bq-staging` param de precisar de IAM em produção
+
+**O que mudou:** `hub/app.py` faturava/rodava jobs de escrita em staging (`stage_raw_historical_upload`,
+`commit_override`, `set_client_override_active`) contra `PROJECT_ID` (`adframework`, produção),
+mesmo escrevendo só em `douglas-bq-staging` — exigiria conceder `roles/bigquery.jobUser` pra
+writer SA em produção só pra viabilizar uma feature 100% de teste. Quebra o princípio de
+isolamento total de staging estabelecido nesta manhã.
+
+**Por quê:** `get_staging_writer_bq_client()` (novo, mesma impersonation da writer SA, só troca
+o projeto de faturamento pra `douglas-bq-staging`) substitui `get_writer_bq_client()` nas 3
+funções acima. `hub/deploy.sh`: binding `roles/bigquery.jobUser` movido de `$PROJECT_ID`
+(produção) pra `$STAGING_PROJECT_ID` (`douglas-bq-staging`) — remove escopo desnecessário em
+produção, não adiciona acesso novo (a writer SA já tinha `dataEditor` em `core`/`raw` de
+produção de outras features, `jobUser` sozinho não dava acesso a dado nenhum — a correção é
+por princípio de escopo mínimo, não por vulnerabilidade ativa).
+
+**Arquivos:** `hub/app.py`, `hub/deploy.sh`. **Pendente:** `deploy.sh` não foi rodado ainda —
+Douglas confirma e executa manualmente quando for usar as escritas de staging pela primeira vez.
+
+---
+
+## 2026-08-06 — Normalização versionada por cliente fecha o fluxo de dado histórico (`docs/known_issues.md` S4 resolvido)
+
+**O que mudou:** `scripts/deploy/normalize_historical_upload.py` (novo) orquestra a etapa 4 do
+fluxo "dado histórico por cliente" — busca `raw.historical_uploads`/`historical_uploads_meta`
+em `douglas-bq-staging` por `--upload-id`, aplica o mapeamento de normalização do cliente
+(`scripts/deploy/historical_mappings/<client_id>.py`, contrato `normalize(raw_rows) ->
+list[dict]` documentado em `historical_mappings/__init__.py`), valida contra
+`REQUIRED_COLUMNS` de `load_historical_override.py` (fonte única, sem duplicar lista) e
+escreve um CSV pronto pra `load_historical_override.py` carregar. Falha alto se não existir
+mapeamento pro `client_id`. Primeiro mapeamento de exemplo criado:
+`historical_mappings/teste_agente_backend_xyz.py` (cliente fictício de teste — parse de data
+BR, número BR, mapa fechado de formato).
+
+Também corrigido `load_historical_override.py::build_rows()`: coluna nullable vazia
+(`platform`/`goal_type`/`impressions`/`conversions`) chegava como `float('nan')` do pandas,
+que não é JSON válido pra API do BigQuery (`400 Bad Request`) — não era um bug específico do
+cliente de teste, bloquearia qualquer cliente real com colunas ausentes. Corrigido `NaN` →
+`None` antes do insert.
+
+**Por quê:** fecha a lacuna registrada em `docs/known_issues.md` S4 — das 3 peças do desenho
+"raw-landing + normalização" (landing RAW no Hub, upload, normalização), só a normalização
+faltava construir; as outras duas já existiam (`hub/app.py`, `raw/ddl/historical_uploads*.sql`).
+
+**Teste ponta a ponta confirmado** (upload_id `39a0d9be-1ca8-4d41-b774-cc30489d2286`,
+`client_id=teste_agente_backend_xyz`, verificado via query direta em
+`douglas-bq-staging.stg.historical_overrides_delivery`, 3 linhas): `"01/07/2026"` →
+`2026-07-01`, `"1.234,56"` → `1234.56`, `"Video Instream"` → `video_instream`; colunas
+ausentes na planilha origem (`platform`/`goal_type`/`impressions`/`conversions`) → `NULL`.
+
+**Arquivos afetados:** `scripts/deploy/normalize_historical_upload.py` (novo),
+`scripts/deploy/historical_mappings/__init__.py` (novo),
+`scripts/deploy/historical_mappings/teste_agente_backend_xyz.py` (novo),
+`scripts/deploy/load_historical_override.py` (fix NaN→None).
+
+**Hash do commit:** ainda não commitado no momento deste registro.
+
+---
+
 ## 2026-08-06 (manhã) — Arquitetura standalone: `douglas-bq-staging` deixa de ler cross-project, `raw` vira snapshot físico — decisão final, supera a entrada abaixo
 
 **Contexto:** depois de várias revisões de conceito ao longo da madrugada de 2026-08-05→06

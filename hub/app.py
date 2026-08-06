@@ -35,10 +35,21 @@ HUB_PASSWORD = os.environ.get("HUB_PASSWORD")  # se ausente (rodando local), nao
 # Escrita isolada: so as abas de Overrides Historicos e Propostas de Mudanca usam
 # essa SA, via impersonation (sem chave JSON). A SA principal do hub
 # (douglas-data-hub-sa) continua 100% read-only -- nao muda em nada para as
-# outras abas. dataEditor escopado por dataset (hoje: `core` + `raw`) -- ver hub/deploy.sh.
+# outras abas. dataEditor escopado por dataset: `core` + `raw` em $PROJECT_ID
+# (Propostas de Mudanca) e `raw`/`stg`/`core` em douglas-bq-staging (Overrides
+# Historicos + Config de Overrides, ambiente de teste) -- ver hub/deploy.sh.
 WRITER_SA_EMAIL = os.environ.get(
     "WRITER_SA_EMAIL", f"douglas-data-hub-writer-sa@{PROJECT_ID}.iam.gserviceaccount.com"
 )
+
+# Ambiente de teste do fluxo de override historico -- 2026-08-06 douglas-bq-staging
+# virou um ambiente standalone completo (raw copiado fisicamente, stg/core/gold
+# 100% locais, paridade validada com producao). O fluxo inteiro (landing RAW,
+# normalizacao, carga, toggle) roda AQUI primeiro, nunca em `adframework`
+# (producao) -- essas duas tabelas nunca foram aplicadas em producao de proposito.
+# Mesma constante de projeto usada pela landing RAW (RAW_LANDING_PROJECT_ID,
+# definida mais abaixo) -- redeclarada aqui em cima porque e usada antes.
+HISTORICAL_OVERRIDE_PROJECT_ID = "douglas-bq-staging"
 
 # Escopo fechado do override historico -- decisao explicita: isso NAO generaliza
 # para outros clientes/periodos. So Cora, so Jan-Jun/2026. Ver docs/PROCESS.md
@@ -46,7 +57,7 @@ WRITER_SA_EMAIL = os.environ.get(
 CORA_CLIENT_ID = "banco_cora_fe13d78a"
 CORA_OVERRIDE_START = date(2026, 1, 1)
 CORA_OVERRIDE_END = date(2026, 6, 30)
-OVERRIDE_TABLE = f"{PROJECT_ID}.stg.historical_overrides_delivery"
+OVERRIDE_TABLE = f"{HISTORICAL_OVERRIDE_PROJECT_ID}.stg.historical_overrides_delivery"
 OVERRIDE_TARGET_FIELDS = ["day", "platform", "formato", "goal_type", "impressions", "clicks", "investimento"]
 
 # Desenho fechado com o Douglas em 2026-08-05: generaliza o override historico
@@ -56,7 +67,9 @@ OVERRIDE_TARGET_FIELDS = ["day", "platform", "formato", "goal_type", "impression
 # nova, construida pelo backend em paralelo (client_id, override_active,
 # effective_from, effective_to, reason, confirmed_by, confirmed_at). Pode ainda
 # nao existir em producao -- a secao abaixo trata isso sem quebrar.
-CLIENT_REPORTING_SOURCE_CONFIG_TABLE = f"{PROJECT_ID}.core.client_reporting_source_config"
+# Vive em douglas-bq-staging (mesmo motivo de OVERRIDE_TABLE acima) -- NUNCA
+# em `adframework` (producao), nunca existiu la de proposito.
+CLIENT_REPORTING_SOURCE_CONFIG_TABLE = f"{HISTORICAL_OVERRIDE_PROJECT_ID}.core.client_reporting_source_config"
 
 # Upload de Planilha Historica (landing RAW) -- peca (a) do desenho fechado em
 # 2026-08-05/06 para generalizar overrides historicos alem da Cora (ver
@@ -74,7 +87,7 @@ CLIENT_REPORTING_SOURCE_CONFIG_TABLE = f"{PROJECT_ID}.core.client_reporting_sour
 # CLI irmao (uso fora do Hub) em scripts/deploy/load_historical_raw.py -- o
 # Hub NAO chama esse script, escreve direto via BQ client (mesmo padrao de
 # commit_override), ver stage_raw_historical_upload().
-RAW_LANDING_PROJECT_ID = "douglas-bq-staging"
+RAW_LANDING_PROJECT_ID = HISTORICAL_OVERRIDE_PROJECT_ID
 RAW_LANDING_DATASET = "raw"
 RAW_UPLOADS_TABLE = f"{RAW_LANDING_PROJECT_ID}.{RAW_LANDING_DATASET}.historical_uploads"
 RAW_UPLOADS_META_TABLE = f"{RAW_LANDING_PROJECT_ID}.{RAW_LANDING_DATASET}.historical_uploads_meta"
@@ -387,6 +400,28 @@ def get_writer_bq_client() -> bigquery.Client:
     return bigquery.Client(project=PROJECT_ID, credentials=target_credentials)
 
 
+@st.cache_resource
+def get_staging_writer_bq_client() -> bigquery.Client:
+    """Mesma credencial impersonada da writer SA, mas faturada/rodando jobs
+    direto em `douglas-bq-staging` (nao em PROJECT_ID/adframework). Existe
+    para as 3 escritas que vivem 100% em staging (stage_raw_historical_upload,
+    commit_override, set_client_override_active) -- usar get_writer_bq_client()
+    para elas exigiria conceder roles/bigquery.jobUser para a writer SA em
+    PRODUCAO so pra rodar jobs contra tabelas de staging, o que viola o
+    isolamento total de staging (decisao do Douglas, 2026-08-06). O dataEditor
+    dataset-scoped em douglas-bq-staging (raw/stg/core) continua sendo o unico
+    binding de escrita necessario; o jobUser correspondente tambem passa a ser
+    escopado a douglas-bq-staging (ver hub/deploy.sh)."""
+    source_credentials, _ = google.auth.default()
+    target_credentials = impersonated_credentials.Credentials(
+        source_credentials=source_credentials,
+        target_principal=WRITER_SA_EMAIL,
+        target_scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        lifetime=300,
+    )
+    return bigquery.Client(project=HISTORICAL_OVERRIDE_PROJECT_ID, credentials=target_credentials)
+
+
 def dry_run_bytes(sql: str) -> int:
     client = get_bq_client()
     job_config = bigquery.QueryJobConfig(dry_run=True, use_query_cache=False)
@@ -445,8 +480,10 @@ def validate_override_scope(df: pd.DataFrame) -> list[str]:
 
 
 def commit_override(df: pd.DataFrame, source_file: str, notes: str) -> int:
-    """Unico ponto de escrita do hub. Usa a writer SA impersonada."""
-    client = get_writer_bq_client()
+    """Escreve stg.historical_overrides_delivery em douglas-bq-staging. Usa a
+    writer SA impersonada, faturada direto em staging (get_staging_writer_bq_client)
+    -- nunca em PROJECT_ID/adframework."""
+    client = get_staging_writer_bq_client()
     load_df = df.copy()
     load_df["client_id"] = CORA_CLIENT_ID
     load_df["source_file"] = source_file
@@ -484,13 +521,13 @@ def stage_raw_historical_upload(raw_df: pd.DataFrame, client_id: str, source_fil
     (script CLI irmao, mesmo schema) -- todos entregues pelo backend em paralelo
     nesta mesma janela de trabalho.
 
-    Escreve com a writer SA impersonada. IMPORTANTE: essa SA hoje so tem
-    dataEditor em `adframework.core` e `adframework.raw` (ver WRITER_SA_EMAIL) --
-    projeto DIFERENTE de douglas-bq-staging. Ate um binding de IAM novo ser
-    criado (dataset-scoped, mesmo padrao das demais, ver hub/deploy.sh -- NAO
-    rodar gcloud/IAM sem confirmar com o Douglas antes), esta chamada deve
-    falhar com erro de permissao -- tratado abaixo com uma mensagem clara em vez
-    de deixar a excecao estourar na UI."""
+    Escreve com a writer SA impersonada, faturada direto em douglas-bq-staging
+    (get_staging_writer_bq_client) -- nunca em PROJECT_ID/adframework. IMPORTANTE:
+    essa SA precisa de dataEditor em `douglas-bq-staging.raw` (ver WRITER_SA_EMAIL
+    e hub/deploy.sh, bindings dataset-scoped em douglas-bq-staging). Se o binding
+    ainda nao tiver sido aplicado, esta chamada deve falhar com erro de permissao
+    -- tratado abaixo com uma mensagem clara em vez de deixar a excecao estourar
+    na UI."""
     upload_id = str(uuid.uuid4())
     uploaded_at = datetime.now(timezone.utc)
     uploaded_by = "Douglas"
@@ -521,7 +558,7 @@ def stage_raw_historical_upload(raw_df: pd.DataFrame, client_id: str, source_fil
     })
 
     try:
-        client = get_writer_bq_client()
+        client = get_staging_writer_bq_client()
         client.load_table_from_dataframe(rows_df, RAW_UPLOADS_TABLE).result()
         client.load_table_from_dataframe(meta_row, RAW_UPLOADS_META_TABLE).result()
     except Exception as exc:
@@ -655,9 +692,10 @@ def set_client_override_active(client_id: str, new_active: bool, reason: str) ->
     core.client_reporting_source_config -- nunca UPDATE do valor em si: fecha
     effective_to da linha vigente (se existir) e insere uma linha nova com
     effective_from = hoje. Mesmo padrao SCD2 ja usado no resto do pipeline.
-    Usa a writer SA impersonada -- `core` ja esta no escopo dela (mesma usada
-    pelo override da Cora), nenhum binding de IAM novo necessario."""
-    client = get_writer_bq_client()
+    Usa a writer SA impersonada, faturada direto em douglas-bq-staging
+    (get_staging_writer_bq_client) -- CLIENT_REPORTING_SOURCE_CONFIG_TABLE vive
+    em douglas-bq-staging.core, nao em PROJECT_ID/adframework."""
+    client = get_staging_writer_bq_client()
 
     close_sql = f"""
         UPDATE `{CLIENT_REPORTING_SOURCE_CONFIG_TABLE}`

@@ -150,7 +150,20 @@ def build_rows(df: pd.DataFrame, loaded_by: str) -> list:
     # day como string ISO -- insert_rows_json exige tipos serializaveis;
     # BigQuery aceita 'YYYY-MM-DD' para coluna DATE via streaming insert.
     df["day"] = pd.to_datetime(df["day"]).dt.strftime("%Y-%m-%d")
-    return df.to_dict(orient="records")
+    rows = df.to_dict(orient="records")
+    # Colunas nullable (platform, goal_type, impressions, conversions, etc)
+    # chegam como float('nan') do pandas quando a celula esta vazia --
+    # float('nan') NAO e JSON valido (o padrao JSON nao tem NaN; a lib do
+    # BigQuery serializa como o literal `NaN`, que a API rejeita com 400
+    # Bad Request). Trocar por None (-> `null` em JSON) antes do insert --
+    # achado real ao rodar o teste ponta-a-ponta do fluxo de normalizacao
+    # (scripts/deploy/normalize_historical_upload.py) contra um cliente com
+    # varias colunas nullable vazias.
+    for row in rows:
+        for key, value in row.items():
+            if isinstance(value, float) and pd.isna(value):
+                row[key] = None
+    return rows
 
 
 def main():
