@@ -17,6 +17,7 @@ Uso:
 
 import json
 import os
+import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -24,7 +25,7 @@ import google.auth
 import pandas as pd
 import streamlit as st
 import yaml
-from google.api_core.exceptions import NotFound
+from google.api_core.exceptions import Forbidden, NotFound
 from google.auth import impersonated_credentials
 from google.cloud import bigquery
 
@@ -62,12 +63,21 @@ CLIENT_REPORTING_SOURCE_CONFIG_TABLE = f"{PROJECT_ID}.core.client_reporting_sour
 # docs/known_issues.md item S4, repo newad-adframework-bq). Sobe a planilha
 # crua do comercial SEM NENHUM tratamento, pousa como RAW literal dentro do
 # projeto de STAGING (nao producao -- e trabalho de descoberta antes de decidir
-# como normalizar). O backend esta construindo essa infraestrutura (dataset
-# `raw` em douglas-bq-staging, schema de landing, script de carga) em paralelo
-# -- nomes exatos de dataset/tabela/funcao de carga AINDA NAO CONFIRMADOS nesta
-# sessao. Ver stage_raw_historical_upload() para o ponto de integracao isolado.
+# como normalizar).
+# Contrato confirmado com o backend (repassado pelo orquestrador, 2026-08-06):
+# duas tabelas em douglas-bq-staging.raw --
+#   historical_uploads: upload_id, client_id, source_filename, row_number,
+#     raw_row (JSON-text STRING), uploaded_at, uploaded_by
+#   historical_uploads_meta: upload_id, client_id, source_filename,
+#     column_names (ARRAY<STRING>), row_count, uploaded_at, uploaded_by
+# DDL em raw/ddl/historical_uploads.sql + historical_uploads_meta.sql. Script
+# CLI irmao (uso fora do Hub) em scripts/deploy/load_historical_raw.py -- o
+# Hub NAO chama esse script, escreve direto via BQ client (mesmo padrao de
+# commit_override), ver stage_raw_historical_upload().
 RAW_LANDING_PROJECT_ID = "douglas-bq-staging"
-RAW_LANDING_DATASET = "raw"  # candidato -- confirmar com o backend quando o relato chegar
+RAW_LANDING_DATASET = "raw"
+RAW_UPLOADS_TABLE = f"{RAW_LANDING_PROJECT_ID}.{RAW_LANDING_DATASET}.historical_uploads"
+RAW_UPLOADS_META_TABLE = f"{RAW_LANDING_PROJECT_ID}.{RAW_LANDING_DATASET}.historical_uploads_meta"
 
 # Fila generica de propostas de mudanca pendentes de aprovacao humana. Tabela
 # desenhada pelo backend para servir qualquer fonte futura (hoje so
@@ -390,6 +400,20 @@ def read_uploaded_spreadsheet(uploaded_file) -> pd.DataFrame:
     return pd.read_excel(uploaded_file)
 
 
+def read_uploaded_spreadsheet_raw(uploaded_file) -> pd.DataFrame:
+    """Le TODAS as colunas como STRING, sem inferencia de tipo do pandas --
+    mesmo principio 'RAW = dump literal' de scripts/deploy/load_historical_raw.py
+    (a contraparte CLI que fixa este mesmo contrato). Usada so pela landing RAW
+    generica (nao pelo fluxo de override normalizado da Cora acima, que continua
+    usando read_uploaded_spreadsheet com inferencia de tipo -- ali o schema alvo
+    ja e conhecido e tipado)."""
+    uploaded_file.seek(0)
+    read_kwargs = {"dtype": str, "keep_default_na": False, "na_values": [""]}
+    if uploaded_file.name.lower().endswith(".csv"):
+        return pd.read_csv(uploaded_file, **read_kwargs)
+    return pd.read_excel(uploaded_file, **read_kwargs)
+
+
 def build_override_dataframe(raw_df: pd.DataFrame, mapping: dict) -> pd.DataFrame:
     """Aplica o mapeamento de colunas (arquivo -> schema alvo) escolhido na UI.
     Colunas alvo sem mapeamento (ex. arquivo nao tem `investimento`) viram NULL."""
@@ -450,30 +474,133 @@ def load_client_options() -> pd.DataFrame:
 
 
 def stage_raw_historical_upload(raw_df: pd.DataFrame, client_id: str, source_filename: str) -> dict:
-    """PLACEHOLDER -- ponto de integracao isolado com a ferramenta de landing RAW
-    que o backend esta construindo em paralelo (peca 'a' do desenho fechado em
-    2026-08-05/06, ver docs/known_issues.md item S4). Quando o relato do backend
-    chegar (via orquestrador), substituir o corpo desta funcao pela chamada real
-    -- provavelmente equivalente a um load_table_from_dataframe contra
-    `douglas-bq-staging.raw.<tabela por cliente/arquivo>`, usando uma writer SA
-    IMPERSONADA com escopo NOVO nesse dataset (a writer SA atual do hub,
-    douglas-data-hub-writer-sa, so tem dataEditor em `adframework.core` e
-    `adframework.raw` -- projeto DIFERENTE de douglas-bq-staging, entao um
-    binding de IAM novo e necessario antes desta funcao poder escrever de
-    verdade -- ver hub/deploy.sh e nao rodar gcloud sem confirmar antes).
+    """Landing RAW literal em douglas-bq-staging.raw -- contrato confirmado com o
+    backend (repassado pelo orquestrador, 2026-08-06, ver docs/known_issues.md
+    item S4): duas tabelas, `historical_uploads` (uma linha por linha do
+    arquivo, `raw_row` como JSON-text STRING) e `historical_uploads_meta` (uma
+    linha por upload, com column_names + row_count) -- ver RAW_UPLOADS_TABLE /
+    RAW_UPLOADS_META_TABLE. Contrato validado contra raw/ddl/historical_uploads.sql
+    + raw/ddl/historical_uploads_meta.sql + scripts/deploy/load_historical_raw.py
+    (script CLI irmao, mesmo schema) -- todos entregues pelo backend em paralelo
+    nesta mesma janela de trabalho.
 
-    TODO: integrar com o script/infra real do backend assim que o relato
-    chegar -- ver docs/known_issues.md item S4 (newad-adframework-bq).
+    Escreve com a writer SA impersonada. IMPORTANTE: essa SA hoje so tem
+    dataEditor em `adframework.core` e `adframework.raw` (ver WRITER_SA_EMAIL) --
+    projeto DIFERENTE de douglas-bq-staging. Ate um binding de IAM novo ser
+    criado (dataset-scoped, mesmo padrao das demais, ver hub/deploy.sh -- NAO
+    rodar gcloud/IAM sem confirmar com o Douglas antes), esta chamada deve
+    falhar com erro de permissao -- tratado abaixo com uma mensagem clara em vez
+    de deixar a excecao estourar na UI."""
+    upload_id = str(uuid.uuid4())
+    uploaded_at = datetime.now(timezone.utc)
+    uploaded_by = "Douglas"
 
-    Por enquanto NAO escreve nada no BigQuery. Retorna um resultado local para a
-    tela de preview de estrutura continuar funcional sem depender do backend."""
+    meta_row = pd.DataFrame([{
+        "upload_id": upload_id,
+        "client_id": client_id,
+        "source_filename": source_filename,
+        "column_names": [str(c) for c in raw_df.columns],
+        "row_count": len(raw_df),
+        "uploaded_at": uploaded_at,
+        "uploaded_by": uploaded_by,
+    }])
+    def _row_to_json(row: pd.Series) -> str:
+        # NaN (celula vazia) nao serializa em JSON valido -- vira None/null,
+        # mesmo tratamento do script CLI irmao (load_historical_raw.py).
+        record = {k: (None if pd.isna(v) else v) for k, v in row.to_dict().items()}
+        return json.dumps(record, ensure_ascii=False, default=str)
+
+    rows_df = pd.DataFrame({
+        "upload_id": upload_id,
+        "client_id": client_id,
+        "source_filename": source_filename,
+        "row_number": range(1, len(raw_df) + 1),
+        "raw_row": [_row_to_json(row) for _, row in raw_df.iterrows()],
+        "uploaded_at": uploaded_at,
+        "uploaded_by": uploaded_by,
+    })
+
+    try:
+        client = get_writer_bq_client()
+        client.load_table_from_dataframe(rows_df, RAW_UPLOADS_TABLE).result()
+        client.load_table_from_dataframe(meta_row, RAW_UPLOADS_META_TABLE).result()
+    except Exception as exc:
+        return {
+            "staged": False,
+            "reason": (
+                f"Nao consegui gravar em `{RAW_UPLOADS_TABLE}` -- causa provavel: falta "
+                f"binding de IAM (dataEditor) para `{WRITER_SA_EMAIL}` no dataset "
+                f"`{RAW_LANDING_PROJECT_ID}.{RAW_LANDING_DATASET}`, ou as tabelas ainda nao "
+                f"foram criadas la. Erro original: {exc}"
+            ),
+            "upload_id": upload_id,
+            "would_be_table": RAW_UPLOADS_TABLE,
+            "n_rows": len(raw_df),
+            "columns": list(raw_df.columns),
+        }
+
     return {
-        "staged": False,
-        "reason": "Integracao com a infra de landing do backend ainda nao existe (ver docs/known_issues.md S4).",
-        "would_be_table": f"{RAW_LANDING_PROJECT_ID}.{RAW_LANDING_DATASET}.<a_definir_pelo_backend>_{client_id}",
+        "staged": True,
+        "upload_id": upload_id,
+        "would_be_table": RAW_UPLOADS_TABLE,
         "n_rows": len(raw_df),
         "columns": list(raw_df.columns),
     }
+
+
+def _parse_json_field(value):
+    """Normaliza um campo que pode vir do BQ como str JSON, dict ja parseado ou
+    list -- pura, sem I/O. Usada para reidratar `raw_row` (STRING JSON-text) de
+    historical_uploads de volta em dict Python para exibicao."""
+    if value is None:
+        return {}
+    if isinstance(value, (dict, list)):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return {"_raw": value}
+    return value
+
+
+def load_landed_historical_upload(upload_id: str) -> tuple[dict, pd.DataFrame]:
+    """Le de volta o que pousou em douglas-bq-staging.raw para um upload_id --
+    meta (nomes de coluna reais + row_count, direto de historical_uploads_meta)
+    + amostra de ate 10 linhas parseadas de raw_row. Le com get_bq_client() (SA
+    principal, read-only) -- se ela nao tiver leitura no projeto de staging
+    ainda, a excecao propaga para quem chama tratar (mesmo padrao do resto do
+    hub: nao mascarar erro de permissao/tabela ausente)."""
+    client = get_bq_client()
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("upload_id", "STRING", upload_id)]
+    )
+
+    meta_df = client.query(
+        f"""
+        SELECT client_id, source_filename, column_names, row_count, uploaded_at, uploaded_by
+        FROM `{RAW_UPLOADS_META_TABLE}`
+        WHERE upload_id = @upload_id
+        """,
+        job_config=job_config,
+    ).to_dataframe()
+
+    sample_df = client.query(
+        f"""
+        SELECT row_number, raw_row
+        FROM `{RAW_UPLOADS_TABLE}`
+        WHERE upload_id = @upload_id
+        ORDER BY row_number
+        LIMIT 10
+        """,
+        job_config=job_config,
+    ).to_dataframe()
+
+    if not sample_df.empty:
+        sample_df = pd.json_normalize(sample_df["raw_row"].map(_parse_json_field))
+
+    meta = meta_df.iloc[0].to_dict() if not meta_df.empty else {}
+    return meta, sample_df
 
 
 @st.cache_data(ttl=60)
@@ -1235,12 +1362,13 @@ with tab_overrides:
         "para o schema final; esta secao aqui e o passo ANTES disso)."
     )
     st.warning(
-        ":material/warning: A infraestrutura de landing (dataset `raw` em "
-        "`douglas-bq-staging`, script de carga) esta sendo construida pelo backend em "
-        "paralelo, em outra sessao. O botao de confirmar abaixo ainda NAO grava dado "
-        "real no BigQuery -- e um placeholder isolado (`stage_raw_historical_upload`) "
-        "ate o relato do backend chegar. Selecao de cliente, upload e preview de "
-        "estrutura ja funcionam de verdade.",
+        ":material/warning: Contrato de tabelas confirmado com o backend "
+        f"(`{RAW_UPLOADS_TABLE}` + `{RAW_UPLOADS_META_TABLE}`), mas a writer SA do hub "
+        "ainda nao tem `dataEditor` no dataset `raw` de `douglas-bq-staging` (hoje ela so "
+        "escreve em `adframework.core`/`adframework.raw`) -- e possivel que as tabelas em "
+        "si ainda nao existam la tambem. O botao de confirmar abaixo TENTA gravar de "
+        "verdade e mostra o erro exato se faltar permissao/tabela, em vez de simular. "
+        "Selecao de cliente, upload e preview local ja funcionam de verdade independente disso.",
         icon=":material/warning:",
     )
 
@@ -1265,7 +1393,7 @@ with tab_overrides:
         if landing_upload is not None:
             landing_raw_df = None
             try:
-                landing_raw_df = read_uploaded_spreadsheet(landing_upload)
+                landing_raw_df = read_uploaded_spreadsheet_raw(landing_upload)
             except Exception as exc:
                 st.error(f"Nao consegui ler o arquivo (formato invalido?): {exc}")
 
@@ -1295,15 +1423,54 @@ with tab_overrides:
                         key="landing_commit_btn",
                         disabled=not landing_confirm,
                     ):
-                        result = stage_raw_historical_upload(landing_raw_df, landing_client_id, landing_upload.name)
+                        with st.spinner("Escrevendo (writer SA impersonada)..."):
+                            result = stage_raw_historical_upload(landing_raw_df, landing_client_id, landing_upload.name)
                         if result["staged"]:
-                            st.success(f"Landing gravado em `{result['would_be_table']}`.")
+                            st.success(
+                                f"Landing gravado em `{result['would_be_table']}` "
+                                f"(upload_id `{result['upload_id']}`)."
+                            )
+                            st.session_state["landing_last_upload_id"] = result["upload_id"]
                         else:
-                            st.info(
+                            st.warning(
                                 f"Preview validado ({result['n_rows']} linha(s), "
                                 f"{len(result['columns'])} coluna(s) para `{landing_client_id}`) mas "
-                                f"AINDA NAO gravado no BigQuery -- {result['reason']}"
+                                f"AINDA NAO gravado no BigQuery -- {result['reason']}",
+                                icon=":material/warning:",
                             )
+
+                    last_upload_id = st.session_state.get("landing_last_upload_id")
+                    if last_upload_id:
+                        st.markdown("**Estrutura real do que pousou em `douglas-bq-staging.raw`**")
+                        st.caption(
+                            "Lido de volta de historical_uploads_meta + historical_uploads (nao do "
+                            "arquivo local) -- confirma o que de fato ficou gravado, base para a "
+                            "analise humana/IA que decide como normalizar depois."
+                        )
+                        try:
+                            landed_meta, landed_sample = load_landed_historical_upload(last_upload_id)
+                        except (NotFound, Forbidden) as exc:
+                            landed_meta, landed_sample = None, None
+                            st.error(
+                                "Nao consegui ler de volta o que pousou -- provavelmente falta leitura "
+                                f"da SA principal (`douglas-data-hub-sa`) no projeto `{RAW_LANDING_PROJECT_ID}` "
+                                f"ainda (identificar/reportar, nao aplicar agora). Erro: {exc}"
+                            )
+                        except Exception as exc:
+                            landed_meta, landed_sample = None, None
+                            st.error(f"Erro ao ler o landing gravado: {exc}")
+
+                        if landed_meta:
+                            col_c, col_d = st.columns(2)
+                            with col_c:
+                                st.metric("Total de linhas (BQ)", int(landed_meta.get("row_count", 0)))
+                            with col_d:
+                                st.metric("Total de colunas (BQ)", len(landed_meta.get("column_names") or []))
+                            st.caption("Colunas (de historical_uploads_meta.column_names):")
+                            st.code(", ".join(str(c) for c in (landed_meta.get("column_names") or [])), language=None)
+                            if landed_sample is not None and not landed_sample.empty:
+                                st.caption("Amostra (de historical_uploads.raw_row, parseado):")
+                                st.dataframe(landed_sample, use_container_width=True, hide_index=True)
 
     st.divider()
     st.subheader("Configuracao de Overrides por Cliente")

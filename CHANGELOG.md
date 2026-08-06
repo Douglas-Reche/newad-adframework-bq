@@ -6,6 +6,49 @@
 
 ---
 
+## 2026-08-06 (manhã) — Arquitetura standalone: `douglas-bq-staging` deixa de ler cross-project, `raw` vira snapshot físico — decisão final, supera a entrada abaixo
+
+**Contexto:** depois de várias revisões de conceito ao longo da madrugada de 2026-08-05→06
+(registradas na entrada abaixo e no Notion, página "Estudo: como funcionariam os dois
+ambientes"), o Douglas parou o trabalho de manhã pra reavaliar o desenho do zero — pediu
+revisão de tudo que estava registrado sobre este assunto, em todo lugar, pra fechar de
+vez sem mais idas e vindas. Decisão fechada com ele às ~08h45.
+
+**Decisão final (supera qualquer menção anterior a "leitura cross-project" pra `raw`/`stg`
+em staging — ver `docs/known_issues.md`, banner no topo, entradas R3/S1-S4 marcadas como
+superadas):**
+
+1. **`raw` é snapshot físico** — cópia real das 18 tabelas de `adframework.raw.*` via
+   `bq cp` (cópia nativa de storage, não query) pra `douglas-bq-staging.raw.*`. Único
+   ponto de contato com produção. Atualização **agendada desde já** via Cloud Scheduler
+   diário (mesmo padrão do `adframework-etl-daily` já existente), rodando logo depois que
+   a ingestão de produção termina — sempre cópia física, nunca leitura ao vivo.
+2. **`stg`/`core`/`gold` são 100% independentes** — mesmo `.sql` versionado no repo (fonte
+   única), aplicado como objetos físicos próprios em staging, lendo exclusivamente do
+   `raw` local. Zero leitura cross-project depois do snapshot.
+3. **Código de ingestão Python (conectores, `orchestrator.py`) nunca roda contra
+   staging** — staging consome o dado que a ingestão de produção já produziu (via o
+   snapshot), não reproduz a ingestão.
+4. **Motivo da mudança:** o desenho anterior (cross-project read pra `raw`/`stg`, só
+   `core`/`gold` fisicamente replicados) tinha uma lacuna real — não dava pra testar ou
+   auditar mudança nenhuma em `stg` com segurança (achado ao vivo: `apply_ddl.py
+   --project` sobrescreveria produção de verdade se aplicado num arquivo de `stg`, porque
+   só `core`/`gold` eram redirecionados). Correção em 2 partes: (a) fix no `apply_ddl.py`
+   pra sempre redirecionar o alvo da criação corretamente; (b) mudança de conceito de
+   "ler cross-project" pra "copiar fisicamente", que resolve a independência total.
+
+**Execução:** fix do `apply_ddl.py`, `bq cp` das 18 tabelas de `raw`, e reaplicação
+completa de `stg`/`core`/`gold` em `douglas-bq-staging` estavam em andamento pelo agente
+backend na manhã de 2026-08-06, em paralelo a este registro. Resultado (paridade
+validada, bytes processados) a confirmar em entrada futura quando o backend reportar.
+
+**Onde a decisão final vive (única fonte, sem duplicar texto):** este registro +
+`docs/known_issues.md` (banner no topo) no repo; Notion, página "Estudo: como
+funcionariam os dois ambientes" (seção final "Arquitetura standalone", banner no topo da
+página apontando pra ela) e MÃE "🧱 [MÃE] Ambientes Staging x Produção (BigQuery)".
+
+---
+
 ## 2026-08-06 — Fix do bug `apply_ddl.py --project` (swap indevido de `stg`/`raw`) + gold inteiro espelhado em `douglas-bq-staging` + paridade 100% confirmada contra produção
 
 **Autor:** Douglas Reche (via backend) — preparação para reunião do dia (Power BI plugado

@@ -112,19 +112,35 @@ from google.cloud import bigquery
 PROJECT_DEFAULT = "adframework"
 LAYER_DATASETS = ("raw", "stg", "core", "gold")
 
-# Datasets que sao fisicamente espelhados por projeto (existem uma copia real
-# dentro de cada projeto de teste, ex: douglas-bq-staging.core,
-# douglas-bq-staging.gold) -- essas referencias DEVEM trocar de projeto
-# quando --project aponta para um projeto separado.
+# Datasets que sao fisicamente espelhados dentro do projeto alt (--project),
+# ex: douglas-bq-staging.raw, douglas-bq-staging.stg, douglas-bq-staging.core,
+# douglas-bq-staging.gold -- referencias CRUZADAS (um arquivo de gold fazendo
+# JOIN em stg, por exemplo) so devem trocar de projeto quando o dataset lido
+# tambem existe fisicamente la. Isso e conceitualmente DIFERENTE de "qual
+# dataset e o ALVO do CREATE deste arquivo" (ver swap_project) -- o alvo
+# sempre troca de projeto quando --project e usado, nao importa o dataset;
+# esta lista so serve para decidir REFERENCIAS CRUZADAS dentro do arquivo.
 #
-# `raw`/`stg` NUNCA sao fisicamente replicados: sao leitura cross-project
-# deliberada, sempre apontando pra producao (`adframework.raw.*`,
-# `adframework.stg.*`), mesmo quando o DDL esta sendo aplicado em
-# douglas-bq-staging -- evita duplicar ingestao. Bug real encontrado em
-# 2026-08-05: swap_project() trocava TODAS as ocorrencias literais de
+# Historico: ate 2026-08-05, raw/stg nunca eram fisicamente replicados (so
+# core/gold), entao ficavam de fora desta lista de proposito -- uma leitura
+# cross-project deliberada sempre apontando pra producao. Bug real encontrado
+# em 2026-08-05: swap_project() trocava TODAS as ocorrencias literais de
 # `adframework.`, inclusive `adframework.stg.ms_delivery` ->
-# `douglas-bq-staging.stg.ms_delivery` (tabela que nao existe la).
-PHYSICAL_DATASETS = {"core", "gold"}
+# `douglas-bq-staging.stg.ms_delivery` (tabela que nao existia la na epoca).
+#
+# 2026-08-06: `douglas-bq-staging` virou standalone de verdade -- raw e
+# copiado fisicamente via `bq cp` e stg/core/gold rodam 100% locais, sem
+# NENHUMA leitura cross-project a producao. raw/stg entram na lista.
+#
+# Bug real corrigido nesta mesma data: antes, so as REFERENCIAS CRUZADAS
+# eram redirecionadas por esta lista -- o ALVO do CREATE (ex: um arquivo de
+# stg/ddl, dataset "stg", que nao estava na lista antiga {core, gold}) NUNCA
+# era redirecionado. Isso significava que `apply_ddl.py stg/ddl/x.sql
+# --project douglas-bq-staging` gerava uma query cujo CREATE ainda citava
+# `adframework.stg.x` (produção real) -- o billing project era
+# douglas-bq-staging, mas o objeto criado/sobrescrito era o de producao.
+# Corrigido separando os dois conceitos: veja swap_project().
+ALT_PROJECT_MIRRORED_DATASETS = set(LAYER_DATASETS)  # {"raw", "stg", "core", "gold"}
 
 # Reconhece o layer (raw/stg/core/gold) a partir da pasta que contem o
 # arquivo (ex: .../gold/ddl/fact_io_plan.sql -> "gold", ou o mesmo caminho
@@ -201,7 +217,7 @@ def layer_from_path(file_path: Path) -> str:
     return match.group(1).lower() if match else None
 
 
-def swap_project(sql_text: str, from_project: str, to_project: str) -> str:
+def swap_project(sql_text: str, from_project: str, to_project: str, creation_dataset: str = None) -> str:
     """Troca o project id literal em identificadores totalmente
     qualificados (com ou sem backtick de abertura), preservando dataset e
     objeto intactos. Usado quando --project aponta para um projeto GCP
@@ -209,13 +225,28 @@ def swap_project(sql_text: str, from_project: str, to_project: str) -> str:
     significa "teste", entao NAO aplicamos o sufixo `_test` de dataset
     (ver build_test_sql), so redirecionamos o project id.
 
-    So troca referencias a datasets em PHYSICAL_DATASETS (core, gold) --
-    esses sao fisicamente espelhados no projeto de teste. Referencias a
-    `raw`/`stg` ficam sempre apontando pro projeto de producao
-    (`from_project`), mesmo quando o resto do arquivo esta sendo aplicado em
-    staging -- sao leitura cross-project deliberada (ver PHYSICAL_DATASETS
-    acima para o bug real que motivou isso)."""
-    for dataset in PHYSICAL_DATASETS:
+    Dois conceitos SEPARADOS, de proposito (bug corrigido em 2026-08-06 --
+    ver comentario de ALT_PROJECT_MIRRORED_DATASETS):
+
+    (a) O dataset ALVO da criacao (`creation_dataset`, o dataset do proprio
+        `CREATE OR REPLACE ...` deste arquivo) SEMPRE troca de projeto quando
+        este parametro e informado, nao importa se esse dataset esta ou nao
+        em ALT_PROJECT_MIRRORED_DATASETS. O objeto tem que ser fisicamente
+        criado/sobrescrito no projeto passado em --project, sempre -- nunca
+        em producao, mesmo que a lista de mirrored datasets um dia fique
+        desatualizada.
+
+    (b) REFERENCIAS CRUZADAS (outros datasets que o arquivo LE, ex: uma view
+        de gold fazendo JOIN em stg) so trocam de projeto se esse dataset
+        tambem estiver em ALT_PROJECT_MIRRORED_DATASETS (fisicamente presente
+        no projeto alvo). Um dataset fora dessa lista fica apontando de
+        proposito pro projeto de producao (`from_project`) -- leitura
+        cross-project deliberada.
+    """
+    datasets_to_swap = set(ALT_PROJECT_MIRRORED_DATASETS)
+    if creation_dataset:
+        datasets_to_swap.add(creation_dataset)
+    for dataset in datasets_to_swap:
         pattern = re.compile(
             rf"`?{re.escape(from_project)}\.{re.escape(dataset)}\.", re.IGNORECASE
         )
@@ -453,16 +484,11 @@ def main():
     is_alt_project = args.project != PROJECT_DEFAULT
     sql_text = args.sql_file.read_text(encoding="utf-8")
 
-    if is_alt_project:
-        sql_text = swap_project(sql_text, PROJECT_DEFAULT, args.project)
-        print(
-            f"[apply_ddl] --project={args.project} (!= default {PROJECT_DEFAULT}): "
-            f"tratado como projeto de teste inteiro -- NENHUM sufixo _test sera aplicado "
-            f"ao dataset, so o project id foi trocado nos identificadores do arquivo."
-        )
-
-    commit_hash = get_git_commit_hash(args.sql_file)
-
+    # Acha o alvo do CREATE ANTES de qualquer swap de projeto -- precisamos
+    # do creation_dataset original (ex: "stg") para passar pra swap_project()
+    # e garantir que o ALVO da criacao sempre redirecione pro --project
+    # informado, nao so as referencias cruzadas (ver bug corrigido
+    # 2026-08-06 no header de ALT_PROJECT_MIRRORED_DATASETS / swap_project).
     creation = find_creation_target(sql_text)
 
     if creation:
@@ -477,9 +503,24 @@ def main():
         print(
             "[apply_ddl] AVISO: nenhuma instrucao CREATE reconhecida no arquivo -- "
             "em --env=test, nenhuma substituicao automatica de dataset-alvo sera feita "
-            "(so cascade=, se declarado).",
+            "(so cascade=, se declarado). Em --project alternativo, o ALVO tambem nao "
+            "sera redirecionado automaticamente -- so cascade= ou referencias a datasets "
+            "em ALT_PROJECT_MIRRORED_DATASETS.",
             file=sys.stderr,
         )
+
+    if is_alt_project:
+        sql_text = swap_project(sql_text, PROJECT_DEFAULT, args.project, creation_dataset=creation_dataset)
+        creation_project = args.project
+        print(
+            f"[apply_ddl] --project={args.project} (!= default {PROJECT_DEFAULT}): "
+            f"tratado como projeto de teste inteiro -- NENHUM sufixo _test sera aplicado "
+            f"ao dataset. O ALVO do CREATE ({creation_dataset}) SEMPRE foi redirecionado "
+            f"para este projeto; referencias cruzadas so foram redirecionadas para "
+            f"datasets em ALT_PROJECT_MIRRORED_DATASETS={sorted(ALT_PROJECT_MIRRORED_DATASETS)}."
+        )
+
+    commit_hash = get_git_commit_hash(args.sql_file)
 
     cascade = parse_cascade_directive(sql_text)
 
