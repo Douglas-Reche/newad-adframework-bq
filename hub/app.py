@@ -640,6 +640,119 @@ def load_landed_historical_upload(upload_id: str) -> tuple[dict, pd.DataFrame]:
     return meta, sample_df
 
 
+@st.cache_data(ttl=120)
+def load_historical_uploads_for_client(client_id: str) -> pd.DataFrame:
+    """Lista de uploads ja pousados em historical_uploads_meta para um client_id --
+    popula o dropdown da secao 'Comparar Snapshot: Planilha vs. Dado Real'. So
+    cabecalho de cada upload (nao le historical_uploads inteira aqui). Le com
+    get_bq_client() (SA principal, read-only), mesmo padrao de
+    load_landed_historical_upload."""
+    client = get_bq_client()
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("client_id", "STRING", client_id)]
+    )
+    query = f"""
+    SELECT upload_id, source_filename, row_count, uploaded_at
+    FROM `{RAW_UPLOADS_META_TABLE}`
+    WHERE client_id = @client_id
+    ORDER BY uploaded_at DESC
+    """
+    return client.query(query, job_config=job_config).to_dataframe()
+
+
+def load_full_landed_historical_upload(upload_id: str) -> pd.DataFrame:
+    """Le TODAS as linhas (nao so a amostra de 10 de load_landed_historical_upload)
+    de historical_uploads para um upload_id -- usada so para inferir o range de
+    datas da planilha crua (MIN/MAX precisam da planilha inteira, nao de uma
+    amostra). Mesma leitura SA principal, mesmo parse de raw_row via
+    _parse_json_field."""
+    client = get_bq_client()
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("upload_id", "STRING", upload_id)]
+    )
+    df = client.query(
+        f"""
+        SELECT raw_row
+        FROM `{RAW_UPLOADS_TABLE}`
+        WHERE upload_id = @upload_id
+        ORDER BY row_number
+        """,
+        job_config=job_config,
+    ).to_dataframe()
+    if df.empty:
+        return pd.DataFrame()
+    return pd.json_normalize(df["raw_row"].map(_parse_json_field))
+
+
+# Pistas de nome de coluna para tentar inferir automaticamente qual coluna da
+# planilha crua (ainda sem mapeamento) representa data -- so um palpite pra
+# poupar digitacao manual, nunca a fonte de verdade (ver infer_date_range_from_raw).
+DATE_COLUMN_NAME_HINTS = ("data", "date", "dia", "day")
+
+
+def infer_date_range_from_raw(raw_df: pd.DataFrame) -> tuple:
+    """Pura -- tenta achar, por nome de coluna, uma coluna de data na planilha
+    crua (ainda nao normalizada/mapeada) e inferir o range MIN/MAX a partir
+    dela. Exige pelo menos 80% das linhas da coluna candidata parseando como
+    data para aceitar (evita inferir de uma coluna que so parece data por
+    acaso). Retorna (min_date, max_date, nome_da_coluna) ou (None, None, None)
+    se nao achar nada confiavel -- quem chama cai no fallback manual (range
+    digitado pelo usuario)."""
+    if raw_df is None or raw_df.empty:
+        return None, None, None
+    candidates = [c for c in raw_df.columns if any(hint in str(c).lower() for hint in DATE_COLUMN_NAME_HINTS)]
+    for col in candidates:
+        parsed = pd.to_datetime(raw_df[col], errors="coerce", dayfirst=True)
+        if parsed.notna().mean() >= 0.8:
+            return parsed.min().date(), parsed.max().date(), col
+    return None, None, None
+
+
+def load_gold_sample_for_range(client_id: str, start_day: date, end_day: date, limit: int = 15) -> pd.DataFrame:
+    """Amostra de douglas-bq-staging.gold.fact_delivery pro client_id e range de
+    datas informado -- SA principal (read-only), fully-qualified table name
+    (mesmo padrao de load_landed_historical_upload -- nao precisa trocar de
+    projeto no client, so qualificar a tabela). So leitura, sem nenhuma logica
+    de comparacao/diff -- essa e so a coluna direita da tela lado a lado."""
+    client = get_bq_client()
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("client_id", "STRING", client_id),
+            bigquery.ScalarQueryParameter("start_day", "DATE", start_day),
+            bigquery.ScalarQueryParameter("end_day", "DATE", end_day),
+        ]
+    )
+    query = f"""
+    SELECT day, platform, formato, goal_type, impressions, clicks, conversions
+    FROM `{HISTORICAL_OVERRIDE_PROJECT_ID}.gold.fact_delivery`
+    WHERE client_id = @client_id
+      AND day BETWEEN @start_day AND @end_day
+    ORDER BY day
+    LIMIT {limit}
+    """
+    return client.query(query, job_config=job_config).to_dataframe()
+
+
+def load_gold_coverage_for_client(client_id: str):
+    """MIN/MAX day existente em douglas-bq-staging.gold.fact_delivery pro
+    client_id, independente do range da planilha -- usada so para dar contexto
+    quando a amostra do range da planilha vem vazia (dizer o que a plataforma
+    real TEM, em vez de so mostrar uma tabela vazia sem explicacao)."""
+    client = get_bq_client()
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("client_id", "STRING", client_id)]
+    )
+    query = f"""
+    SELECT MIN(day) AS min_day, MAX(day) AS max_day
+    FROM `{HISTORICAL_OVERRIDE_PROJECT_ID}.gold.fact_delivery`
+    WHERE client_id = @client_id
+    """
+    df = client.query(query, job_config=job_config).to_dataframe()
+    if df.empty or pd.isna(df.iloc[0]["min_day"]):
+        return None, None
+    return df.iloc[0]["min_day"], df.iloc[0]["max_day"]
+
+
 @st.cache_data(ttl=60)
 def load_override_delivery_summary() -> pd.DataFrame:
     """Um cliente por linha: quantas linhas e o range real (MIN/MAX day) de
@@ -1509,6 +1622,123 @@ with tab_overrides:
                             if landed_sample is not None and not landed_sample.empty:
                                 st.caption("Amostra (de historical_uploads.raw_row, parseado):")
                                 st.dataframe(landed_sample, use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.subheader("Comparar Snapshot: Planilha vs. Dado Real")
+    st.caption(
+        "Apoio visual para a analise humana ANTES de construir o mapeamento de "
+        "normalizacao (decisao fechada com o Douglas em 2026-08-06): mostra a "
+        "planilha crua que ja pousou em `raw.historical_uploads` lado a lado com "
+        "uma amostra real do mesmo periodo em `gold.fact_delivery` de "
+        "`douglas-bq-staging`. So leitura -- sem nenhum diff automatico "
+        "(determinístico ou por IA); a interpretacao fica com o Douglas + a "
+        "sessao do Claude Code (ou o agente `historical-data-analyst`)."
+    )
+
+    if client_options.empty:
+        st.info("`core.dim_client` nao retornou nenhum cliente ativo -- nada para comparar.")
+    else:
+        compare_client_display = st.selectbox(
+            "Cliente", client_options["display"].tolist(), key="compare_client_select"
+        )
+        compare_client_row = client_options[client_options["display"] == compare_client_display].iloc[0]
+        compare_client_id = compare_client_row["client_id"]
+
+        uploads_for_client = load_historical_uploads_for_client(compare_client_id)
+        if uploads_for_client.empty:
+            st.info(
+                f"Nenhum upload em `historical_uploads_meta` ainda para **{compare_client_row['name']}** "
+                f"(`{compare_client_id}`) -- suba uma planilha na secao acima primeiro."
+            )
+        else:
+            uploads_for_client = uploads_for_client.copy()
+            uploads_for_client["display"] = (
+                uploads_for_client["source_filename"] + " -- "
+                + uploads_for_client["uploaded_at"].astype(str)
+                + f" ({uploads_for_client['row_count']} linhas)"
+            )
+            compare_upload_display = st.selectbox(
+                "Upload", uploads_for_client["display"].tolist(), key="compare_upload_select"
+            )
+            compare_upload_id = uploads_for_client[
+                uploads_for_client["display"] == compare_upload_display
+            ].iloc[0]["upload_id"]
+
+            with st.spinner("Lendo planilha pousada e inferindo periodo..."):
+                _, landing_sample_df = load_landed_historical_upload(compare_upload_id)
+                full_raw_df = load_full_landed_historical_upload(compare_upload_id)
+                inferred_min, inferred_max, inferred_col = infer_date_range_from_raw(full_raw_df)
+
+            if inferred_col:
+                st.caption(
+                    f"Periodo inferido automaticamente da coluna `{inferred_col}` da planilha "
+                    f"crua: **{inferred_min}** a **{inferred_max}**. Ajuste abaixo se necessario."
+                )
+            else:
+                st.warning(
+                    ":material/warning: Nao consegui inferir automaticamente uma coluna de data "
+                    "nessa planilha crua (nenhuma coluna com nome parecido com data/dia bateu com "
+                    "confianca suficiente) -- selecione o periodo manualmente abaixo.",
+                    icon=":material/warning:",
+                )
+
+            range_col1, range_col2 = st.columns(2)
+            with range_col1:
+                compare_start = st.date_input(
+                    "Inicio do periodo", value=inferred_min or date.today(), key="compare_range_start"
+                )
+            with range_col2:
+                compare_end = st.date_input(
+                    "Fim do periodo", value=inferred_max or date.today(), key="compare_range_end"
+                )
+
+            if compare_start > compare_end:
+                st.error("Inicio do periodo esta depois do fim -- ajuste o range acima.")
+            else:
+                st.markdown("**Snapshot lado a lado (mesmo periodo)**")
+                left_col, right_col = st.columns(2)
+                with left_col:
+                    st.markdown(f"*Planilha crua -- `{compare_upload_display}`*")
+                    if landing_sample_df is not None and not landing_sample_df.empty:
+                        st.dataframe(landing_sample_df.head(15), use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Amostra da planilha veio vazia.")
+                with right_col:
+                    st.markdown(
+                        f"*Dado real -- `gold.fact_delivery` ({HISTORICAL_OVERRIDE_PROJECT_ID}), "
+                        f"{compare_start} a {compare_end}*"
+                    )
+                    try:
+                        gold_sample_df = load_gold_sample_for_range(compare_client_id, compare_start, compare_end)
+                    except (NotFound, Forbidden) as exc:
+                        gold_sample_df = None
+                        st.error(f"Nao consegui ler `gold.fact_delivery` em `{HISTORICAL_OVERRIDE_PROJECT_ID}`: {exc}")
+                    except Exception as exc:
+                        gold_sample_df = None
+                        st.error(f"Erro ao ler `gold.fact_delivery`: {exc}")
+
+                    if gold_sample_df is not None:
+                        if gold_sample_df.empty:
+                            coverage_min, coverage_max = load_gold_coverage_for_client(compare_client_id)
+                            if coverage_min is None:
+                                st.warning(
+                                    f":material/warning: `gold.fact_delivery` em "
+                                    f"`{HISTORICAL_OVERRIDE_PROJECT_ID}` nao tem NENHUM dado para "
+                                    f"`{compare_client_id}` -- nao ha o que comparar ainda (achado "
+                                    "relevante, nao um erro de tela).",
+                                    icon=":material/warning:",
+                                )
+                            else:
+                                st.warning(
+                                    f":material/warning: Sem sobreposicao de periodo -- a planilha "
+                                    f"cobre {compare_start} a {compare_end}, mas o dado real de "
+                                    f"`{compare_client_id}` em `gold.fact_delivery` so existe de "
+                                    f"**{coverage_min}** a **{coverage_max}**. Achado relevante para a "
+                                    "analise, nao um erro de tela.",
+                                    icon=":material/warning:",
+                                )
+                        else:
+                            st.dataframe(gold_sample_df, use_container_width=True, hide_index=True)
 
     st.divider()
     st.subheader("Configuracao de Overrides por Cliente")

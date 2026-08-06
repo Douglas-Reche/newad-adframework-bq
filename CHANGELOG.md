@@ -6,6 +6,60 @@
 
 ---
 
+## 2026-08-06 — Novo agente `historical-data-analyst` + tela de comparação lado a lado no Hub
+
+**Agente novo:** `C:\Users\dougl\.claude\agents\historical-data-analyst.md` (só global) — especializado
+em investigar planilha histórica crua (padrão de valor por coluna, não só nome/estrutura),
+propor mapeamento com confiança explícita, comparar contra snapshot real quando há sobreposição
+de período, e preservar granularidade fina no `douglas-bq-staging.stg_workbench` (dataset novo,
+criado via `bq mk` — nunca `core`, que é só regra/config) antes de agregar pra grain final na
+promoção. Motivado por demanda real de 3 clientes na fila (Cora, TecPar, Senar), cada um
+"mini-projeto" com estrutura/granularidade própria — decisão explícita de não construir em cima
+de um único caso (Cora). Garantia de isolamento entre clientes formalizada e verificada camada
+por camada (append-only em toda escrita, `resolve_reporting_source` sempre filtrado por
+`client_id`) — dado ruim de um cliente não consegue afetar outro já promovido.
+
+**Hub (`hub/app.py`):** nova sub-seção "Comparar Snapshot: Planilha vs. Dado Real" na aba
+Overrides Históricos — duas colunas lado a lado (planilha crua pousada vs. amostra real de
+`gold.fact_delivery` pro mesmo período), inferência automática de range de data com fallback
+manual, tratamento explícito de "sem sobreposição" (mostra aviso, não tabela vazia sem
+explicação). Só leitura, mesmo padrão de client já usado no resto do arquivo. Novas funções:
+`load_historical_uploads_for_client()`, `infer_date_range_from_raw()`,
+`load_gold_sample_for_range()`, `load_gold_coverage_for_client()`.
+
+---
+
+## 2026-08-06 — Novo agente `historical-data-analyst`: investigação de planilha histórica, não só diff
+
+**O que mudou:** criado `C:\Users\dougl\.claude\agents\historical-data-analyst.md` (só global,
+sem cópia local — segue a decisão já tomada hoje de eliminar dual-cópia). Novo agente
+especializado na etapa mais difícil de automatizar do fluxo de dado histórico por cliente:
+investigar o que uma planilha crua pousada em `raw.historical_uploads` realmente significa
+(padrão de valor por coluna, não só nome), comparar contra snapshot real da plataforma quando
+há sobreposição de período, propor mapeamento com nível de confiança explícito por coluna, e
+sinalizar achado inesperado mesmo sem ser perguntado.
+
+**Por quê:** Douglas identificou que uma comparação puramente estrutural/determinística (nomes
+de coluna, formato de valor) não resolve o problema real — planilhas genuinamente heterogêneas
+exigem julgamento, não regra fixa. Considerou usar Gemini API/Vertex AI como IA separada pra essa
+análise, mas descartou: um modelo sem o contexto do projeto (convenções de `client_id`,
+taxonomia de formato em `core.dict_format`, padrões já estabelecidos) dá comparação rasa — o
+mesmo problema que motivou criar `backend`/`hub-frontend`/`docs` como agentes com contexto
+embutido em vez de sessões genéricas. Escala esperada: potencialmente 15+ clientes, cada um
+onboarding único mas repetido — precisa ser capacidade durável, não sessão ad hoc.
+
+**Escopo do agente:** lê `douglas-bq-staging.raw.historical_uploads`/`historical_uploads_meta`,
+escreve/ajusta `scripts/deploy/historical_mappings/<client_id>.py`, roda o ciclo de teste real
+(`normalize_historical_upload.py` + `load_historical_override.py`) em staging. Fora de escopo:
+pipeline de ingestão automática (`backend`) e UI do Hub (`hub-frontend`) — nunca produção.
+
+**Dataset novo:** `douglas-bq-staging.stg_workbench` (criado via `bq mk`, confirmado) — espaço
+de iteração transiente pra normalização (uma tabela por upload/tentativa), nunca fonte final.
+Douglas corrigiu explicitamente: **nunca dentro de `core`** — `core` é só regra/config pequena
+mantida manualmente, não é lugar pra dado em rascunho.
+
+---
+
 ## 2026-08-06 — Escritas do hub em `douglas-bq-staging` param de precisar de IAM em produção
 
 **O que mudou:** `hub/app.py` faturava/rodava jobs de escrita em staging (`stage_raw_historical_upload`,
