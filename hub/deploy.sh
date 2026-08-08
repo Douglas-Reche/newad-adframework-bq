@@ -117,6 +117,22 @@ gcloud projects add-iam-policy-binding "$STAGING_PROJECT_ID" \
   --member="serviceAccount:${WRITER_SA_EMAIL}" \
   --role="roles/bigquery.jobUser" >/dev/null
 
+# SA PRINCIPAL (read-only) tambem precisa de leitura em douglas-bq-staging --
+# achado real em producao (2026-08-06, primeiro teste ao vivo): a secao
+# "Comparar Snapshot: Planilha vs. Dado Real" e as leituras de
+# historical_uploads/_meta usam get_bq_client() (a SA principal), nao a writer
+# SA, mas a SA principal so tinha permissao no projeto $PROJECT_ID/adframework
+# -- 403 Access Denied real ao tentar ler douglas-bq-staging.raw.*. dataViewer
+# (leitura) + jobUser (rodar a query, mesma logica do bloco da writer SA acima)
+# escopados so ao projeto de staging, isolado, sem tocar producao.
+gcloud projects add-iam-policy-binding "$STAGING_PROJECT_ID" \
+  --member="serviceAccount:${SA_EMAIL}" \
+  --role="roles/bigquery.dataViewer" >/dev/null
+
+gcloud projects add-iam-policy-binding "$STAGING_PROJECT_ID" \
+  --member="serviceAccount:${SA_EMAIL}" \
+  --role="roles/bigquery.jobUser" >/dev/null
+
 # SA principal (read-only) ganha permissao de IMPERSONAR a writer SA -- nenhuma
 # chave JSON e criada/baixada. So a aba de Overrides usa essa impersonation.
 gcloud iam service-accounts add-iam-policy-binding "$WRITER_SA_EMAIL" \

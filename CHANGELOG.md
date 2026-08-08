@@ -6,6 +6,21 @@
 
 ---
 
+## 2026-08-06 (tarde, achado no primeiro teste ao vivo) — SA principal do Hub sem leitura em staging
+
+**Erro real em produção:** `403 Access Denied: douglas-bq-staging:raw.historical_uploads_meta`
+ao usar a seção "Comparar Snapshot: Planilha vs. Dado Real" — `load_historical_uploads_for_client()`
+(e as demais leituras novas de staging) usam `get_bq_client()` (a SA **principal**, read-only),
+não a writer SA. Só a writer SA tinha ganhado bindings em `douglas-bq-staging` mais cedo no
+mesmo dia — a SA principal só tinha permissão em `adframework`.
+
+**Fix:** `roles/bigquery.dataViewer` + `roles/bigquery.jobUser` concedidos à SA principal
+(`douglas-data-hub-sa`) escopados só ao projeto `douglas-bq-staging` (aplicado ao vivo via
+`gcloud`, confirmado funcionando). `hub/deploy.sh` atualizado com os mesmos 2 bindings pra não
+faltar de novo em deploys futuros/recriação do ambiente.
+
+---
+
 ## 2026-08-06 (tarde) — Hub deployado + deploy automático via GitHub Action
 
 **Deploy manual executado com sucesso:** `douglas-data-hub-00005-z9g` no ar, servindo 100% do
