@@ -279,3 +279,10 @@ funciona se o fechamento realmente acontecer, não fica implícito.
 **Isto é sugestão, nunca decisão unilateral** — a IA não tem como encerrar a sessão
 sozinha; propõe, explica o porquê, e a decisão de continuar ou abrir nova sessão é
 sempre do usuário. Não insistir se ele preferir continuar na mesma sessão.
+
+**Sempre junto com a sugestão, entregar o prompt de abertura pronto pra próxima
+sessão** — não deixar o usuário ter que descobrir sozinho por onde começar. O prompt
+deve apontar pra onde o checkpoint foi escrito (a task/MÃE Notion específica atualizada
+no passo 6 do checklist acima), não repetir o conteúdo do checkpoint no próprio prompt —
+a nova sessão lê de lá. Formato mínimo: qual repositório, qual `CLAUDE.md` ler, qual
+task Notion tem o checkpoint completo, e uma linha dizendo "comece por aí".
