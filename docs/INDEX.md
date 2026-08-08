@@ -72,30 +72,7 @@
 | `google_ads_integration.md` | ✅ ATUAL | 2026-06-12 | Integração Google Ads — guia completo de credenciais OAuth2, schema, GAQL |
 | `commercial_questions.md` | ✅ ATUAL | 2026-06-08 | Perguntas pendentes para área comercial |
 | `known_issues.md` | 📋 REBUILD | 2026-06-16 | Issues G1/G2/G3 são do schema antigo — encerrados pelo rebuild. Novos issues do rebuild serão documentados aqui. |
-| `io_plan_pipeline.md` | 📋 REBUILD | 2026-06-15 | IO Plan (Drive→RAW→Gold) é independente do rebuild de entrega e continua válido — refs de delivery precisam ser revisadas |
-| `etl_expansion_plan.md` | 📋 REBUILD | 2026-06-08 | Roadmap de expansão ainda válido como intenção — nomes de tabelas precisarão ser atualizados após rebuild |
-| `analise_plano_vs_delivery_cora_tecpar.md` | 📋 REBUILD | 2026-06-15 | Lógica de pacing válida como referência de negócio — nomes de tabelas do schema antigo |
-| `audit_io_plan_cora_tecpar_2026-06-15.md` | 📋 REBUILD | 2026-06-15 | IO Plan válido; parte de delivery refere ao schema antigo — valide antes de usar |
-| `mediasmart_stg_design.md` | ❌ LEGADO | 2026-06-12 | Design STG MediaSmart do schema antigo — **tabelas dropadas** |
-| `mgid_stg_design.md` | ❌ LEGADO | 2026-06-14 | Design STG MGID do schema antigo — **tabelas dropadas** |
-| `siprocal_stg_design.md` | ❌ LEGADO | 2026-06-14 | Design STG Siprocal do schema antigo — **tabelas dropadas** |
-| `_legacy/gold_layer_build_plan.md` | ❌ LEGADO | 2026-06-16 | Gold layer do schema antigo — **tabelas dropadas**. Movido para `_legacy/` em 2026-07-29 (auditoria de consistência) |
-| `_legacy/column_lineage_map.md` | ❌ LEGADO | 2026-06-11 | Linhagem de colunas do schema antigo — não reflete o novo design. Movido para `_legacy/` em 2026-07-29 |
-| `_legacy/id_attribution_map.md` | ❌ LEGADO | 2026-06-15 | Mapa de atribuição de IDs do schema antigo. Movido para `_legacy/` em 2026-07-29 |
-| `_legacy/pipeline_complete_map.md` | ❌ LEGADO | 2026-06-03 | Mapa completo do pipeline antigo — inclui `raw.siprocal_raw_sheet`, tabela que **já não existe** no BigQuery. Movido para `_legacy/` em 2026-07-29 |
-| `client_registry.md` | ❌ LEGADO | 2026-05-12 | IDs no formato `nwd_` (antigo) — fonte de verdade atual: `core.dim_client` e `core_config_backup.md` |
-| `adframework_erd_mermaid.md` | ❌ LEGADO | 2026-05-13 | ERD do schema antigo |
-| `_legacy/id_quality_issues.md` | ❌ LEGADO | 2026-05-12 | Análise de IDs do schema antigo. Movido para `_legacy/` em 2026-07-29 |
-| `_legacy/id_dependency_map.md` | ❌ LEGADO | 2026-05-13 | Mapa de dependências do schema antigo. Movido para `_legacy/` em 2026-07-29 |
-| `erd_attribution_chain.md` | ❌ LEGADO | 2026-05-13 | Attribution chain do schema antigo (usa views do Shiro) |
-| `erd_flow_overview.md` | ❌ LEGADO | 2026-05-13 | Flow overview do schema antigo |
-| `powerbi_plan.md` | ❌ LEGADO | 2026-04-29 | Plano Power BI com nomes de tabelas do schema antigo |
-| `_legacy/auditoria_shiro_2026-05-26.md` | ❌ LEGADO | 2026-05-26 | Auditoria com Shiro — schema antigo, views do Admin UI. Movido para `_legacy/` em 2026-08-05 (referência histórica, classificação confirmada por Douglas) |
-| `bigquery_analysis.md` | 🗑️ PENDING_PURGE | 2026-04-30 | Auditoria BQ abr/26 — estado antes do rebuild. Flagueado para expurgo em 2026-08-05, sem fato novo a migrar (coberto por `bq_restructuring_plan.md`) — ver `_pending_purge.md` |
-| `bigquery_cleanup_proposal.md` | 🗑️ PENDING_PURGE | 2026-04-30 | Proposta de limpeza abr/26 — superada pelo DROP total. Flagueado para expurgo em 2026-08-05, sem fato novo a migrar — ver `_pending_purge.md` |
-| `_legacy/prod_audit_and_restructuring_plan.md` | ❌ LEGADO | 2026-04-30 | Plano de reestruturação abr/26 — superado pelo rebuild de jun/16. Movido para `_legacy/` em 2026-08-05 (referência histórica, classificação confirmada por Douglas) |
-| `_legacy/gold_mvp_apresentacao.md` | ❌ LEGADO | 2026-04-28 | Apresentação MVP gold abr/26 — arquitetura superada. Movido para `_legacy/` em 2026-08-05 (referência histórica — pergunta bloqueante sobre bug do Admin UI desconsiderada por Douglas, não vamos mais tocar no Admin UI) |
-| `viability_assessment_terça.md` | ❌ LEGADO | 2026-05-05 | Ata reunião viabilidade mai/26 — contexto histórico |
+| `io_plan_domain.md` | ✅ ATUAL | 2026-08-08 | Doc único de domínio IO Plan — consolida `io_plan_pipeline.md` + `etl_expansion_plan.md` + `analise_plano_vs_delivery_cora_tecpar.md` + `audit_io_plan_cora_tecpar_2026-06-15.md` (Frente C, item C2). Pipeline/arquitetura, plano de expansão, lógica de pacing Cora/TecPar e auditoria de qualidade — lógica de negócio válida, nomes de tabela de delivery pré-rebuild sinalizados no corpo do doc |
 
 ---
 

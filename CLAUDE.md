@@ -3,6 +3,14 @@
 Instruções permanentes para sessões Claude Code neste repositório.
 Carregado automaticamente em toda nova sessão.
 
+> **⚠️ Repositório irmão no mesmo workspace VS Code:** `adframework` (produto AAT
+> Console — pixel, atribuição, onboarding de cliente) é um repositório e domínio de
+> produto **completamente diferente** deste, só compartilha o workspace por
+> conveniência de navegação. Ele tem seu próprio `CLAUDE.md`
+> (`adframework/CLAUDE.md`) com fases/módulos próprios. Se o trabalho migrar pra lá —
+> mesmo no meio desta sessão — **leia aquele `CLAUDE.md` antes de agir**, não assuma
+> que as regras deste arquivo se aplicam.
+
 ---
 
 ## Contexto
@@ -12,6 +20,15 @@ Carregado automaticamente em toda nova sessão.
 - **Pipeline:** RAW → STG → CORE → GOLD → Power BI
 - **Maintainers:** Douglas Reche (escrita), Shiro (leitura via `rshiro-newad/adframework`)
 - **Second brain:** Notion — contexto, decisões e estado de negócio
+
+**Escopo do protocolo:** tudo definido neste arquivo vale para todo trabalho seu no
+domínio AdFramework/BQ Governance, independente de em qual repositório físico o código
+correspondente roda. Isso inclui trabalho de captação de API/conectores cujo código sobe
+pra `main` do `rshiro-newad/adframework` (leitura ali é permitida pra confirmar fato
+real; escrita nunca). **A documentação desse trabalho mora sempre aqui, em
+`newad-adframework-bq/docs/`** — nunca duplicada ou criada no repositório do Shiro. O
+critério de aplicação do protocolo é "é trabalho seu nesse domínio", não "o código está
+fisicamente nesta pasta".
 
 ---
 

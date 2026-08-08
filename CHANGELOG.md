@@ -6,6 +6,32 @@
 
 ---
 
+## 2026-08-08 — Reestruturação de documentação: auditoria, correções, poda + falha de protocolo corrigida
+
+**Auditoria completa de `docs/` (49 arquivos) contra BigQuery de produção** encontrou
+`INDEX.md` incompleto, `gold_layer_design.md` documentando só 5 de 9 views reais,
+`OWNERSHIP.yaml` com objetos fantasma, `known_issues.md` com G3 indevidamente marcado
+como encerrado, e `raw_layer_design.md` defasado (15 vs. 18 tabelas). Plano consolidado
+em 3 frentes registrado no Notion (task "Reestruturar Documentação do Projeto").
+
+**Executado nesta sessão:** `gold_layer_design.md` corrigido (commit `cee74a2`, junto
+com a DDL faltante `vw_fact_delivery_reporting.sql` + YAMLs de descrição); purge de 2
+docs represados (`bigquery_analysis.md`, `bigquery_cleanup_proposal.md`); 18 docs
+`❌ LEGADO` deletados; 4 docs `📋 REBUILD` do domínio IO Plan consolidados em
+`docs/io_plan_domain.md`. Pendente: OWNERSHIP.yaml, known_issues.md (G3), raw_layer_design.md,
+e toda a Frente B (AGENTS.md, environments.md, HANDOVER.md, runbooks, diagramas,
+core_layer_design.md — gap novo identificado).
+
+**Falha de protocolo descoberta e corrigida:** a sessão rodou sem seguir o protocolo de
+orquestração/Notion deste `CLAUDE.md` (nunca lido, porque o diretório principal da sessão
+era outro repositório no mesmo workspace VS Code). Corrigido com aviso cruzado no topo
+dos dois `CLAUDE.md` (`adframework` ↔ `newad-adframework-bq`), escopo do protocolo
+explicitado (vale pra trabalho cujo código roda na `main` do Shiro também, docs sempre
+ficam só aqui), e regra global (`~/.claude/CLAUDE.md`) pra sessões futuras. Registro
+retroativo completo feito no Notion.
+
+---
+
 ## 2026-08-06 (tarde, achado no primeiro teste ao vivo) — SA principal do Hub sem leitura em staging
 
 **Erro real em produção:** `403 Access Denied: douglas-bq-staging:raw.historical_uploads_meta`
