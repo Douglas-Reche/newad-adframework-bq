@@ -1,0 +1,21 @@
+description: >
+  Entrega realizada segmentada por device/OS. Grain: client_id + day + platform
+  + formato + goal_type + device_type (+ operating_system). UNION de
+  stg.ms_delivery_by_device + stg.mg_delivery_by_device, agregado. Siprocal nao
+  tem breakdown por device na raw — omitido.
+columns:
+  day: "date renomeado por plataforma na STG"
+  platform: "literal por branch do UNION (mediasmart/mgid)"
+  client_id: "STG, ja resolvido"
+  formato: "STG"
+  goal_type: "STG"
+  device_type: "STG"
+  operating_system: >
+    So MediaSmart tem — MGID vem NULL para harmonizar o schema (limite de 3
+    dimensoes na API MGID, mesmo caveat ja registrado no raw_layer_design.md
+    para T6)
+  impressions: "SUM(impressions)"
+  clicks: "SUM(clicks)"
+  conversions: >
+    SUM() das colunas de conversao por plataforma (MS: conversions_1..5;
+    MGID: conversions_interest+decision+buy)

@@ -1,0 +1,31 @@
+description: >
+  Entrega realizada por criativo, para analise por criativo no Power BI. Grain:
+  client_id + day + platform + formato + goal_type + creative_id. UNION de MS
+  (stg.ms_delivery + raw.ms_creatives), MGID (stg.mg_delivery + raw.mg_teasers)
+  e Siprocal (stg.sp_delivery, sem ID estruturado). View separada de
+  fact_delivery — NAO alimenta fact_pacing (evita multiplicacao do
+  planned_spend por criativo).
+columns:
+  day: "date renomeado por plataforma na STG"
+  platform: "literal por branch do UNION (mediasmart/mgid/siprocal)"
+  client_id: "STG, ja resolvido"
+  formato: "STG"
+  goal_type: "STG"
+  creative_id: >
+    ID estruturado da plataforma (d.creative_id); Siprocal usa a coluna
+    criativo (texto livre, sem ID estruturado — nao confundir com creative_id
+    numerico das outras plataformas)
+  creative_name: >
+    Nome do catalogo (raw.ms_creatives / raw.mg_teasers via LEFT JOIN). NULL
+    quando o criativo foi deletado/pausado e nao aparece mais na API. MS:
+    cobertura parcial (~131/4299 criativos no catalogo, snapshot dos ativos).
+    MGID: cobertura quase total. Siprocal repete o proprio nome do criativo.
+  creative_label: >
+    COALESCE(creative_name, creative_id) — nunca vazio, cai pro ID quando nao
+    ha nome. Usar no Power BI.
+  impressions: "SUM(impressions)"
+  clicks: "SUM(clicks)"
+  conversions: >
+    SUM() das colunas de conversao por plataforma (MS: conversions_1..5;
+    MGID: conversions_interest+decision+buy); Siprocal sempre 0 (sem
+    breakdown de conversao por criativo na fonte)

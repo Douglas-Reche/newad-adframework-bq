@@ -1,0 +1,21 @@
+description: >
+  View de apresentacao, grain igual fact_delivery (client_id + day + platform +
+  formato + goal_type). Substitui, por override, os dias de
+  banco_cora_fe13d78a anteriores a 2026-07-01 pelo valor de
+  core.historical_overrides_delivery — mecanismo generico de override
+  historico por cliente (ver core/ddl/historical_overrides_delivery.sql,
+  core/ddl/resolve_reporting_source.sql, commit 98b8f50). Fora do
+  intervalo/cliente do override, e um passthrough puro de fact_delivery.
+  Power BI deve ler daqui, nao de fact_delivery direto, para clientes com
+  override ativo.
+columns:
+  client_id: "fact_delivery ou core.historical_overrides_delivery"
+  day: "idem"
+  platform: "idem"
+  formato: "idem"
+  goal_type: "idem"
+  impressions: "idem"
+  clicks: "idem"
+  conversions: >
+    fact_delivery.conversions; sempre NULL para as linhas vindas do override
+    historico (a fonte da Cora pre-07/2026 nao tem conversao confiavel)
