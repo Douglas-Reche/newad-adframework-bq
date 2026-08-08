@@ -251,3 +251,31 @@ Executar nesta ordem antes de encerrar:
    toda task Notion tocada na sessão está com a narrativa completa até o momento
 3. Docs técnicos (Camada 2) — atualizados via processo do `docs.md`, não à mão
 4. **git commit** — pedir confirmação ao usuário antes de commitar
+5. **git push** — sempre na sequência do commit, mesmo passo, não ação separada pra
+   lembrar depois (achado real 2026-08-06: 10 commits ficaram só locais por dias porque
+   "commitar" e "publicar de verdade" foram tratados como coisas diferentes)
+6. **Conferir se qualquer estado só-desta-sessão foi externalizado** — em especial a
+   lista de tarefas pendentes (todo list), que é local e não sobrevive ao fim da sessão.
+   Se sobrar item pendente que só existe nessa lista, ele precisa virar entrada na task
+   Notion correspondente (Camada 1) antes de considerar o fechamento completo — senão
+   ele simplesmente desaparece quando a sessão fecha.
+
+### Sugerir encerramento proativamente, não só executar quando pedido
+
+Ao chegar num **marco natural de pacote de trabalho** (mesmo critério já usado pra
+chamar o `docs` — ver "Cadência de documentação em MÃE longa" acima) **e** a sessão já
+estar longa (múltiplas compactações, vários dias de conversa, ou simplesmente um volume
+grande de trabalho fechado), rodar o checklist acima e **propor explicitamente ao
+usuário**: encerrar esta sessão agora e continuar numa nova, já que o registro em 2
+camadas (Notion + Git) existe exatamente pra isso — sessão nova custando menos por turno,
+sem herdar o histórico bruto.
+
+**Por quê:** sessão longa sem nunca fechar o ciclo custa mais por turno (todo o histórico
+é recarregado) e aumenta o risco de decisão importante nunca ser escrita antes de uma
+compactação apagar o detalhe (aconteceu de verdade em 2026-08-05→06 — ver CHANGELOG). O
+sistema de 2 camadas já deveria tornar a fronteira de sessão barata — mas isso só
+funciona se o fechamento realmente acontecer, não fica implícito.
+
+**Isto é sugestão, nunca decisão unilateral** — a IA não tem como encerrar a sessão
+sozinha; propõe, explica o porquê, e a decisão de continuar ou abrir nova sessão é
+sempre do usuário. Não insistir se ele preferir continuar na mesma sessão.
