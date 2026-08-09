@@ -1,5 +1,9 @@
 # MGID — RAW Layer Sketch
 
+> 📦 **HISTÓRICO** — esboço de análise pré-implementação, superado pelo design oficial
+> validado em `raw_layer_design.md`. Mantido como referência do raciocínio original de
+> mapeamento campo a campo. Movido para `docs/_legacy/` em 2026-08-09.
+
 > Status: ESBOÇO — não é plano oficial.
 > Criado em: 2026-06-18
 > Metodologia: análise campo a campo de `MGID_API_Doc.md` (3.546 linhas), sem herança do pipeline atual.

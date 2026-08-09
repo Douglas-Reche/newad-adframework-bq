@@ -8,6 +8,28 @@
 
 ---
 
+## 2026-08-09 — Reclassificação/poda de docs mestres: migração pro Notion, 5 movidos para histórico, 1 fusão (28→22 mestres)
+
+**O que mudou:** `docs/commercial_questions.md` migrado para o Notion (escopo de negócio/
+comercial, não pipeline técnico) e removido do git; 5 docs de análise pré-implementação
+movidos para `docs/_legacy/` (`bq_restructuring_plan.md`, `core_config_backup.md`,
+`mediasmart_raw_sketch.md`, `mgid_raw_sketch.md`, `siprocal_raw_sketch.md`) — conteúdo
+superado por `raw_layer_design.md`/`core/OWNERSHIP.yaml`, preservado como referência
+histórica, não expurgado; `mediasmart_api_reference.md` fundido dentro de
+`docs/API_Doc_MediaSmart.md` (seção "Quick Reference pro ETL" no topo) para não manter
+duas fontes do mesmo assunto; links corrigidos em `docs/known_issues.md` e
+`docs/raw_layer_design.md` apontando para os novos caminhos em `_legacy/`.
+
+**Por quê:** reduzir a contagem de docs mestres de 28 para 22, eliminando duplicação e
+arquivo de análise pontual sem função ativa — critério de auditoria do agente `docs`.
+
+**Arquivos:** `docs/_legacy/bq_restructuring_plan.md`, `docs/_legacy/core_config_backup.md`,
+`docs/_legacy/mediasmart_raw_sketch.md`, `docs/_legacy/mgid_raw_sketch.md`,
+`docs/_legacy/siprocal_raw_sketch.md`, `docs/API_Doc_MediaSmart.md`,
+`docs/known_issues.md`, `docs/raw_layer_design.md`, `docs/INDEX.md`.
+
+---
+
 ## 2026-08-09 — Fechamento da sessão de reestruturação: cabeçalho de manutenção retrofit, mapa de navegação no HANDOVER.md, api_capabilities.md fechado
 
 **O que mudou:** retrofit do `> **Manutenção:** Tier <N> — <gatilho>` no topo de todos os

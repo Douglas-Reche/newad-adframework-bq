@@ -1,5 +1,11 @@
 # Core Config Backup — adframework.core
 
+> 📦 **HISTÓRICO** — backup de segurança pré-DROP de junho/2026, não é doc de consulta
+> ativa (`core.dim_client`/`platform_client_links`/`campaign_format_map` já foram
+> re-seedadas e evoluíram desde então — ver `core/OWNERSHIP.yaml` para o estado atual).
+> Mantido como referência histórica caso precise reconstituir o estado pré-rebuild.
+> Movido para `docs/_legacy/` em 2026-08-09.
+
 > Exportado em 2026-06-16 antes do rebuild do BigQuery.
 > Fonte: `adframework.core` (dim_client, platform_client_links, campaign_format_map)
 > **NÃO DELETAR** — referência para re-seed após DROP dos datasets.

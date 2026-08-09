@@ -7,7 +7,7 @@
 > ⚠️ **Gap conhecido, não resolvido (2026-08-08):** produção tem 18 tabelas em `raw.*`, não
 > 15 — faltam `mgid_stats_daily`, `mgid_stats_creative`, `ms_creative_daily` nesta lista.
 > Ver seção "Pendência — 3 tabelas RAW não documentadas aqui" mais abaixo.
-> Detalhes de implementação por plataforma: `mediasmart_raw_sketch.md`, `mgid_raw_sketch.md`, `siprocal_raw_sketch.md`
+> Detalhes de implementação por plataforma (sketches históricos, superados por este doc): `_legacy/mediasmart_raw_sketch.md`, `_legacy/mgid_raw_sketch.md`, `_legacy/siprocal_raw_sketch.md`
 > **Rebuild RAW encerrado em 2026-06-24** — `raw.*` tinha 15 tabelas (14 novas + `io_plan_drive_snapshot`) neste momento. 19 tabelas órfãs dropadas. Próxima camada: STG.
 > **Auditoria de integridade + schema executada em 2026-06-24** — ver seção "Auditorias executadas" no final deste doc. Resultado: 14/14 tabelas íntegras (0 nulos em PK/FK, joins ≥99,3%) e 14/14 com schema real idêntico ao planejado (1 gap encontrado e corrigido em `ms_advertisers`).
 

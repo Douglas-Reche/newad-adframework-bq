@@ -7,8 +7,8 @@
 > STG: T1-T7 (MS+MGID) e T1-T4 (Siprocal) criados, testados contra dado real e validados — `client_id`/`formato`/`goal_type` resolvidos e denormalizados nos fatos de entrega. 28 arquivos legados arquivados em `stg/ddl/_legacy/`.
 > **Próxima camada:** Gold — agregações e modelagem dimensional final para consumo (Power BI, Admin UI).
 > **Referência:** [`raw_layer_design.md`](raw_layer_design.md) — design oficial completo e validado da RAW layer.
-> Docs legados (schema anterior a 18/06) seguem como referência histórica apenas.
-> [`bq_restructuring_plan.md`](bq_restructuring_plan.md) · [`core_config_backup.md`](core_config_backup.md) · [`../CHANGELOG.md`](../CHANGELOG.md)
+> Docs legados (schema anterior a 18/06) seguem como referência histórica apenas, em `_legacy/`.
+> [`_legacy/bq_restructuring_plan.md`](_legacy/bq_restructuring_plan.md) · [`_legacy/core_config_backup.md`](_legacy/core_config_backup.md) · [`../CHANGELOG.md`](../CHANGELOG.md)
 >
 > **Regra:** ao criar ou modificar qualquer doc, atualizar este índice com o novo status e data de validação.
 
@@ -63,18 +63,16 @@
 | `../stg/ddl/mg_delivery_by_device.sql` | ✅ ATUAL | 2026-06-24 | T6 STG MGID — 251/251 (100%) |
 | `../stg/ddl/mg_delivery_by_hour.sql` | ✅ ATUAL | 2026-06-24 | T7 STG MGID — 1.346/1.346 (100%) |
 | `../stg/ddl/io_plan.sql` | ✅ ATUAL | 2026-06-24 | STG IO Plan — `stg.io_plan`, dedup 295→125 (0 duplicatas confirmadas), formato 100%, platform 77%, sem goal_type (conceito de campanha, não de plano) |
-| `mediasmart_raw_sketch.md` | ✅ ATUAL | 2026-06-18 | Análise API-first MediaSmart: todos os endpoints, campos T1–T7, código de ingestão planejado |
-| `mgid_raw_sketch.md` | ✅ ATUAL | 2026-06-18 | Análise API-first MGID: endpoints, campos T1–T7, client_ids como lista fixa |
-| `siprocal_raw_sketch.md` | ✅ ATUAL | 2026-06-18 | Análise Siprocal (Google Sheets): T1–T3, parse_period, campaign_id derivado |
-| `bq_restructuring_plan.md` | ✅ ATUAL | 2026-06-16 | Contexto e motivação do rebuild — problemas do schema antigo (normalize_data, all-STRING, patches acumulados) |
-| `core_config_backup.md` | ✅ ATUAL | 2026-06-16 | Backup das 3 tabelas core antes do DROP: 26 clientes, 155 vínculos de plataforma, 18 mapeamentos de formato — usar para re-seed |
+| `_legacy/mediasmart_raw_sketch.md` | 📦 HISTÓRICO | 2026-08-09 | Análise API-first MediaSmart pré-implementação: endpoints, campos T1–T7. Superado por `raw_layer_design.md`. Movido para `_legacy/` em 2026-08-09 |
+| `_legacy/mgid_raw_sketch.md` | 📦 HISTÓRICO | 2026-08-09 | Análise API-first MGID pré-implementação: endpoints, campos T1–T7, client_ids como lista fixa. Superado por `raw_layer_design.md`. Movido para `_legacy/` em 2026-08-09 |
+| `_legacy/siprocal_raw_sketch.md` | 📦 HISTÓRICO | 2026-08-09 | Análise Siprocal (Google Sheets) pré-implementação: T1–T3, parse_period, campaign_id derivado. Já tinha banner de "superado" desde 2026-06-22 mas nunca tinha sido fisicamente movido — corrigido em 2026-08-09 |
+| `_legacy/bq_restructuring_plan.md` | 📦 HISTÓRICO | 2026-08-09 | Contexto e motivação do rebuild de 2026-06-16 (já concluído) — problemas do schema antigo (normalize_data, all-STRING, patches acumulados). Movido para `_legacy/` em 2026-08-09 |
+| `_legacy/core_config_backup.md` | 📦 HISTÓRICO | 2026-08-09 | Backup de segurança pré-DROP de junho/2026 das 3 tabelas core: 26 clientes, 155 vínculos de plataforma, 18 mapeamentos de formato. Não é doc de consulta ativa (ver `core/OWNERSHIP.yaml` para estado atual). Movido para `_legacy/` em 2026-08-09 |
 | `api_capabilities.md` | ✅ ATUAL | 2026-08-09 | Inventário completo MediaSmart + MGID + Siprocal (APIs) — não depende de schema BQ. Cabeçalho de manutenção adicionado 2026-08-09 (Tier 2, gatilho: nova plataforma/API integrada) — arquivo tinha ficado fora do retrofit de cabeçalho anterior |
-| `API_Doc_MediaSmart.md` | ✅ ATUAL | 2026-06-11 | **FONTE PRIMÁRIA** — documentação oficial MediaSmart API completa (4.601 linhas). Consulta autoritativa. |
+| `API_Doc_MediaSmart.md` | ✅ ATUAL | 2026-08-09 | **FONTE PRIMÁRIA** — documentação oficial MediaSmart API completa. Seção "Quick Reference pro ETL" fundida no topo em 2026-08-09 (conteúdo de `mediasmart_api_reference.md`, arquivo standalone removido para não duplicar fonte); documentação oficial verbatim segue abaixo. Consulta autoritativa. |
 | `MGID_API_Doc.md` | ✅ ATUAL | 2026-06-11 | Documentação oficial MGID REST API — referência para implementação do ETL |
-| `mediasmart_api_reference.md` | ✅ ATUAL | 2026-06-11 | Resumo estruturado da API MediaSmart para uso no ETL |
 | `meta_ads_integration.md` | ✅ ATUAL | 2026-06-12 | Integração Meta Ads — credenciais, steps pendentes, schema proposto |
 | `google_ads_integration.md` | ✅ ATUAL | 2026-06-12 | Integração Google Ads — guia completo de credenciais OAuth2, schema, GAQL |
-| `commercial_questions.md` | ✅ ATUAL | 2026-06-08 | Perguntas pendentes para área comercial |
 | `known_issues.md` | ✅ ATUAL | 2026-08-08 | Doc mais vivo do repo — issues abertos e resolvidos do pipeline pós-rebuild, atualizado a cada sessão de trabalho. Classificação `📋 REBUILD` era erro de categorização (doc não é parcialmente válido/defasado, é o rastreador ativo de issues) — corrigido 2026-08-08. Seções históricas (G1/G2 do schema pré-2026-06-16) seguem preservadas como registro, não invalidam o restante. |
 | `io_plan_domain.md` | ✅ ATUAL | 2026-08-08 | Doc único de domínio IO Plan — consolida `io_plan_pipeline.md` + `etl_expansion_plan.md` + `analise_plano_vs_delivery_cora_tecpar.md` + `audit_io_plan_cora_tecpar_2026-06-15.md` (Frente C, item C2). Pipeline/arquitetura, plano de expansão, lógica de pacing Cora/TecPar e auditoria de qualidade — lógica de negócio válida, nomes de tabela de delivery pré-rebuild sinalizados no corpo do doc |
 | `environments.md` | ✅ ATUAL | 2026-08-09 | Matriz de Estado Ambiental — `adframework` (produção) vs. `douglas-bq-staging` (staging), o que vigora em cada projeto por camada, diferença de IAM/service accounts entre os dois. Construído a partir de `CHANGELOG.md` + `hub/deploy.sh`; bindings de IAM não reconfirmados ao vivo nesta sessão (auth `gcloud`/`bq` expirada) |

@@ -13,7 +13,7 @@
 > (grep no repo pelos 4 strategy IDs não encontrou nenhum INSERT/seed que os tenha
 > adicionado a `core.campaign_format_map`; reconfirmação ao vivo via BigQuery bloqueada
 > nesta sessão — ver nota no rodapé do arquivo).
-> Novos issues do rebuild serão documentados aqui conforme surgirem. Plano: [bq_restructuring_plan.md](bq_restructuring_plan.md)
+> Novos issues do rebuild serão documentados aqui conforme surgirem. Plano (histórico): [_legacy/bq_restructuring_plan.md](_legacy/bq_restructuring_plan.md)
 ---
 
 > Última atualização: 2026-06-16 — Gold layer completa: G1 e G2 resolvidos durante execução; G3 aberto (TecPar MS strategies sem mapeamento de category). 5 tabelas gold deployadas.

@@ -1,5 +1,10 @@
 # Plano de Deleção e Reestruturação do BigQuery — adframework
 
+> 📦 **HISTÓRICO** — contexto e motivação do rebuild de 2026-06-16, já concluído
+> (RAW/STG/GOLD reconstruídas, validadas em produção — ver `raw_layer_design.md`,
+> `stg_layer_design.md`, `gold_layer_design.md`). Mantido como referência de decisão,
+> não como plano ativo. Movido para `docs/_legacy/` em 2026-08-09.
+
 > Criado: 2026-06-16
 > Contexto: auditoria de Abril/2026 confirmou RAW=STG=GOLD sem perda de dados, mas arquitetura acumulou patches técnicos (rename reversal MS, all-STRING, normalize_data na ingestão) que precisam ser resolvidos na origem.
 > Decisão: dropar layers de pipeline e reconstruir do zero com design limpo.
