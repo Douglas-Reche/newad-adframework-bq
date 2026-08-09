@@ -1,3 +1,7 @@
+# MGID API — Documentação Oficial
+
+> **Manutenção:** Tier 3 — revisão quando o vendor mudar a API.
+
 The main provisions of REST API
 REST API allows you to integrate external applications with Mgid online  
 advertising system.

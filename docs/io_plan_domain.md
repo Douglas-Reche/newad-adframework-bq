@@ -1,5 +1,7 @@
 # IO Plan — Domínio Completo (Pipeline, Expansão, Pacing, Auditoria)
 
+> **Manutenção:** Tier 2 — gatilho: mudança de lógica de pacing/plano, novo cliente com particularidade de IO Plan, ou resolução do gap de nomes de tabela pré-rebuild citado abaixo.
+
 > Consolida em um único doc: `io_plan_pipeline.md`, `etl_expansion_plan.md`,
 > `analise_plano_vs_delivery_cora_tecpar.md`, `audit_io_plan_cora_tecpar_2026-06-15.md`
 > (Frente C, item C2 do `plano_reestruturacao_documentacao.md`, aprovado por Douglas em 2026-08-08).

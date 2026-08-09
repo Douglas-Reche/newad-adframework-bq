@@ -266,7 +266,12 @@ Executar nesta ordem antes de encerrar:
 1. `CHANGELOG.md` — entry com data e resumo das decisões
 2. **Conferir** (não é o único ponto de atualização — ver protocolo de relato acima) que
    toda task Notion tocada na sessão está com a narrativa completa até o momento
-3. Docs técnicos (Camada 2) — atualizados via processo do `docs.md`, não à mão
+3. Docs técnicos (Camada 2) — atualizados via processo do `docs.md`, não à mão. Para
+   todo doc **novo** criado na sessão, confirmar que ele tem o cabeçalho de manutenção
+   no topo (`> **Manutenção:** Tier <N> — <gatilho de atualização>`, logo abaixo do
+   título) — não basta o conteúdo estar correto, o gatilho de quando revisitar aquele
+   doc de novo precisa estar visível dentro do próprio arquivo, não só na task Notion
+   ou no plano de reestruturação
 4. **git commit** — pedir confirmação ao usuário antes de commitar
 5. **git push** — sempre na sequência do commit, mesmo passo, não ação separada pra
    lembrar depois (achado real 2026-08-06: 10 commits ficaram só locais por dias porque

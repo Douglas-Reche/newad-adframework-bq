@@ -1,9 +1,14 @@
 # RAW Layer Design — AdFramework
 
+> **Manutenção:** Tier 1 (inventário de tabelas/schema — regenerar contra `INFORMATION_SCHEMA` quando desconfiar de desatualização) + Tier 2 (seção de racional/design — gatilho: nova tabela RAW ou decisão de captação que muda o design). Ver nota de manutenção do `gold_layer_design.md` para o mesmo princípio aplicado lá.
+
 > Criado: 2026-06-18
-> Status: ✅ ATUAL — T1–T7 fechados, validados em produção e jobs consolidados (2026-06-24)
+> Status: ✅ ATUAL — T1–T7 fechados, validados em produção e jobs consolidados (2026-06-24).
+> ⚠️ **Gap conhecido, não resolvido (2026-08-08):** produção tem 18 tabelas em `raw.*`, não
+> 15 — faltam `mgid_stats_daily`, `mgid_stats_creative`, `ms_creative_daily` nesta lista.
+> Ver seção "Pendência — 3 tabelas RAW não documentadas aqui" mais abaixo.
 > Detalhes de implementação por plataforma: `mediasmart_raw_sketch.md`, `mgid_raw_sketch.md`, `siprocal_raw_sketch.md`
-> **Rebuild RAW encerrado em 2026-06-24** — `raw.*` tem 15 tabelas (14 novas + `io_plan_drive_snapshot`). 19 tabelas órfãs dropadas. Próxima camada: STG.
+> **Rebuild RAW encerrado em 2026-06-24** — `raw.*` tinha 15 tabelas (14 novas + `io_plan_drive_snapshot`) neste momento. 19 tabelas órfãs dropadas. Próxima camada: STG.
 > **Auditoria de integridade + schema executada em 2026-06-24** — ver seção "Auditorias executadas" no final deste doc. Resultado: 14/14 tabelas íntegras (0 nulos em PK/FK, joins ≥99,3%) e 14/14 com schema real idêntico ao planejado (1 gap encontrado e corrigido em `ms_advertisers`).
 
 ---
@@ -306,6 +311,65 @@ Detalhes completos da investigação em `CHANGELOG.md` (entrada 2026-06-22).
 19 tabelas dropadas: 12 substituídas pelas novas (T1-T7), 4 de breakdowns descartados (by_publisher/widget, by_browser), 3 fora de escopo (revenue/financeiro — ver seção "Breakdowns descartados" acima).
 
 **Estado final de `raw.*`: 15 tabelas** — 14 novas (`ms_advertisers, ms_campaigns, ms_creatives, ms_delivery, ms_delivery_by_geo, ms_delivery_by_device, ms_delivery_by_hour, mg_campaigns, mg_teasers, mg_delivery, mg_delivery_by_geo, mg_delivery_by_device, mg_delivery_by_hour, sp_delivery`) + `io_plan_drive_snapshot` (preservada, sistema diferente). Detalhes completos em `CHANGELOG.md` (entrada 2026-06-24).
+
+---
+
+## Pendência — 3 tabelas RAW não documentadas aqui (achado 2026-08-08, não resolvido)
+
+Produção tem **18 tabelas** em `raw.*`, não as 15 listadas na seção "Lista final de tabelas
+RAW" acima. Achado de auditoria anterior aponta 3 tabelas fora deste doc:
+`mgid_stats_daily`, `mgid_stats_creative`, `ms_creative_daily`.
+
+**Não foi possível confirmar o schema real destas 3 nesta sessão** — consulta a
+`INFORMATION_SCHEMA.COLUMNS` ao vivo é o método correto (mesma metodologia da seção
+"Auditorias executadas" abaixo), mas `bq`/`gcloud auth`/o client Python via ADC pediram
+reautenticação interativa ("Reauthentication is needed... gcloud auth application-default
+login"), impossível nesta sessão não-interativa.
+
+**Não usar os DDLs legados como substituto:** `raw/ddl/mgid_stats_daily.sql` e
+`raw/ddl/mgid_stats_creative.sql` existem no repo, mas são da era pré-rebuild (mesma
+geração de `mgid_campaigns.sql`/`mgid_creatives.sql`/`mgid_delivery.sql`/
+`mediasmart_*.sql`, todos anteriores ao DROP de 2026-06-18/24 documentado nesta página) —
+não confiável para descrever o schema atual, dado que a RAW inteira foi reconstruída do
+zero depois desses arquivos terem sido escritos. `ms_creative_daily` não tem DDL nenhum
+no repo (nem legado) — se existe em produção, é objeto sem fonte de verdade versionada,
+mesma categoria de "shadow object" já visto em `core.dict_format`/`core.campaign_format_map`
+(ver `docs/known_issues.md` V1) e em `gold.fct_creative_daily` (ver `docs/known_issues.md`
+A5).
+
+**Próximo passo, assim que houver acesso live ao BigQuery:** rodar
+`SELECT column_name, data_type FROM adframework.raw.INFORMATION_SCHEMA.COLUMNS WHERE
+table_name IN ('mgid_stats_daily','mgid_stats_creative','ms_creative_daily') ORDER BY
+table_name, ordinal_position`, confirmar se são objetos ativos do pipeline (então commitar
+DDL novo aqui) ou remanescentes órfãos do schema pré-rebuild que deveriam ter sido
+dropados junto com as outras 19 tabelas órfãs em 2026-06-24 mas escaparam.
+
+## Pendência — queda de linhas em `raw.mg_teasers` (167→153, achado de auditoria anterior, não resolvido)
+
+Investigado nesta sessão via `CHANGELOG.md` (não via BigQuery ao vivo, indisponível — ver
+nota acima). Achados:
+
+- `raw.mg_teasers` foi validado com **167 linhas** em 2026-06-22 (T3 MGID, ver seção T3
+  acima e `CHANGELOG.md` entrada 2026-06-22).
+- Em 2026-06-30, durante o incidente "4 tabelas RAW corrompidas por deploy desatualizado"
+  (`CHANGELOG.md` entrada 2026-06-30), `raw.mg_teasers` foi **dropada e recriada**
+  (`DROP TABLE raw.mg_teasers` + re-execução do job, forçando autodetect de schema — causa
+  raiz: bug pré-existente em `bigquery.py::load_data()` que mantinha schema antigo mesmo
+  com `WRITE_TRUNCATE` quando havia sobreposição parcial de nomes de coluna entre schema
+  velho e novo). O resultado imediato registrado no `CHANGELOG.md` para essa recriação foi
+  **180 linhas**, não 153.
+- **Não encontrada em nenhum lugar do repo (CHANGELOG, docs, código) uma contagem de 153
+  linhas para `mg_teasers`** — nem um evento de dedup, DELETE manual ou nova recriação que
+  explique essa contagem específica. A cadeia 167→180 (recriação do incidente de 06-30) é
+  a única mudança de contagem documentada; 153 não bate com nenhuma etapa registrada.
+
+**Não confirmado — causa da queda para 153 permanece desconhecida.** Não é possível
+distinguir, sem consulta ao vivo (`SELECT COUNT(*) FROM raw.mg_teasers` +
+inspeção de `raw_ingested_at`/histórico de jobs), entre: (a) uma correção de dedup nunca
+registrada em texto, (b) exclusão acidental de registro, ou (c) um evento totalmente
+diferente não capturado em nenhum documento. Próximo passo: reconfirmar contagem atual e,
+se ainda 153 (ou outro valor), comparar `raw_ingested_at` das linhas restantes contra o
+histórico de jobs do Cloud Scheduler para tentar isolar quando a mudança aconteceu.
 
 ---
 

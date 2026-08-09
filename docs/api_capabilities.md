@@ -1,5 +1,9 @@
 # API Capabilities — MediaSmart, MGID, Siprocal
 
+> **Manutenção:** Tier 2 — atualizar sempre que uma plataforma/API nova for integrada ao
+> pipeline (ex: Google Ads, Meta Ads, ambas já registradas como integração pendente em
+> `docs/google_ads_integration.md`/`docs/meta_ads_integration.md`)
+
 > Auditoria realizada em: 2026-06-08
 > Fontes: OpenAPI spec (github.com/mediasmart/api-reference), help.mgid.com/api-advertisers, DDLs raw do repo
 

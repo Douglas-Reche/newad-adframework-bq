@@ -1,5 +1,7 @@
 # newad-adframework-bq
 
+> **Manutenção:** Tier 3 — revisão quando arquitetura/fases do projeto mudarem.
+
 ---
 > **⚠️ REESTRUTURAÇÃO EM ANDAMENTO — 2026-06-16 ⚠️**
 > A pipeline RAW/STG/GOLD foi **resetada e está sendo reconstruída do zero** devido a inconsistências estruturais acumuladas na ingestão (normalize_data no RAW, all-STRING, schema enforcement silencioso).

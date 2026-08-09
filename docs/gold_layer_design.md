@@ -1,5 +1,7 @@
 # Gold Layer — Design (2026-06-24)
 
+> **Manutenção:** Tier 1 (seção "Inventário Atual" — gerada a partir de consulta ao vivo no `INFORMATION_SCHEMA`, nunca editada de memória) + Tier 2 (seção "Design e Racional" — escrita à mão, gatilho: nova view gold ou mudança de grain/trade-off financeiro).
+
 > Reconstrução pós-rebuild RAW+STG (2026-06-24). Reaproveita o princípio de negócio decidido em 16/06 (`project_gold_layer_design.md`), adaptado ao schema novo — `client_id`/`formato` já vêm resolvidos da STG, sem necessidade de re-derivar nada aqui.
 
 > **Nota de manutenção (2026-08-08):** este doc tem duas seções. "Design e Racional" (abaixo) é a narrativa mantida à mão — grains, trade-offs, por que as coisas são como são. "Inventário Atual" (fim do arquivo) é gerado a partir de consulta ao vivo no `INFORMATION_SCHEMA` do BigQuery, não editado de memória. Uma auditoria de docs em 2026-08-08 encontrou que esta seção de design só cobria 5 das 9 views reais de `adframework.gold` — o inventário no fim do arquivo corrige isso e é o que deve ser regenerado (não editado à mão) na próxima vez que alguém desconfiar que está desatualizado.

@@ -1,8 +1,66 @@
 # CHANGELOG — AdFramework BQ Pipeline
 
+> **Manutenção:** Tier 2 — entrada nova a cada sessão com decisão relevante (log contínuo, sempre crescendo, nunca "revisado").
+
 > Registro cronológico de decisões, mudanças e evoluções arquiteturais.
 > **Regra:** toda mudança relevante no pipeline, arquitetura ou decisão de negócio deve ser registrada aqui com data, motivo e arquivos tocados.
 > Formato: mais recente no topo.
+
+---
+
+## 2026-08-09 — Fechamento da sessão de reestruturação: cabeçalho de manutenção retrofit, mapa de navegação no HANDOVER.md, api_capabilities.md fechado
+
+**O que mudou:** retrofit do `> **Manutenção:** Tier <N> — <gatilho>` no topo de todos os
+docs mestres que ainda não tinham (`README.md`, `docs/INDEX.md`, `docs/known_issues.md`,
+`core/OWNERSHIP.yaml`, `docs/raw_layer_design.md`, `docs/stg_layer_design.md`,
+`docs/gold_layer_design.md`, `docs/io_plan_domain.md`, `docs/API_Doc_MediaSmart.md`,
+`docs/MGID_API_Doc.md`, `docs/mediasmart_api_reference.md`, `hub/README.md`,
+`docs/adr/0001-*.md`, `HANDOVER.md`); adicionada a seção "Mapa de Documentação — o que
+ler e quando" no `HANDOVER.md` (tabela de navegação doc-a-doc); `docs/api_capabilities.md`
+recebeu o cabeçalho que tinha ficado fora do retrofit anterior; `CLAUDE.md` ganhou item
+novo no checklist de fim de sessão exigindo esse cabeçalho em todo doc novo.
+
+**Por quê:** gatilho de quando revisitar um doc precisa estar visível dentro do próprio
+arquivo, não só na task Notion — padrão definido em `~/.claude/agents/docs.md`.
+
+**Pendências de Frente A não resolvidas (para constar, bloqueadas por falta de acesso ao
+BigQuery ao vivo nesta sessão — `bq`/`gcloud auth`/ADC pediram reautenticação
+interativa):** `docs/known_issues.md` A4/A5/C1 seguem ABERTOS (não reconfirmados);
+`core/OWNERSHIP.yaml` achado `_resolve_test_simple` não confirmado; `docs/raw_layer_design.md`
+gap de 3 tabelas não documentadas (`mgid_stats_daily`, `mgid_stats_creative`,
+`ms_creative_daily`) e queda de linhas em `mg_teasers` (167→153) não confirmados.
+
+**Arquivos:** ver lista completa acima + `docs/INDEX.md` (entradas atualizadas).
+
+---
+
+## 2026-08-09 — Frente B da reestruturação de documentação: 5 docs novos criados (AGENTS.md, HANDOVER.md, environments.md, 2 runbooks)
+
+**O que mudou:** criados os 5 itens da Frente B que não dependiam de acesso ao BigQuery ao
+vivo (sessão sem `gcloud`/`bq` autenticados): `AGENTS.md` (raiz — comandos
+universais/mecânicos extraídos de `CLAUDE.md`, `README.md`, `scripts/deploy/apply_ddl.py`,
+`hub/deploy.sh`), `HANDOVER.md` (raiz — runbook + mapa de acessos + onde cada agente
+atua), `docs/environments.md` (Matriz de Estado Ambiental `adframework` vs.
+`douglas-bq-staging`), `docs/runbook_promocao_ambiente.md` e
+`docs/runbook_incidente_operacional.md`.
+
+**Por quê:** gap nomeado no plano de reestruturação (`docs/plano_reestruturacao_documentacao.md`,
+Frente B) — nenhum desses 5 existia formalmente antes.
+
+**Base factual:** `environments.md` e o runbook de promoção foram confirmados contra
+`CHANGELOG.md` (entradas 2026-08-05→06, decisão de arquitetura standalone) e
+`hub/deploy.sh` (bindings reais de IAM no código) — **não reconfirmados contra
+IAM/BigQuery ao vivo** nesta sessão. O runbook de incidente foi construído só a partir de
+incidentes reais já resolvidos em `docs/known_issues.md`/`CHANGELOG.md`, não cenário
+genérico.
+
+**Pendente da Frente B:** diagramas, `core_layer_design.md`, catálogo semântico — fora do
+escopo desta sessão.
+
+**Arquivos:** `AGENTS.md` (novo), `HANDOVER.md` (novo), `docs/environments.md` (novo),
+`docs/runbook_promocao_ambiente.md` (novo), `docs/runbook_incidente_operacional.md`
+(novo), `docs/INDEX.md` (4 entradas novas). **Não commitado** — deixado no working tree
+para revisão do Douglas.
 
 ---
 

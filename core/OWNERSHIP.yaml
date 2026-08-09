@@ -1,9 +1,16 @@
 # core/OWNERSHIP.yaml
+# Manutenção: Tier 2 — toda tabela criada ou dropada no pipeline gera atualização aqui.
+#
 # Fonte única de "essa tabela/view é do pipeline do Douglas / é do Admin UI do Shiro /
 # é legado desabilitado". backend.md, hub-frontend.md e o CLAUDE.md raiz referenciam
 # este arquivo em vez de manter cópia própria da lista — nunca duplicar aqui.
 #
 # Auditado ao vivo contra o BigQuery em 2026-08-03 (dataset core, INFORMATION_SCHEMA.TABLES).
+# Correção pontual em 2026-08-08 (Frente A, item A3): client_reporting_source_config/
+# resolve_reporting_source corrigidos para staging_only e schema_change_log adicionado --
+# confirmados via código (hub/app.py, core/ddl/, apply_ddl.py, CHANGELOG.md), não via nova
+# consulta INFORMATION_SCHEMA (sessão sem acesso ao BigQuery ao vivo -- ver nota sobre
+# _resolve_test_simple abaixo). Não invalida a auditoria de 2026-08-03 quanto ao resto.
 # owner: "pipeline" | "shiro_admin_ui" | "legacy_disabled"
 
 objects:
@@ -47,12 +54,18 @@ objects:
   - name: client_reporting_source_config
     dataset: core
     owner: pipeline
-    notes: "SCD2, criada 2026-08-05 (MVP staging x producao) -- por client_id, decide override vs dado real da plataforma. Consumida por core.resolve_reporting_source()."
+    status: "staging_only"
+    notes: "SCD2, criada 2026-08-05 (MVP staging x producao) -- por client_id, decide override vs dado real da plataforma. Consumida por core.resolve_reporting_source(). NAO existe em `adframework` (producao) -- so em `douglas-bq-staging`, de proposito, nunca promovida. Confirmado via hub/app.py linha 71-72 (comentario explicito 'NUNCA em adframework (producao), nunca existiu la de proposito') e CHANGELOG.md 2026-08-06 ('Nenhuma mudanca em producao (adframework) -- tudo testado e aplicado so em douglas-bq-staging')."
   - name: resolve_reporting_source
     dataset: core
     owner: pipeline
     type: function
-    notes: "Criada 2026-08-05 junto com client_reporting_source_config -- generaliza o hardcode de gold.vw_fact_delivery_reporting."
+    status: "staging_only"
+    notes: "Criada 2026-08-05 junto com client_reporting_source_config -- generaliza o hardcode de gold.vw_fact_delivery_reporting. NAO existe em `adframework` (producao) -- so em `douglas-bq-staging`. Mesma confirmacao de client_reporting_source_config acima."
+  - name: schema_change_log
+    dataset: core
+    owner: pipeline
+    notes: "Log de auditoria de toda execucao do scripts/deploy/apply_ddl.py (test OU prod) -- grava change_id/object_dataset/object_name/tested_env/tested_at/status + previous_definition/commit_hash (para --rollback). Existe em producao (`adframework.core.schema_change_log`, hardcoded em core/ddl/schema_change_log.sql e usado por todo apply_ddl.py). Faltava neste YAML -- adicionado 2026-08-08."
 
   # --- Admin UI do Shiro -- NUNCA referenciar no pipeline gold ---
   - name: io_manager_v2
@@ -90,3 +103,21 @@ objects:
 #   SELECT table_name, table_type FROM core.INFORMATION_SCHEMA.TABLES ORDER BY table_name
 #   e confira se apareceu algo novo não listado aqui.
 # - Objeto novo em `core` sem dono óbvio -> perguntar ao usuário antes de classificar.
+
+# --- Achado não confirmável nesta sessão (2026-08-08) ---
+# _resolve_test_simple: reportado por auditoria anterior como existindo nas rotinas de
+# produção do dataset `core`. Buscado em todo o repo (grep por "_resolve_test_simple" em
+# *.sql/*.py/*.md) -- ZERO ocorrências: não há DDL commitado para essa função em
+# raw/ddl, stg/ddl, core/ddl ou gold/ddl. Não foi possível reconfirmar existência, dataset
+# real ou definição via BigQuery ao vivo nesta sessão -- `bq`/`gcloud auth` e o client
+# Python (google-cloud-bigquery via ADC) pediram reautenticação interativa
+# ("Reauthentication is needed... gcloud auth application-default login"), impossível em
+# sessão não-interativa. NÃO documentado como fato confirmado -- registrado aqui só como
+# achado pendente de verificação.
+# Hipótese (baseada só no nome, não confirmada): artefato de teste esquecido em produção,
+# mesmo padrão de objeto "shadow" já visto em dict_format/campaign_format_map (ver
+# docs/known_issues.md V1). Recomendação: assim que houver acesso live ao BigQuery,
+# rodar SELECT routine_name FROM core.INFORMATION_SCHEMA.ROUTINES WHERE routine_name =
+# '_resolve_test_simple' (e nos demais datasets, já que o OWNERSHIP.yaml hoje só cobre
+# `core` -- ver known_issues.md item A6). Se confirmado sem uso real (nenhuma view/query
+# de produção a chama), recomendação é remover -- não fazer isso sem confirmação live.

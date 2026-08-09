@@ -5,6 +5,8 @@ last_verified: 2026-08-04
 
 # 0001 — Versionamento SCD2 das tabelas de regra via funções `core.resolve_*` centralizadas
 
+> **Manutenção:** Imutável após aceito — decisão superada vira novo ADR que referencia este.
+
 **Status:** Aceito
 **Data:** 2026-08-04
 

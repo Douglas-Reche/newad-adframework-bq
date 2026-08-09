@@ -1,5 +1,7 @@
 # AdFramework Data Hub
 
+> **Manutenção:** Tier 3 — revisão quando a estrutura do painel Streamlit mudar.
+
 Painel pessoal do pipeline BQ (`projeto adframework`). Mostra freshness das tabelas,
 status inferido dos jobs de ingestao diaria, um tracker manual dos Power BI em
 desenvolvimento, um navegador de schema/preview, um query runner, a fila de aprovacao de

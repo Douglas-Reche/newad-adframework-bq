@@ -1,5 +1,7 @@
 # MediaSmart API — Documentação Oficial Completa
 
+> **Manutenção:** Tier 3 — revisão quando o vendor mudar a API.
+
 > Salvo em: 2026-06-11 por Douglas (colado da documentação oficial)
 > Fonte: https://api.mediasmart.io
 > Status: ✅ COMPLETA — documento original sem modificações abaixo desta linha

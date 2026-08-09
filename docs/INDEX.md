@@ -1,5 +1,7 @@
 # Índice de Documentação — AdFramework BQ Pipeline
 
+> **Manutenção:** Tier 1 — meta: deveria ser gerado a partir do estado real dos docs, hoje ainda mantido manualmente (nota honesta, não automatizado ainda).
+
 > **✅ RAW + STG LAYERS ENCERRADAS — 2026-06-24 ✅**
 > RAW: T1–T7 implementados, testados contra API real e validados em produção (MS + MGID). Jobs consolidados, 19 tabelas órfãs dropadas. `raw.*` final: **15 tabelas**.
 > STG: T1-T7 (MS+MGID) e T1-T4 (Siprocal) criados, testados contra dado real e validados — `client_id`/`formato`/`goal_type` resolvidos e denormalizados nos fatos de entrega. 28 arquivos legados arquivados em `stg/ddl/_legacy/`.
@@ -17,12 +19,14 @@
 | Arquivo | Status | Última validação | Descrição |
 |---|---|---|---|
 | `../CHANGELOG.md` | ✅ ATUAL | 2026-06-18 | Histórico completo de decisões e mudanças — sempre atualizar |
+| `../AGENTS.md` | ✅ ATUAL | 2026-08-09 | Comandos universais/mecânicos do repo (não específicos de Claude) — build/test/deploy, o que existe hoje. Cabeçalho de manutenção: Tier 3, revisão quando comando de build/test/deploy mudar |
+| `../HANDOVER.md` | ✅ ATUAL | 2026-08-09 | Ponto de partida pra pessoa/sessão nova no repo — runbook operacional + mapa de acessos + como o projeto se conecta como um todo. Cabeçalho de manutenção: Tier 3, revisão quando processo de acesso/credencial mudar |
 | `INDEX.md` | ✅ ATUAL | 2026-06-18 | Este arquivo |
 | `gold_layer_design.md` | ✅ ATUAL | 2026-08-08 | Design da GOLD layer (grains, racional financeiro) + inventário verificado ao vivo das 9 views reais de `adframework.gold`. Gap de DDL fechado 2026-08-08: as 9 views têm `.sql`+`.yml` commitados em `gold/ddl/` |
-| `../core/OWNERSHIP.yaml` | ✅ ATUAL | 2026-08-03 | Fonte única de ownership dos objetos do dataset `core` (pipeline / Admin UI do Shiro / legado). 18 objetos, auditado ao vivo contra `core.INFORMATION_SCHEMA.TABLES`. `CLAUDE.md`, `.claude/agents/backend.md` e `.claude/agents/hub-frontend.md` referenciam este arquivo em vez de manter cópia própria da lista |
+| `../core/OWNERSHIP.yaml` | ✅ ATUAL | 2026-08-08 | Fonte única de ownership dos objetos do dataset `core` (pipeline / Admin UI do Shiro / legado). 19 objetos, auditado ao vivo contra `core.INFORMATION_SCHEMA.TABLES` em 2026-08-03; correção pontual em 2026-08-08 (`client_reporting_source_config`/`resolve_reporting_source` marcados `staging_only`, `schema_change_log` adicionado — confirmados via código, não via nova consulta live) + achado pendente `_resolve_test_simple` registrado sem confirmação. `CLAUDE.md`, `.claude/agents/backend.md` e `.claude/agents/hub-frontend.md` referenciam este arquivo em vez de manter cópia própria da lista |
 | `_pending_purge.md` | ✅ ATUAL | 2026-08-03 | Fila central de arquivos flagueados como "análise pontual" aguardando expurgo semanal em lote — vazio no momento da criação |
 | `plano_reestruturacao_documentacao.md` | ✅ ATUAL | 2026-08-08 | Plano consolidado de reestruturação de `docs/` (auditoria completa + pesquisa de mercado): Frente A (corrigir divergências), Frente B (docs novos com Tier de manutenção definido), Frente C (podar/consolidar). Aguardando aprovação do Douglas antes de qualquer execução |
-| `raw_layer_design.md` | ✅ ATUAL | 2026-06-18 | **PONTO DE PARTIDA DO REBUILD** — design oficial da nova RAW layer: T1–T7, campos, grains, core.dict_format, tamanhos de imagem, IO Plan tratamentos |
+| `raw_layer_design.md` | ✅ ATUAL | 2026-08-08 | **PONTO DE PARTIDA DO REBUILD** — design oficial da nova RAW layer: T1–T7, campos, grains, core.dict_format, tamanhos de imagem, IO Plan tratamentos. Gap conhecido não resolvido (2026-08-08): faltam `mgid_stats_daily`/`mgid_stats_creative`/`ms_creative_daily` (produção tem 18 tabelas, doc lista 15) e causa da queda de linhas em `mg_teasers` (167→153) não confirmada — ambos bloqueados por falta de acesso live ao BigQuery nesta sessão |
 | `session_handoff_2026-06-18.md` | ✅ ATUAL | 2026-06-18 | **Handoff de sessão** — estado atual, próximos passos T1 MGID+Siprocal, regras de orquestração, pendências |
 | `../raw/ddl/ms_advertisers.sql` | ✅ ATUAL | 2026-06-18 | DDL T1 MS — `raw.ms_advertisers` — 8 campos, WRITE_TRUNCATE |
 | `../raw/ddl/mg_campaigns.sql` | ✅ ATUAL | 2026-06-22 | DDL T2 MGID — `raw.mg_campaigns` — validado em produção, 173 linhas, sem client_id |
@@ -64,15 +68,18 @@
 | `siprocal_raw_sketch.md` | ✅ ATUAL | 2026-06-18 | Análise Siprocal (Google Sheets): T1–T3, parse_period, campaign_id derivado |
 | `bq_restructuring_plan.md` | ✅ ATUAL | 2026-06-16 | Contexto e motivação do rebuild — problemas do schema antigo (normalize_data, all-STRING, patches acumulados) |
 | `core_config_backup.md` | ✅ ATUAL | 2026-06-16 | Backup das 3 tabelas core antes do DROP: 26 clientes, 155 vínculos de plataforma, 18 mapeamentos de formato — usar para re-seed |
-| `api_capabilities.md` | ✅ ATUAL | 2026-06-08 | Inventário completo MediaSmart + MGID + Siprocal (APIs) — não depende de schema BQ |
+| `api_capabilities.md` | ✅ ATUAL | 2026-08-09 | Inventário completo MediaSmart + MGID + Siprocal (APIs) — não depende de schema BQ. Cabeçalho de manutenção adicionado 2026-08-09 (Tier 2, gatilho: nova plataforma/API integrada) — arquivo tinha ficado fora do retrofit de cabeçalho anterior |
 | `API_Doc_MediaSmart.md` | ✅ ATUAL | 2026-06-11 | **FONTE PRIMÁRIA** — documentação oficial MediaSmart API completa (4.601 linhas). Consulta autoritativa. |
 | `MGID_API_Doc.md` | ✅ ATUAL | 2026-06-11 | Documentação oficial MGID REST API — referência para implementação do ETL |
 | `mediasmart_api_reference.md` | ✅ ATUAL | 2026-06-11 | Resumo estruturado da API MediaSmart para uso no ETL |
 | `meta_ads_integration.md` | ✅ ATUAL | 2026-06-12 | Integração Meta Ads — credenciais, steps pendentes, schema proposto |
 | `google_ads_integration.md` | ✅ ATUAL | 2026-06-12 | Integração Google Ads — guia completo de credenciais OAuth2, schema, GAQL |
 | `commercial_questions.md` | ✅ ATUAL | 2026-06-08 | Perguntas pendentes para área comercial |
-| `known_issues.md` | 📋 REBUILD | 2026-06-16 | Issues G1/G2/G3 são do schema antigo — encerrados pelo rebuild. Novos issues do rebuild serão documentados aqui. |
+| `known_issues.md` | ✅ ATUAL | 2026-08-08 | Doc mais vivo do repo — issues abertos e resolvidos do pipeline pós-rebuild, atualizado a cada sessão de trabalho. Classificação `📋 REBUILD` era erro de categorização (doc não é parcialmente válido/defasado, é o rastreador ativo de issues) — corrigido 2026-08-08. Seções históricas (G1/G2 do schema pré-2026-06-16) seguem preservadas como registro, não invalidam o restante. |
 | `io_plan_domain.md` | ✅ ATUAL | 2026-08-08 | Doc único de domínio IO Plan — consolida `io_plan_pipeline.md` + `etl_expansion_plan.md` + `analise_plano_vs_delivery_cora_tecpar.md` + `audit_io_plan_cora_tecpar_2026-06-15.md` (Frente C, item C2). Pipeline/arquitetura, plano de expansão, lógica de pacing Cora/TecPar e auditoria de qualidade — lógica de negócio válida, nomes de tabela de delivery pré-rebuild sinalizados no corpo do doc |
+| `environments.md` | ✅ ATUAL | 2026-08-09 | Matriz de Estado Ambiental — `adframework` (produção) vs. `douglas-bq-staging` (staging), o que vigora em cada projeto por camada, diferença de IAM/service accounts entre os dois. Construído a partir de `CHANGELOG.md` + `hub/deploy.sh`; bindings de IAM não reconfirmados ao vivo nesta sessão (auth `gcloud`/`bq` expirada) |
+| `runbook_promocao_ambiente.md` | ✅ ATUAL | 2026-08-09 | Runbook de Promoção de Ambiente (staging → produção) — passos mecânicos via `apply_ddl.py` + plano de rollback explícito (`--rollback`, projeto errado, dado promovido incorretamente). Baseado no mecanismo real de teste em 2 níveis de `scripts/deploy/apply_ddl.py` |
+| `runbook_incidente_operacional.md` | ✅ ATUAL | 2026-08-09 | Runbook de Incidente Operacional — matriz sintoma → causa provável → ação para falhas de conector/ingestão (MediaSmart, MGID, Siprocal), construída a partir de incidentes reais já resolvidos em `known_issues.md`/`CHANGELOG.md`, não cenário genérico |
 
 ---
 
@@ -95,6 +102,18 @@
 3. ERDs — regenerar após estabilizar o schema gold
 
 ---
+
+## Sobre `README.md` — por que não está na tabela acima
+
+Decisão (2026-08-09): `README.md` da raiz **não** entra na tabela de status como os
+demais docs, mesmo com docs de raiz agora entrando no índice com prefixo `../`
+(`../CHANGELOG.md`, `../AGENTS.md`, `../HANDOVER.md`). `README.md` já tem tratamento
+próprio definido como porta de entrada do projeto (arquitetura em 4 camadas + estado
+atual em 1 parágrafo, formato definido em `docs.md` — "nunca vira changelog") — ele não
+carrega status de validação/data como um doc técnico normal, é a página de entrada que
+aponta para os demais, não um doc no mesmo sentido de schema/design/runbook. Adicioná-lo
+à tabela como linha comum obrigaria a inventar uma data de "última validação" que não
+tem sentido para um arquivo cujo conteúdo é deliberadamente estável e curto.
 
 ## Convenção para novos docs
 

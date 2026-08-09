@@ -1,5 +1,7 @@
 # MediaSmart API Reference
 
+> **Manutenção:** Tier 3 — revisão quando o vendor mudar a API.
+
 > Criado em: 2026-06-11
 > Última atualização: 2026-06-16 (pesquisa sobre goal_type e limites históricos)
 > Tipo: **Resumo estruturado para uso no ETL** — não é a documentação completa

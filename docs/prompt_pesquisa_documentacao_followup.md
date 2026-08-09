@@ -2,7 +2,10 @@
 
 > Prompt para reenviar ao Gemini Deep Research. Complementa `docs/pesquisa_documentacao_2026-08-08.md`,
 > cujo diagnóstico (seção 9) já apontou 5 gaps no nosso repositório. Este follow-up pede profundidade
-> extra em 4 pontos que a primeira rodada deixou genéricos demais pra aplicar de verdade.
+> extra em 4 pontos que a primeira rodada deixou genéricos demais pra aplicar de verdade, mais um 5º
+> ponto novo (o mais importante dos cinco): um método de **enxugamento**, já que a primeira rodada só
+> ensinou a adicionar e isso fez o número de docs mestres saltar de forma desproporcional ao tamanho
+> real da operação.
 
 ---
 
@@ -89,6 +92,49 @@ com acesso de leitura a um repositório satélite). Pergunta:
 - Existe uma ordem de implementação recomendada pela indústria quando os recursos de tempo são
   escassos — ou seja, qual artefato tende a prevenir mais incidentes/retrabalho por unidade de esforço
   investido nesse estágio de maturidade?
+
+### 5. Método de enxugamento — o que cortar/fundir, não só o que adicionar
+
+Isso é o ponto mais importante deste follow-up e o motivo real de reabrir a pesquisa. A
+primeira rodada só respondeu "o que falta" (diagnóstico da seção 9: diagramas, `AGENTS.md`,
+catálogo semântico, handover/onboarding — todos ausentes) e nós aplicamos só esse lado,
+criando documentos novos. Isso fez nosso número de "docs mestres" (documentos vivos, cada
+um com dono e critério de atualização próprio) saltar de um punhado pra quase 20 — para uma
+operação real de 1 pessoa (eu) com colaboração pontual de uma segunda pessoa num repositório
+satélite separado. Isso parece desproporcional, mas eu não tenho um método confiável pra
+decidir o que é excesso real vs. o que é estrutura genuinamente necessária.
+
+**Já rodei uma auditoria interna própria antes deste follow-up — resultado real, não
+hipótese:** dos ~19-20 documentos "mestres" (vivos, com dono e critério de atualização),
+só achei **1 fusão real** (duas referências da mesma API de terceiro, uma completa e uma
+"resumo" redundante). Ou seja, a contagem de documentos mestres em si não era o problema.
+O inchaço real estava em outro lugar: um `CHANGELOG.md` de quase 4.000 linhas com entradas
+de 4-6 parágrafos quando o formato definido era 1-3 linhas (narrativa de investigação
+vazando pro lugar errado), ~15 arquivos órfãos que nunca passaram por um processo de
+expurgo formal, e 2 seções narrativas dentro de um doc de domínio de negócio que deveriam
+ter ido para a ferramenta de "segundo cérebro" (Notion) em vez do repositório técnico.
+
+Pergunta: isso é um padrão conhecido — a "sensação de excesso" numa auditoria de
+documentação pequena vir mais de **crescimento descontrolado de log/changelog e acúmulo de
+órfãos sem expurgo** do que do número de documentos "mestres" em si? Qual é o
+método/checklist que a indústria usa para **auditar um conjunto já existente de
+documentação técnica e decidir o que consolidar, rebaixar ou eliminar**, especificamente
+pensando em operações pequenas (1-3 pessoas)? Quero uma resposta prática o suficiente para
+eu aplicar sozinho contra a nossa lista real de documentos, não só princípio abstrato.
+Cubra pelo menos:
+- Existe um número/faixa de referência de "quantos documentos vivos" uma equipe deste
+  tamanho consegue manter atualizados na prática, antes que a documentação em si vire
+  trabalho maior que o sistema que ela descreve?
+- Critério prático para decidir "isso merece um arquivo próprio" vs. "isso deveria ser só
+  uma seção dentro de outro documento já existente" — queremos um teste objetivo, não
+  "depende do caso".
+- Como identificar documentação duplicada de fato (dois arquivos cobrindo essencialmente o
+  mesmo assunto com propósito ligeiramente diferente, ex: uma referência oficial completa de
+  API de terceiro e um "resumo estruturado" da mesma API) vs. documentação legitimamente
+  complementar que só parece redundante à primeira vista?
+- Sinais de alerta ("code smells" de documentação) que indicam que um projeto pequeno
+  copiou processo de equipe grande sem necessidade — o que checar primeiro numa varredura
+  de redução?
 
 ---
 

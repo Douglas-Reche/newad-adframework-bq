@@ -1,5 +1,7 @@
 # STG Layer Design — AdFramework
 
+> **Manutenção:** Tier 1 (inventário de tabelas/schema — regenerar contra `INFORMATION_SCHEMA` quando desconfiar de desatualização) + Tier 2 (seção de racional/design — gatilho: nova tabela STG ou mudança de regra de resolução). Nota: o banner de status abaixo ("🟡 PLANO") está desatualizado em relação ao corpo (já validado) — não corrigido nesta tarefa por não ser o escopo pedido, mas fica sinalizado para quando este doc for tocado de novo.
+
 > Criado: 2026-06-24
 > Status: 🟡 PLANO — aguardando validação antes de implementar
 > Pré-requisito: `raw_layer_design.md` (RAW layer 100% validada em produção)
