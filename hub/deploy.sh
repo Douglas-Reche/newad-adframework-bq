@@ -70,12 +70,12 @@ fi
 bq add-iam-policy-binding \
   --member="serviceAccount:${WRITER_SA_EMAIL}" \
   --role="roles/bigquery.dataEditor" \
-  "${PROJECT_ID}:core" >/dev/null
+  "${PROJECT_ID}:core" >/dev/null 2>&1 || echo "  (binding core ja aplicado ou bloqueado por allowlisting -- ver docs/known_issues.md S6, nao bloqueia deploy)"
 
 bq add-iam-policy-binding \
   --member="serviceAccount:${WRITER_SA_EMAIL}" \
   --role="roles/bigquery.dataEditor" \
-  "${PROJECT_ID}:raw" >/dev/null
+  "${PROJECT_ID}:raw" >/dev/null 2>&1 || echo "  (binding raw ja aplicado ou bloqueado por allowlisting -- ver docs/known_issues.md S6, nao bloqueia deploy)"
 
 # Bindings em douglas-bq-staging (projeto SEPARADO de $PROJECT_ID) -- necessarios
 # porque, a partir de 2026-08-06, douglas-bq-staging virou o ambiente completo
@@ -95,17 +95,17 @@ STAGING_PROJECT_ID="douglas-bq-staging"
 bq add-iam-policy-binding \
   --member="serviceAccount:${WRITER_SA_EMAIL}" \
   --role="roles/bigquery.dataEditor" \
-  "${STAGING_PROJECT_ID}:raw" >/dev/null
+  "${STAGING_PROJECT_ID}:raw" >/dev/null 2>&1 || echo "  (binding staging raw ja aplicado ou bloqueado por allowlisting -- ver docs/known_issues.md S6, nao bloqueia deploy)"
 
 bq add-iam-policy-binding \
   --member="serviceAccount:${WRITER_SA_EMAIL}" \
   --role="roles/bigquery.dataEditor" \
-  "${STAGING_PROJECT_ID}:stg" >/dev/null
+  "${STAGING_PROJECT_ID}:stg" >/dev/null 2>&1 || echo "  (binding staging stg ja aplicado ou bloqueado por allowlisting -- ver docs/known_issues.md S6, nao bloqueia deploy)"
 
 bq add-iam-policy-binding \
   --member="serviceAccount:${WRITER_SA_EMAIL}" \
   --role="roles/bigquery.dataEditor" \
-  "${STAGING_PROJECT_ID}:core" >/dev/null
+  "${STAGING_PROJECT_ID}:core" >/dev/null 2>&1 || echo "  (binding staging core ja aplicado ou bloqueado por allowlisting -- ver docs/known_issues.md S6, nao bloqueia deploy)"
 
 # A writer SA tambem precisa poder RODAR jobs de load/query contra as tabelas
 # de staging acima. O hub agora fatura essas 3 escritas direto em

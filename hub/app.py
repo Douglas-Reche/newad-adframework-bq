@@ -991,6 +991,29 @@ def load_business_rules_client_names() -> pd.DataFrame:
     return client.query(query).to_dataframe()
 
 
+@st.cache_data(ttl=300)
+def load_pacing_for_simulation(client_id: str, strategies: tuple[str, ...]) -> pd.DataFrame:
+    """Dado real de entrega (gold.fact_pacing, PRODUCAO) para o simulador mock da aba
+    Regras de Negocio -- so leitura, SA principal, mesmo padrao das demais queries do
+    hub. `strategies` e tuple (nao list) para ser hashable e caber no cache_data.
+    O calculo do teto em si acontece em pandas na UI, nunca aqui -- esta funcao so
+    busca o dado bruto (planned vs realized por dia/formato)."""
+    if not strategies:
+        return pd.DataFrame()
+    client = get_bq_client()
+    query = f"""
+    SELECT day, formato, platform, planned_impressions_daily, realized_impressions
+    FROM `{PROJECT_ID}.gold.fact_pacing`
+    WHERE client_id = @client_id AND UPPER(formato) IN UNNEST(@strategies)
+    ORDER BY day
+    """
+    job_config = bigquery.QueryJobConfig(query_parameters=[
+        bigquery.ScalarQueryParameter("client_id", "STRING", client_id),
+        bigquery.ArrayQueryParameter("strategies", "STRING", [s.upper() for s in strategies]),
+    ])
+    return client.query(query, job_config=job_config).to_dataframe()
+
+
 def business_rule_exists_active(rule_type: str, client_id: str | None) -> bool:
     """SELECT antes de INSERT (guarda-corpo pedido explicitamente) -- confirma que
     nao ha versao vigente (effective_to IS NULL) para este (rule_type, client_id)
@@ -1201,28 +1224,29 @@ st.caption(
 # saude do pipeline (Visao Geral BQ), fila de propostas (Propostas de Mudanca)
 # e custo do mes corrente (Custos). Notion fica de fora por decisao do Douglas.
 # ─────────────────────────────────────────────────────────────────────────
-with st.spinner("Carregando farol..."):
-    _farol_meta = load_table_metadata()
-    _pipeline_status = worst_status(_farol_meta["freshness"].tolist()) if not _farol_meta.empty else "sem_dado"
-    _pending_count = count_pending_proposals()
-    _month_gross, _month_net = load_cost_current_month()
+with st.expander(":material/visibility_off: Farol operacional (saude, propostas, custo)", expanded=False):
+    with st.spinner("Carregando farol..."):
+        _farol_meta = load_table_metadata()
+        _pipeline_status = worst_status(_farol_meta["freshness"].tolist()) if not _farol_meta.empty else "sem_dado"
+        _pending_count = count_pending_proposals()
+        _month_gross, _month_net = load_cost_current_month()
 
-farol1, farol2, farol3 = st.columns(3)
-with farol1:
-    with st.container(border=True):
-        st.markdown("**Saude do pipeline**")
-        status_badge(_pipeline_status)
-        st.caption("pior status entre todas as camadas -- detalhe na aba Visao Geral BQ")
-with farol2:
-    with st.container(border=True):
-        st.markdown("**Propostas de mudanca pendentes**")
-        st.metric("pendentes", _pending_count, label_visibility="collapsed")
-        st.caption("fila vazia" if not _pending_count else "revisar na aba Propostas de Mudanca")
-with farol3:
-    with st.container(border=True):
-        st.markdown(f"**Custo do mes -- {date.today().strftime('%m/%Y')}**")
-        st.metric("gross", f"US$ {_month_gross:,.2f}", label_visibility="collapsed")
-        st.caption(f"net US$ {_month_net:,.2f} -- detalhe na aba Custos")
+    farol1, farol2, farol3 = st.columns(3)
+    with farol1:
+        with st.container(border=True):
+            st.markdown("**Saude do pipeline**")
+            status_badge(_pipeline_status)
+            st.caption("pior status entre todas as camadas -- detalhe na aba Visao Geral BQ")
+    with farol2:
+        with st.container(border=True):
+            st.markdown("**Propostas de mudanca pendentes**")
+            st.metric("pendentes", _pending_count, label_visibility="collapsed")
+            st.caption("fila vazia" if not _pending_count else "revisar na aba Propostas de Mudanca")
+    with farol3:
+        with st.container(border=True):
+            st.markdown(f"**Custo do mes -- {date.today().strftime('%m/%Y')}**")
+            st.metric("gross", f"US$ {_month_gross:,.2f}", label_visibility="collapsed")
+            st.caption(f"net US$ {_month_net:,.2f} -- detalhe na aba Custos")
 
 st.divider()
 
@@ -1234,7 +1258,7 @@ tab_freshness, tab_jobs, tab_powerbi, tab_costs, tab_browser, tab_query, tab_pro
     ":material/table_view: Navegador de Tabelas",
     ":material/terminal: Query Runner",
     ":material/fact_check: Propostas de Mudanca",
-    ":material/history: Overrides Historicos",
+    ":material/history: Ajustes de Dados Historicos",
     ":material/gavel: Regras de Negocio",
 ])
 
@@ -1661,7 +1685,7 @@ with tab_proposals:
 #      e status em core.client_reporting_source_config (SCD2).
 # ─────────────────────────────────────────────────────────────────────────
 with tab_overrides:
-    st.subheader("Overrides Historicos -- Banco Cora (Jan-Jun/2026)")
+    st.subheader("Ajuste Manual de Dados -- Banco Cora (Jan-Jun/2026)")
     st.warning(
         ":material/warning: Fluxo fechado e pontual -- carrega a planilha legada da Cora "
         "para o periodo Jan-Jun/2026 apenas. Nao e uma pratica recorrente para outros "
@@ -1737,7 +1761,7 @@ with tab_overrides:
                             st.error(f"Erro ao commitar: {exc}")
 
     st.divider()
-    st.subheader("Upload de Planilha Historica (Landing RAW)")
+    st.subheader("Upload de Planilha Historica")
     st.caption(
         "Peca (a) do desenho fechado em 2026-08-05/06 para generalizar overrides "
         "historicos alem da Cora (ver docs/known_issues.md item S4): sobe a planilha "
@@ -1861,7 +1885,7 @@ with tab_overrides:
                                 st.dataframe(landed_sample, use_container_width=True, hide_index=True)
 
     st.divider()
-    st.subheader("Comparar Snapshot: Planilha vs. Dado Real")
+    st.subheader("Comparacao: Planilha vs. Dado Real")
     st.caption(
         "Apoio visual para a analise humana ANTES de construir o mapeamento de "
         "normalizacao (decisao fechada com o Douglas em 2026-08-06): mostra a "
@@ -1978,7 +2002,7 @@ with tab_overrides:
                             st.dataframe(gold_sample_df, use_container_width=True, hide_index=True)
 
     st.divider()
-    st.subheader("Configuracao de Overrides por Cliente")
+    st.subheader("Configuracao de Ajustes por Cliente")
     st.caption(
         "Desenho fechado com o Douglas em 2026-08-05: generaliza o override historico para "
         "qualquer cliente que ja tenha dado carregado em `stg.historical_overrides_delivery` "
@@ -2081,12 +2105,12 @@ with tab_overrides:
 with tab_business_rules:
     st.subheader("Regras de Negocio")
     st.caption(
-        "Regras de negocio configuraveis por cliente (ex: teto de impressao diaria), com "
-        "historico completo (SCD2). Tabela ainda so existe em staging -- ver hub/README.md."
+        "Regras configuraveis por cliente (ex: teto de impressao diaria), com historico "
+        "completo de alteracoes. Ainda em ambiente de testes, fora do pipeline oficial."
     )
 
     try:
-        with st.spinner("Consultando core.client_business_rules..."):
+        with st.spinner("Consultando regras cadastradas..."):
             rules_df = load_business_rules()
         client_names_df = load_business_rules_client_names()
     except NotFound:
@@ -2097,6 +2121,13 @@ with tab_business_rules:
         )
         rules_df = pd.DataFrame()
         client_names_df = pd.DataFrame()
+
+    # Linhas de teste sintetico (rule_type terminado em "_test") usadas pra validar
+    # o schema em staging (4 casos: geral, override cliente, pausa, substituicao de
+    # versao) -- ficam no banco como registro do teste, mas nunca devem aparecer na
+    # listagem nem no seletor de tipo do formulario (visivel a stakeholders externos
+    # ao abrir o Hub, ex: apresentacao a chefes).
+    rules_df = rules_df[~rules_df["rule_type"].str.endswith("_test", na=False)] if not rules_df.empty else rules_df
 
     if rules_df.empty:
         st.info("Nenhuma regra de negocio cadastrada ainda.")
@@ -2146,19 +2177,23 @@ with tab_business_rules:
 
     with st.expander("+ Nova regra", expanded=False):
         st.caption(
-            "Cria uma regra nova (INSERT direto -- sem preview/simulacao de impacto, "
-            "decisao explicita para nao atrasar). So funciona quando NAO ha versao "
-            "vigente para o (tipo, escopo) escolhido; se ja houver, use Pausar na "
-            "listagem acima antes de recriar -- 'nova versao substituindo uma vigente' "
-            "ainda nao esta implementado."
+            "Cria uma regra nova. So funciona quando ainda NAO ha uma versao vigente "
+            "para o tipo/escopo escolhido; se ja houver, pause a regra atual na "
+            "listagem acima antes de criar outra."
         )
 
-        existing_types = (
-            sorted(rules_df["rule_type"].dropna().unique().tolist()) if not rules_df.empty else []
+        # "impression_cap_pct" sempre disponivel como opcao pronta (nao so quando ja
+        # existe pelo menos uma linha real em core.client_business_rules) -- e o unico
+        # rule_type com formulario dedicado (threshold_pct + strategies) hoje, entao
+        # nao faz sentido obrigar "+ novo tipo..." so porque nenhuma regra real de
+        # producao foi criada ainda (a primeira criacao seria justamente essa).
+        existing_types = sorted(
+            set(rules_df["rule_type"].dropna().unique().tolist()) | {"impression_cap_pct"}
         )
         new_type_option = "➕ novo tipo..."
         selected_type_option = st.selectbox(
             "Tipo de regra", options=existing_types + [new_type_option], key="new_rule_type_select",
+            format_func=lambda rt: RULE_TYPE_LABELS.get(rt, rt) if rt != new_type_option else rt,
         )
         rule_type_input = (
             st.text_input("Novo rule_type (ex: meu_novo_tipo)", key="new_rule_type_text")
@@ -2264,3 +2299,93 @@ with tab_business_rules:
                 st.rerun()
             except Exception as exc:
                 st.error(f"Erro ao criar regra: {exc}")
+
+    st.divider()
+    st.subheader("Simulador de Impacto")
+    st.caption(
+        "Usa dado real de entrega para calcular, na hora, o que aconteceria se essa "
+        "regra estivesse ativa. E so uma visualizacao -- nao salva nada, nao altera "
+        "nenhum dado do cliente."
+    )
+
+    try:
+        sim_client_options_df = load_client_options()
+    except Exception as exc:
+        sim_client_options_df = pd.DataFrame()
+        st.error(f"Erro ao carregar lista de clientes: {exc}")
+
+    if sim_client_options_df.empty:
+        st.warning("Nenhum cliente ativo encontrado.")
+    else:
+        sim_client_label_map = dict(zip(sim_client_options_df["name"], sim_client_options_df["client_id"]))
+        sim_col1, sim_col2, sim_col3 = st.columns([2, 1, 2])
+        with sim_col1:
+            sim_client_label = st.selectbox(
+                "Cliente", options=list(sim_client_label_map.keys()), key="sim_client",
+            )
+        with sim_col2:
+            sim_threshold_pct = st.number_input(
+                "Teto (%)", min_value=1, max_value=100, value=20, step=1, key="sim_threshold",
+            )
+        with sim_col3:
+            sim_strategies = st.multiselect(
+                "Estrategias", options=["native", "push", "video", "display", "retargeting"],
+                default=["native", "push"], key="sim_strategies",
+            )
+
+        if st.button("Rodar simulacao", key="sim_run", disabled=not sim_strategies):
+            sim_client_id = sim_client_label_map[sim_client_label]
+            with st.spinner("Calculando..."):
+                pacing_df = load_pacing_for_simulation(sim_client_id, tuple(sim_strategies))
+
+            if pacing_df.empty:
+                st.info("Sem dado de entrega para esse cliente/estrategia no periodo disponivel.")
+            else:
+                has_plan = pacing_df["planned_impressions_daily"].notna()
+                cap = pacing_df["planned_impressions_daily"] * (1 + sim_threshold_pct / 100)
+                simulated = pacing_df["realized_impressions"].where(
+                    ~has_plan, pacing_df["realized_impressions"].clip(upper=cap)
+                )
+                pacing_df["teto_impressoes"] = cap
+                pacing_df["impressoes_simuladas"] = simulated
+                pacing_df["impressoes_cortadas"] = (
+                    pacing_df["realized_impressions"] - pacing_df["impressoes_simuladas"]
+                ).clip(lower=0)
+
+                total_real = pacing_df["realized_impressions"].sum()
+                total_sim = pacing_df["impressoes_simuladas"].sum()
+                total_cortado = pacing_df["impressoes_cortadas"].sum()
+                dias_sem_plano = int((~has_plan).sum())
+                dias_afetados = int((pacing_df["impressoes_cortadas"] > 0).sum())
+
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Impressoes entregues", f"{total_real:,.0f}")
+                m2.metric("Impressoes com o teto ativo", f"{total_sim:,.0f}")
+                m3.metric(
+                    "Reducao",
+                    f"{total_cortado:,.0f}",
+                    delta=f"-{(total_cortado / total_real * 100):.1f}%" if total_real else None,
+                    delta_color="inverse",
+                )
+                m4.metric("Dias afetados", dias_afetados)
+                if dias_sem_plano:
+                    st.caption(
+                        f":material/info: {dias_sem_plano} dia(s) sem planejamento cadastrado -- "
+                        "nao entram no calculo do teto (nao ha o que comparar)."
+                    )
+
+                display_df = pacing_df.sort_values("impressoes_cortadas", ascending=False)[
+                    ["day", "formato", "platform", "planned_impressions_daily",
+                     "realized_impressions", "teto_impressoes", "impressoes_simuladas",
+                     "impressoes_cortadas"]
+                ].rename(columns={
+                    "day": "Data",
+                    "formato": "Formato",
+                    "platform": "Plataforma",
+                    "planned_impressions_daily": "Planejado",
+                    "realized_impressions": "Entregue",
+                    "teto_impressoes": "Teto",
+                    "impressoes_simuladas": "Entregue (com teto)",
+                    "impressoes_cortadas": "Diferenca",
+                })
+                st.dataframe(display_df, use_container_width=True, hide_index=True)

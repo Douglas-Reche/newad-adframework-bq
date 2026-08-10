@@ -5,8 +5,9 @@
 Painel pessoal do pipeline BQ (`projeto adframework`). Mostra freshness das tabelas,
 status inferido dos jobs de ingestao diaria, um tracker manual dos Power BI em
 desenvolvimento, um navegador de schema/preview, um query runner, a fila de aprovacao de
-propostas de mudanca, a carga de overrides historicos da Cora e a configuracao de
-overrides por cliente (status/toggle sobre `core.client_reporting_source_config`). Nao
+propostas de mudanca, a carga de overrides historicos da Cora, a configuracao de
+overrides por cliente (status/toggle sobre `core.client_reporting_source_config`) e a
+gestao de regras de negocio por cliente (`core.client_business_rules`, staging). Nao
 depende de nenhum codigo do repo do Shiro (`rshiro-newad/adframework`).
 
 ## Farol permanente
@@ -58,6 +59,15 @@ O padrao em ambas as abas: preview antes de qualquer coisa, checkbox de confirma
 explicita antes de habilitar o botao que escreve de verdade. Nenhuma escrita acontece sem
 essa confirmacao na UI.
 
+- **Regras de Negocio** -- sobre `douglas-bq-staging.core.client_business_rules` (staging,
+  nao producao). Listagem (cards por `rule_type`/escopo com a versao vigente + expander de
+  historico substituida/pausada) via SA principal, mais formulario de criacao de regra
+  nova e fluxo de pausa (com motivo) via writer SA, mesmo padrao de preview+checkbox das
+  outras abas de escrita. Testado via UI (validacoes, guard contra regra duplicada, fluxo
+  de pausa) -- **a escrita real (INSERT/UPDATE) em BigQuery ainda nao foi confirmada
+  ponta-a-ponta**, precisa de validacao rodando local com sessao autenticada propria.
+  Ainda sem simulacao de impacto antes de commitar a regra.
+
 O fluxo de Overrides e fechado e pontual -- carrega a planilha legada da Cora para
 Jan-Jun/2026 apenas. Decisao explicita: **nao vira pratica recorrente para outros
 clientes/periodos**. A UI aplica guarda-corpo (`validate_override_scope`) que rejeita
@@ -107,5 +117,11 @@ com IAM cross-project pro BigQuery -- mais setup, avisar se quiser migrar pra is
 
 ## Redeploy
 
-Rodar `./deploy.sh` de novo a qualquer momento aplica o codigo/config atual. Nao ha CI --
-e deploy manual, sob seu controle.
+Deploy automatico via `.github/workflows/hub_deploy.yml`: qualquer push em `hub/**` para o
+branch `master` dispara build+deploy no GitHub Actions (corrigido em 2026-08-10 -- o
+workflow so escutava `main`, nunca disparou de verdade antes disso; todo deploy ate entao
+foi manual). Requer os secrets `HUB_DEPLOY_SA_KEY`/`HUB_PASSWORD` configurados no GitHub
+(Settings > Secrets > Actions) -- nao confirmado se ja estao la.
+
+Deploy manual continua disponivel a qualquer momento (`./deploy.sh`), inclusive como
+fallback de emergencia se o automatico falhar ou os secrets nao estiverem configurados.

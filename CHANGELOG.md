@@ -8,6 +8,70 @@
 
 ---
 
+## 2026-08-10 — Aba "Regras de Negócio" no ar no Hub + bug crítico de deploy automático corrigido
+
+**O que mudou:** aba nova no Hub (`hub/app.py`) com listagem (`5a7131d`) e formulário de
+criação/pausa (`b2f70d9`) de `core.client_business_rules`, lendo/escrevendo em
+`douglas-bq-staging` via `get_staging_writer_bq_client()` (mesmo padrão das abas
+Overrides/Propostas). Testado via browser real (chrome-devtools): validações, guard
+contra regra duplicada, e fluxo de pausa (motivo+checkbox) funcionam.
+
+**Achado crítico, não resolvido por completo:** `.github/workflows/hub_deploy.yml`
+nunca disparou deploy automático nenhuma vez desde que foi criado — `on.push.branches`
+apontava pra `main`, mas o repo usa `master`. Corrigido (`da0d375`). **Não confirmado**
+se os secrets `HUB_DEPLOY_SA_KEY`/`HUB_PASSWORD` estão configurados no GitHub — Douglas
+precisa checar manualmente em Settings > Secrets > Actions.
+
+**Deploy manual de emergência** executado via `hub/deploy.sh --source .` antes de reunião
+do Douglas com chefes — revisão `douglas-data-hub-00006-4bb`, confirmada ativa (100%
+tráfego). Achado colateral: `bq add-iam-policy-binding` falhou com "This feature requires
+allowlisting" nesta conta — não bloqueou porque a SA já tinha o binding de execução
+anterior, mas um binding novo no futuro pode precisar de outro caminho (`bq update` com
+policy JSON, ou console).
+
+**Pendência real, não confirmada:** escrita real (INSERT/UPDATE) no BigQuery via o
+formulário **não foi testada end-to-end** nesta sessão — falhou só por limitação de
+permissão do ambiente sandbox (impersonation), não é bug do código, mas precisa de
+confirmação do Douglas rodando local/produção antes de considerar 100% pronto.
+
+---
+
+## 2026-08-10 — Hub: aba "Regras de Negócio" (listagem + formulário) + bug crítico de deploy automático nunca ter disparado
+
+**O que mudou:**
+- `5a7131d` — nova aba "Regras de Negócio" no hub, listagem read-only (via SA principal)
+  de `douglas-bq-staging.core.client_business_rules`: cards por `rule_type`/escopo com a
+  versão vigente + expander de histórico (substituída/pausada).
+- `b2f70d9` — formulário de criação de regra nova + fluxo de pausa (com motivo), fechando
+  o gap entre o que já estava deployado manualmente em produção (revisão
+  `douglas-data-hub-00006-4bb`) e o que estava versionado no git. Testado via browser real
+  (chrome-devtools MCP): validações, guard contra regra duplicada e fluxo de pausa
+  funcionando na UI. **A escrita real (INSERT/UPDATE) em `douglas-bq-staging` não foi
+  confirmada ponta-a-ponta nesta sessão** — bloqueada por falta de
+  `iam.serviceAccountTokenCreator` para impersonar a writer SA no sandbox usado (mesmo
+  padrão de impersonation já usado com sucesso pelas outras 2 abas de escrita do hub,
+  Overrides e Propostas). Precisa de confirmação do Douglas rodando local com sessão
+  autenticada própria. Ainda sem simulação de impacto antes de commitar a regra (gap
+  conhecido, mencionado no próprio commit).
+- `da0d375` — **bug crítico corrigido**: `.github/workflows/hub_deploy.yml` disparava
+  deploy automático só em push para `main`, mas o repo usa `master` — nenhum commit desde
+  a criação do workflow chegou a disparar deploy automático de verdade; todo deploy do hub
+  até hoje (inclusive a revisão `00006-4bb` de 06/08 usada em produção) foi manual via
+  `hub/deploy.sh`. Trigger corrigido para `branches: [master]`. Não confirmado se os
+  secrets `HUB_DEPLOY_SA_KEY`/`HUB_PASSWORD` estão configurados no GitHub (Settings >
+  Secrets > Actions) — `gh` CLI não estava autenticado nesta sessão.
+- Deploy manual de emergência via `hub/deploy.sh --source .` antes de reunião do Douglas
+  com chefes, colocando os 3 commits acima no ar — revisão `douglas-data-hub-00006-4bb`
+  confirmada ativa (100% do tráfego), `https://douglas-data-hub-kgv2ewhm3a-rj.a.run.app`.
+
+**Por quê:** retomada de uma frente interrompida em sessão anterior por limite (listagem)
++ fechamento do gap de escrita; o bug de deploy foi achado incidental ao investigar por que
+o código versionado no git divergia do que já rodava em produção.
+
+**Arquivos afetados:** `hub/app.py`, `.github/workflows/hub_deploy.yml`.
+
+---
+
 ## 2026-08-09 — `core.client_business_rules`: `rule_id` + `status` — decisões de design confirmadas pelo Douglas, re-testado em staging (7/7 casos)
 
 **O que mudou:** `core/ddl/client_business_rules.sql` ganhou duas colunas, fechando as 3
