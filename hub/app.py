@@ -120,6 +120,24 @@ RULE_TYPE_LABELS = {
     "impression_cap_pct": "Teto de Impressao Diaria (%)",
 }
 
+# Campos numericos de gold.fact_pacing disponiveis para o construtor de regra
+# (aba Regras de Negocio) e para o Simulador de Impacto -- pedido explicito do
+# Douglas (2026-08-10): "gostaria de selecionar os campos de referencia e
+# escrever a regra", em vez do form anterior que assumia Impressoes/threshold_pct
+# implicitamente sem deixar claro qual campo era comparado com qual. Escopo
+# inicial e sempre fact_pacing (e onde a regra do Rafael se aplica); outras
+# tabelas/campos podem entrar aqui no futuro conforme o Douglas evoluir o
+# desenho em staging -- rotulo amigavel, chave = nome real da coluna.
+FACT_PACING_FIELDS = {
+    "realized_impressions": "Impressoes Entregues",
+    "planned_impressions_daily": "Impressoes Planejadas",
+    "realized_clicks": "Cliques Entregues",
+    "planned_clicks_daily": "Cliques Planejados",
+    "realized_conversions": "Conversoes Entregues",
+    "investimento_realizado": "Investimento Realizado",
+    "planned_spend_daily": "Investimento Planejado",
+}
+
 # status da linha HISTORICA (effective_to preenchido) -> (rotulo, cor do st.badge).
 # Ver comentario de design em core/ddl/client_business_rules.sql: 'active' numa linha
 # fechada significa "substituida por versao nova" (SCD2 natural), 'paused' significa
@@ -1032,8 +1050,9 @@ def load_pacing_for_simulation(client_id: str, strategies: tuple[str, ...]) -> p
     if not strategies:
         return pd.DataFrame()
     client = get_bq_client()
+    fields_select = ", ".join(FACT_PACING_FIELDS)
     query = f"""
-    SELECT day, formato, platform, planned_impressions_daily, realized_impressions
+    SELECT day, formato, platform, {fields_select}
     FROM `{PROJECT_ID}.gold.fact_pacing`
     WHERE client_id = @client_id AND UPPER(formato) IN UNNEST(@strategies)
     ORDER BY day
@@ -1060,20 +1079,28 @@ def mock_pacing_demo_data(strategies: tuple[str, ...]) -> pd.DataFrame:
         "native": "MediaSmart", "display": "MediaSmart", "retargeting": "MediaSmart",
         "push": "MGID", "video": "MediaSmart",
     }
+    ctr = 0.02  # cliques / impressao, fixo -- so para o dado de exemplo ter proporcao plausivel
+    cvr = 0.03  # conversoes / clique
+    cpm = 8.0   # investimento por 1000 impressoes (BRL)
     rows = []
     for strategy in strategies:
         base = base_by_strategy.get(strategy, 5000)
         for i in range(90):
             day = date(2026, 1, 1) + timedelta(days=i)
-            planned = base * rnd.uniform(0.92, 1.08)
+            planned_impr = base * rnd.uniform(0.92, 1.08)
             spike = rnd.choices([1.0, 1.3, 1.6], weights=[75, 18, 7])[0]
-            realized = max(planned * spike * rnd.uniform(0.9, 1.1), 0)
+            realized_impr = max(planned_impr * spike * rnd.uniform(0.9, 1.1), 0)
             rows.append({
                 "day": day,
                 "formato": strategy.title(),
                 "platform": platform_by_strategy.get(strategy, "MediaSmart"),
-                "planned_impressions_daily": round(planned),
-                "realized_impressions": round(realized),
+                "planned_impressions_daily": round(planned_impr),
+                "realized_impressions": round(realized_impr),
+                "planned_clicks_daily": round(planned_impr * ctr),
+                "realized_clicks": round(realized_impr * ctr),
+                "realized_conversions": round(realized_impr * ctr * cvr),
+                "planned_spend_daily": round(planned_impr / 1000 * cpm, 2),
+                "investimento_realizado": round(realized_impr / 1000 * cpm, 2),
             })
     return pd.DataFrame(rows)
 
@@ -1165,6 +1192,16 @@ def summarize_rule_params(rule_type: str, params: dict) -> str:
     if (rule_type or "").startswith("impression_cap_pct") and "threshold_pct" in params:
         strategies = params.get("strategies") or []
         strategies_label = ", ".join(s.title() for s in strategies) if strategies else "todas as estrategias"
+        # base_field/reference_field so existem em regras criadas apos o construtor
+        # de campos (2026-08-10) -- regras antigas (ex: dado de teste em staging)
+        # nao tem essas chaves, cai no rotulo generico "Teto X%" de antes.
+        if "base_field" in params and "reference_field" in params:
+            base_label = FACT_PACING_FIELDS.get(params["base_field"], params["base_field"])
+            ref_label = FACT_PACING_FIELDS.get(params["reference_field"], params["reference_field"])
+            return (
+                f"{base_label} nao pode superar {ref_label} em mais de "
+                f"{params['threshold_pct']}% -- {strategies_label}"
+            )
         return f"Teto {params['threshold_pct']}% -- {strategies_label}"
     if not params:
         return "(sem parametros)"
@@ -2292,16 +2329,43 @@ with tab_business_rules:
         params_valid = False
 
         if is_known_type:
+            st.caption(
+                "Baseado nos campos reais de `gold.fact_pacing` -- e onde essa regra "
+                "sera aplicada. A regra diz: o campo abaixo nao pode superar o campo "
+                "de referencia em mais de X%."
+            )
+            field_col1, field_col2 = st.columns(2)
+            with field_col1:
+                base_field = st.selectbox(
+                    "Campo a limitar", options=list(FACT_PACING_FIELDS),
+                    format_func=lambda f: FACT_PACING_FIELDS[f],
+                    index=list(FACT_PACING_FIELDS).index("realized_impressions"),
+                    key="new_rule_base_field",
+                )
+            with field_col2:
+                reference_field = st.selectbox(
+                    "Campo de referencia (limite)", options=list(FACT_PACING_FIELDS),
+                    format_func=lambda f: FACT_PACING_FIELDS[f],
+                    index=list(FACT_PACING_FIELDS).index("planned_impressions_daily"),
+                    key="new_rule_reference_field",
+                )
             threshold_pct = st.number_input(
-                "Teto de impressao (%)", min_value=1, max_value=100, value=20, step=1,
-                key="new_rule_threshold",
+                "Nao pode superar a referencia em mais de (%)", min_value=1, max_value=100,
+                value=20, step=1, key="new_rule_threshold",
             )
             strategies = st.multiselect(
-                "Estrategias", options=["native", "push", "video", "display", "retargeting"],
+                "Estrategias (formato)", options=["native", "push", "video", "display", "retargeting"],
                 key="new_rule_strategies",
             )
-            params_valid = bool(strategies)
-            rule_params = {"threshold_pct": int(threshold_pct), "strategies": strategies}
+            if base_field == reference_field:
+                st.warning("Campo a limitar e campo de referencia nao podem ser o mesmo.")
+            params_valid = bool(strategies) and base_field != reference_field
+            rule_params = {
+                "base_field": base_field,
+                "reference_field": reference_field,
+                "threshold_pct": int(threshold_pct),
+                "strategies": strategies,
+            }
         elif rule_type_input:
             raw_json_text = st.text_area(
                 "Parametros (JSON bruto)", key="new_rule_json",
@@ -2402,7 +2466,7 @@ with tab_business_rules:
             dict(zip(sim_client_options_df["name"], sim_client_options_df["client_id"]))
             if not sim_demo_mode else {}
         )
-        sim_col1, sim_col2, sim_col3 = st.columns([2, 1, 2])
+        sim_col1, sim_col2 = st.columns(2)
         with sim_col1:
             if not sim_demo_mode:
                 sim_client_label = st.selectbox(
@@ -2411,16 +2475,36 @@ with tab_business_rules:
             else:
                 st.text_input("Cliente", value="Exemplo (dado fabricado)", disabled=True)
         with sim_col2:
-            sim_threshold_pct = st.number_input(
-                "Teto (%)", min_value=1, max_value=100, value=20, step=1, key="sim_threshold",
-            )
-        with sim_col3:
             sim_strategies = st.multiselect(
-                "Estrategias", options=["native", "push", "video", "display", "retargeting"],
+                "Estrategias (formato)", options=["native", "push", "video", "display", "retargeting"],
                 default=["native", "push"], key="sim_strategies",
             )
 
-        if st.button("Rodar simulacao", key="sim_run", disabled=not sim_strategies):
+        st.caption("Mesma logica do construtor de regra acima: campo a limitar vs. campo de referencia.")
+        field_sim_col1, field_sim_col2, field_sim_col3 = st.columns([2, 2, 1])
+        with field_sim_col1:
+            sim_base_field = st.selectbox(
+                "Campo a limitar", options=list(FACT_PACING_FIELDS),
+                format_func=lambda f: FACT_PACING_FIELDS[f],
+                index=list(FACT_PACING_FIELDS).index("realized_impressions"),
+                key="sim_base_field",
+            )
+        with field_sim_col2:
+            sim_reference_field = st.selectbox(
+                "Campo de referencia (limite)", options=list(FACT_PACING_FIELDS),
+                format_func=lambda f: FACT_PACING_FIELDS[f],
+                index=list(FACT_PACING_FIELDS).index("planned_impressions_daily"),
+                key="sim_reference_field",
+            )
+        with field_sim_col3:
+            sim_threshold_pct = st.number_input(
+                "Teto (%)", min_value=1, max_value=100, value=20, step=1, key="sim_threshold",
+            )
+        sim_fields_ready = sim_base_field != sim_reference_field
+        if not sim_fields_ready:
+            st.warning("Campo a limitar e campo de referencia nao podem ser o mesmo.")
+
+        if st.button("Rodar simulacao", key="sim_run", disabled=not (sim_strategies and sim_fields_ready)):
             with st.spinner("Calculando..."):
                 if sim_demo_mode:
                     pacing_df = mock_pacing_demo_data(tuple(sim_strategies))
@@ -2438,26 +2522,29 @@ with tab_business_rules:
             if pacing_df.empty:
                 st.info("Sem dado de entrega para esse cliente/estrategia no periodo disponivel.")
             else:
-                has_plan = pacing_df["planned_impressions_daily"].notna()
-                cap = pacing_df["planned_impressions_daily"] * (1 + sim_threshold_pct / 100)
-                simulated = pacing_df["realized_impressions"].where(
-                    ~has_plan, pacing_df["realized_impressions"].clip(upper=cap)
+                base_label = FACT_PACING_FIELDS[sim_base_field]
+                reference_label = FACT_PACING_FIELDS[sim_reference_field]
+
+                has_reference = pacing_df[sim_reference_field].notna()
+                cap = pacing_df[sim_reference_field] * (1 + sim_threshold_pct / 100)
+                simulated = pacing_df[sim_base_field].where(
+                    ~has_reference, pacing_df[sim_base_field].clip(upper=cap)
                 )
-                pacing_df["teto_impressoes"] = cap
-                pacing_df["impressoes_simuladas"] = simulated
-                pacing_df["impressoes_cortadas"] = (
-                    pacing_df["realized_impressions"] - pacing_df["impressoes_simuladas"]
+                pacing_df["teto_calculado"] = cap
+                pacing_df["valor_simulado"] = simulated
+                pacing_df["diferenca"] = (
+                    pacing_df[sim_base_field] - pacing_df["valor_simulado"]
                 ).clip(lower=0)
 
-                total_real = pacing_df["realized_impressions"].sum()
-                total_sim = pacing_df["impressoes_simuladas"].sum()
-                total_cortado = pacing_df["impressoes_cortadas"].sum()
-                dias_sem_plano = int((~has_plan).sum())
-                dias_afetados = int((pacing_df["impressoes_cortadas"] > 0).sum())
+                total_real = pacing_df[sim_base_field].sum()
+                total_sim = pacing_df["valor_simulado"].sum()
+                total_cortado = pacing_df["diferenca"].sum()
+                dias_sem_referencia = int((~has_reference).sum())
+                dias_afetados = int((pacing_df["diferenca"] > 0).sum())
 
                 m1, m2, m3, m4 = st.columns(4)
-                m1.metric("Impressoes entregues", f"{total_real:,.0f}")
-                m2.metric("Impressoes com o teto ativo", f"{total_sim:,.0f}")
+                m1.metric(base_label, f"{total_real:,.0f}")
+                m2.metric(f"{base_label} com o teto ativo", f"{total_sim:,.0f}")
                 m3.metric(
                     "Reducao",
                     f"{total_cortado:,.0f}",
@@ -2465,24 +2552,24 @@ with tab_business_rules:
                     delta_color="inverse",
                 )
                 m4.metric("Dias afetados", dias_afetados)
-                if dias_sem_plano:
+                if dias_sem_referencia:
                     st.caption(
-                        f":material/info: {dias_sem_plano} dia(s) sem planejamento cadastrado -- "
-                        "nao entram no calculo do teto (nao ha o que comparar)."
+                        f":material/info: {dias_sem_referencia} dia(s) sem "
+                        f"'{reference_label}' cadastrado -- nao entram no calculo do "
+                        "teto (nao ha o que comparar)."
                     )
 
-                display_df = pacing_df.sort_values("impressoes_cortadas", ascending=False)[
-                    ["day", "formato", "platform", "planned_impressions_daily",
-                     "realized_impressions", "teto_impressoes", "impressoes_simuladas",
-                     "impressoes_cortadas"]
+                display_df = pacing_df.sort_values("diferenca", ascending=False)[
+                    ["day", "formato", "platform", sim_reference_field, sim_base_field,
+                     "teto_calculado", "valor_simulado", "diferenca"]
                 ].rename(columns={
                     "day": "Data",
                     "formato": "Formato",
                     "platform": "Plataforma",
-                    "planned_impressions_daily": "Planejado",
-                    "realized_impressions": "Entregue",
-                    "teto_impressoes": "Teto",
-                    "impressoes_simuladas": "Entregue (com teto)",
-                    "impressoes_cortadas": "Diferenca",
+                    sim_reference_field: reference_label,
+                    sim_base_field: base_label,
+                    "teto_calculado": "Teto",
+                    "valor_simulado": f"{base_label} (com teto)",
+                    "diferenca": "Diferenca",
                 })
                 st.dataframe(display_df, use_container_width=True, hide_index=True)
