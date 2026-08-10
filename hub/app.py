@@ -724,11 +724,19 @@ def infer_date_range_from_raw(raw_df: pd.DataFrame) -> tuple:
 
 
 def load_gold_sample_for_range(client_id: str, start_day: date, end_day: date, limit: int = 15) -> pd.DataFrame:
-    """Amostra de douglas-bq-staging.gold.fact_delivery pro client_id e range de
+    """Amostra de douglas-bq-staging.gold.fact_pacing pro client_id e range de
     datas informado -- SA principal (read-only), fully-qualified table name
     (mesmo padrao de load_landed_historical_upload -- nao precisa trocar de
     projeto no client, so qualificar a tabela). So leitura, sem nenhuma logica
-    de comparacao/diff -- essa e so a coluna direita da tela lado a lado."""
+    de comparacao/diff -- essa e so a coluna direita da tela lado a lado.
+    Usa fact_pacing (nao fact_delivery, corrigido 2026-08-11 a pedido do
+    Douglas): e fact_pacing quem de fato consome
+    stg.historical_overrides_delivery como 4a fonte do UNION ALL (ver
+    core/ddl/resolve_reporting_source.sql) -- fact_delivery nao tem nenhuma
+    logica de override, comparar contra ela nunca refletiria o efeito real do
+    override. Colunas realized_* aliadas para impressions/clicks/conversions
+    pra manter compatibilidade com o resto desta tela (preview do arquivo
+    upado usa esses mesmos nomes)."""
     client = get_bq_client()
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
@@ -738,8 +746,10 @@ def load_gold_sample_for_range(client_id: str, start_day: date, end_day: date, l
         ]
     )
     query = f"""
-    SELECT day, platform, formato, goal_type, impressions, clicks, conversions
-    FROM `{HISTORICAL_OVERRIDE_PROJECT_ID}.gold.fact_delivery`
+    SELECT day, platform, formato, goal_type,
+      realized_impressions AS impressions, realized_clicks AS clicks,
+      realized_conversions AS conversions
+    FROM `{HISTORICAL_OVERRIDE_PROJECT_ID}.gold.fact_pacing`
     WHERE client_id = @client_id
       AND day BETWEEN @start_day AND @end_day
     ORDER BY day
@@ -749,17 +759,18 @@ def load_gold_sample_for_range(client_id: str, start_day: date, end_day: date, l
 
 
 def load_gold_coverage_for_client(client_id: str):
-    """MIN/MAX day existente em douglas-bq-staging.gold.fact_delivery pro
+    """MIN/MAX day existente em douglas-bq-staging.gold.fact_pacing pro
     client_id, independente do range da planilha -- usada so para dar contexto
     quando a amostra do range da planilha vem vazia (dizer o que a plataforma
-    real TEM, em vez de so mostrar uma tabela vazia sem explicacao)."""
+    real TEM, em vez de so mostrar uma tabela vazia sem explicacao). Ver nota
+    em load_gold_sample_for_range sobre por que fact_pacing (nao fact_delivery)."""
     client = get_bq_client()
     job_config = bigquery.QueryJobConfig(
         query_parameters=[bigquery.ScalarQueryParameter("client_id", "STRING", client_id)]
     )
     query = f"""
     SELECT MIN(day) AS min_day, MAX(day) AS max_day
-    FROM `{HISTORICAL_OVERRIDE_PROJECT_ID}.gold.fact_delivery`
+    FROM `{HISTORICAL_OVERRIDE_PROJECT_ID}.gold.fact_pacing`
     WHERE client_id = @client_id
     """
     df = client.query(query, job_config=job_config).to_dataframe()
@@ -1720,7 +1731,7 @@ with tab_proposals:
 # do Douglas, ver CHANGELOG.md):
 #   1) Upload -- sobe a planilha crua do comercial como landing RAW literal em
 #      douglas-bq-staging (raw.historical_uploads/_meta).
-#   2) Comparacao -- planilha pousada vs. amostra real de gold.fact_delivery.
+#   2) Comparacao -- planilha pousada vs. amostra real de gold.fact_pacing.
 #   3) Config por cliente -- liga/desliga do override para qualquer cliente
 #      que ja tenha dado carregado em stg.historical_overrides_delivery
 #      (movida de core em 2026-08-06), range real calculado ao vivo e status
@@ -1856,7 +1867,7 @@ with tab_overrides:
         "Apoio visual para a analise humana ANTES de construir o mapeamento de "
         "normalizacao (decisao fechada com o Douglas em 2026-08-06): mostra a "
         "planilha crua que ja pousou em `raw.historical_uploads` lado a lado com "
-        "uma amostra real do mesmo periodo em `gold.fact_delivery` de "
+        "uma amostra real do mesmo periodo em `gold.fact_pacing` de "
         "`douglas-bq-staging`. So leitura -- sem nenhum diff automatico "
         "(determinístico ou por IA); a interpretacao fica com o Douglas + a "
         "sessao do Claude Code (ou o agente `historical-data-analyst`)."
@@ -1932,24 +1943,24 @@ with tab_overrides:
                         st.info("Amostra da planilha veio vazia.")
                 with right_col:
                     st.markdown(
-                        f"*Dado real -- `gold.fact_delivery` ({HISTORICAL_OVERRIDE_PROJECT_ID}), "
+                        f"*Dado real -- `gold.fact_pacing` ({HISTORICAL_OVERRIDE_PROJECT_ID}), "
                         f"{compare_start} a {compare_end}*"
                     )
                     try:
                         gold_sample_df = load_gold_sample_for_range(compare_client_id, compare_start, compare_end)
                     except (NotFound, Forbidden) as exc:
                         gold_sample_df = None
-                        st.error(f"Nao consegui ler `gold.fact_delivery` em `{HISTORICAL_OVERRIDE_PROJECT_ID}`: {exc}")
+                        st.error(f"Nao consegui ler `gold.fact_pacing` em `{HISTORICAL_OVERRIDE_PROJECT_ID}`: {exc}")
                     except Exception as exc:
                         gold_sample_df = None
-                        st.error(f"Erro ao ler `gold.fact_delivery`: {exc}")
+                        st.error(f"Erro ao ler `gold.fact_pacing`: {exc}")
 
                     if gold_sample_df is not None:
                         if gold_sample_df.empty:
                             coverage_min, coverage_max = load_gold_coverage_for_client(compare_client_id)
                             if coverage_min is None:
                                 st.warning(
-                                    f":material/warning: `gold.fact_delivery` em "
+                                    f":material/warning: `gold.fact_pacing` em "
                                     f"`{HISTORICAL_OVERRIDE_PROJECT_ID}` nao tem NENHUM dado para "
                                     f"`{compare_client_id}` -- nao ha o que comparar ainda (achado "
                                     "relevante, nao um erro de tela).",
@@ -1959,7 +1970,7 @@ with tab_overrides:
                                 st.warning(
                                     f":material/warning: Sem sobreposicao de periodo -- a planilha "
                                     f"cobre {compare_start} a {compare_end}, mas o dado real de "
-                                    f"`{compare_client_id}` em `gold.fact_delivery` so existe de "
+                                    f"`{compare_client_id}` em `gold.fact_pacing` so existe de "
                                     f"**{coverage_min}** a **{coverage_max}**. Achado relevante para a "
                                     "analise, nao um erro de tela.",
                                     icon=":material/warning:",
