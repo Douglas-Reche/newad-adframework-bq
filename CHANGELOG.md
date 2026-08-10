@@ -8,6 +8,51 @@
 
 ---
 
+## 2026-08-09 — BigQuery ao vivo destravado: Frente A fechada (A4/A5/C1, RAW schema, `_resolve_test_simple`) + Frente B (B6, B9, B8)
+
+**O que mudou:** com acesso ao BigQuery restaurado, fechados os itens que ficaram bloqueados
+em 2026-08-08:
+- `docs/known_issues.md`: A4/A5/C1 movidos para "✅ Resolvidos em 2026-08-09" — confirmado ao
+  vivo que nenhuma das 6 views gold workaround (`fct_cora_delivery_full`, `fct_luckbet_delivery_full`,
+  `fct_newad_fintech_daily`, `fct_newad_bet_daily`, `fct_luckbet_delivery_daily`,
+  `fct_delivery_daily_mvp`) nem `share.io_calc_daily_v4`/`stg.io_lines_v4`/
+  `share.platform_daily_detail`/`share.newad_operational_daily` existem em produção hoje —
+  só `core.io_binding_registry_v4` sobrevive, sem consumidor oficial (já confirmado em A2).
+- `docs/raw_layer_design.md`: schema real das 3 tabelas extras (`mgid_stats_daily`,
+  `mgid_stats_creative` — all-STRING, dump literal; `ms_creative_daily` — já tipada)
+  confirmado via `INFORMATION_SCHEMA.COLUMNS`. Queda de `mg_teasers` (167→153) investigada —
+  tabela é WRITE_TRUNCATE sem histórico, causa exata não confirmável; distribuição de status
+  atual (107 `campaignBlocked`, 40 `blocked`, 5 `active`, 1 `rejected`) documentada como
+  evidência indireta.
+- `core/OWNERSHIP.yaml`: `_resolve_test_simple` confirmado ao vivo — existe só em
+  `adframework` (produção), ausente em staging, sem consumidor (nenhuma view referencia),
+  não segue o contrato SCD2 das outras `resolve_*`. Recomendação de `DROP FUNCTION`
+  registrada, não executada — decisão do Douglas.
+- `docs/technical_dataflow.md` (novo, B6): 2 diagramas Mermaid — topologia C4 Nível 2
+  (GitHub/`apply_ddl.py`/GitHub Actions, os 2 projetos GCP, Hub, Power BI, 3 APIs +
+  Drive/IO Plan + upload manual de histórico) e DFD Medallion com nomes reais nos 2
+  projetos. Achado mais relevante: produção e staging usam mecanismos **diferentes** de
+  override histórico (`gold.vw_fact_delivery_reporting` hardcoded em produção vs.
+  `core.resolve_reporting_source()` generalizado, só em staging, nunca promovido).
+- `docs/core_layer_design.md` (novo, B9): lacuna fechada — RAW/STG/GOLD já tinham doc
+  próprio, CORE não. Narrativa (SCD2, funções `resolve_*`) + inventário dos 13 objetos
+  `owner: pipeline`.
+- `scripts/docs/sync_gold_descriptions.py` (B8): implementado de fato (era rascunho
+  protegido contra execução) — lê os YAMLs irmãos de `gold/ddl/*.yml`, gera `ALTER VIEW/
+  TABLE ... SET OPTIONS(description=...)`. Testado em `--dry-run` (default) contra os 3
+  YAMLs reais existentes — 32 instruções geradas corretamente. **Não executado contra
+  nenhum projeto** — aplicar de verdade é decisão separada do Douglas.
+
+**Por quê:** Douglas confirmou acesso ao BigQuery restaurado e aprovou fechar os itens que
+ficaram bloqueados o dia inteiro de 2026-08-08.
+
+**Arquivos:** `docs/known_issues.md`, `docs/raw_layer_design.md`, `core/OWNERSHIP.yaml`,
+`docs/technical_dataflow.md`, `docs/core_layer_design.md`, `docs/INDEX.md`,
+`scripts/docs/sync_gold_descriptions.py`. Nenhum commit feito — working tree para revisão
+do Douglas.
+
+---
+
 ## 2026-08-09 — Commit do diagrama executivo (B7) + referências cruzadas
 
 **O que mudou:** `docs/architecture_overview.md` (diagrama executivo C4 Nível 2 em

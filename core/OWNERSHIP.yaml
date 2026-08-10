@@ -9,8 +9,9 @@
 # Correção pontual em 2026-08-08 (Frente A, item A3): client_reporting_source_config/
 # resolve_reporting_source corrigidos para staging_only e schema_change_log adicionado --
 # confirmados via código (hub/app.py, core/ddl/, apply_ddl.py, CHANGELOG.md), não via nova
-# consulta INFORMATION_SCHEMA (sessão sem acesso ao BigQuery ao vivo -- ver nota sobre
-# _resolve_test_simple abaixo). Não invalida a auditoria de 2026-08-03 quanto ao resto.
+# consulta INFORMATION_SCHEMA. Reconfirmado ao vivo em 2026-08-09 (core.INFORMATION_SCHEMA.
+# ROUTINES dos dois projetos): _resolve_test_simple existe de fato, só em produção, sem
+# consumidor -- ver entrada própria no final da lista de objetos.
 # owner: "pipeline" | "shiro_admin_ui" | "legacy_disabled"
 
 objects:
@@ -98,26 +99,16 @@ objects:
     dataset: core
     owner: shiro_admin_ui
 
+  # --- Achado de auditoria, confirmado ao vivo 2026-08-09 ---
+  - name: _resolve_test_simple
+    dataset: core
+    owner: pipeline
+    type: function
+    status: "orphan_confirmed_unused"
+    notes: "CONFIRMADO ao vivo em 2026-08-09 (core.INFORMATION_SCHEMA.ROUTINES) -- existe SO em `adframework` (producao); ausente em `douglas-bq-staging.core.INFORMATION_SCHEMA.ROUTINES` (que tem as outras 3: resolve_dict_format, resolve_dict_format_fallback, resolve_platform_rule, + resolve_reporting_source staging_only). DDL: `CREATE FUNCTION adframework.core._resolve_test_simple(p_platform STRING) RETURNS STRING AS ((SELECT ANY_VALUE(goal_type) FROM adframework.core.dict_format WHERE platform = p_platform))`. Nao segue o contrato SCD2 das outras 3 resolve_* (sem parametro as_of_date, sem filtro de vigencia effective_from/effective_to, sem filtro por formato -- so por platform). Sem DDL commitado em raw/ddl, stg/ddl, core/ddl ou gold/ddl (grep no repo inteiro, zero ocorrencias). Confirmado SEM CONSUMIDOR: nenhuma view de core/gold referencia (INFORMATION_SCHEMA.VIEWS.view_definition LIKE '%_resolve_test_simple%' -- zero linhas nos dois datasets). Recomendacao (nao executada nesta sessao -- decisao de produto do Douglas): DROP FUNCTION, por ser artefato de teste orfao em producao, sem uso e sem DDL versionado -- mesmo padrao de objeto 'shadow' identificado em dict_format (ver known_issues.md V1)."
+
 # Como manter atualizado:
 # - Antes de assumir que essa lista está completa, rode:
 #   SELECT table_name, table_type FROM core.INFORMATION_SCHEMA.TABLES ORDER BY table_name
 #   e confira se apareceu algo novo não listado aqui.
 # - Objeto novo em `core` sem dono óbvio -> perguntar ao usuário antes de classificar.
-
-# --- Achado não confirmável nesta sessão (2026-08-08) ---
-# _resolve_test_simple: reportado por auditoria anterior como existindo nas rotinas de
-# produção do dataset `core`. Buscado em todo o repo (grep por "_resolve_test_simple" em
-# *.sql/*.py/*.md) -- ZERO ocorrências: não há DDL commitado para essa função em
-# raw/ddl, stg/ddl, core/ddl ou gold/ddl. Não foi possível reconfirmar existência, dataset
-# real ou definição via BigQuery ao vivo nesta sessão -- `bq`/`gcloud auth` e o client
-# Python (google-cloud-bigquery via ADC) pediram reautenticação interativa
-# ("Reauthentication is needed... gcloud auth application-default login"), impossível em
-# sessão não-interativa. NÃO documentado como fato confirmado -- registrado aqui só como
-# achado pendente de verificação.
-# Hipótese (baseada só no nome, não confirmada): artefato de teste esquecido em produção,
-# mesmo padrão de objeto "shadow" já visto em dict_format/campaign_format_map (ver
-# docs/known_issues.md V1). Recomendação: assim que houver acesso live ao BigQuery,
-# rodar SELECT routine_name FROM core.INFORMATION_SCHEMA.ROUTINES WHERE routine_name =
-# '_resolve_test_simple' (e nos demais datasets, já que o OWNERSHIP.yaml hoje só cobre
-# `core` -- ver known_issues.md item A6). Se confirmado sem uso real (nenhuma view/query
-# de produção a chama), recomendação é remover -- não fazer isso sem confirmação live.

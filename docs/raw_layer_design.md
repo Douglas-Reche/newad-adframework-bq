@@ -4,9 +4,10 @@
 
 > Criado: 2026-06-18
 > Status: ✅ ATUAL — T1–T7 fechados, validados em produção e jobs consolidados (2026-06-24).
-> ⚠️ **Gap conhecido, não resolvido (2026-08-08):** produção tem 18 tabelas em `raw.*`, não
-> 15 — faltam `mgid_stats_daily`, `mgid_stats_creative`, `ms_creative_daily` nesta lista.
-> Ver seção "Pendência — 3 tabelas RAW não documentadas aqui" mais abaixo.
+> **Nota (2026-08-09):** produção tem 18 tabelas em `raw.*`, não 15 — as 3 tabelas extras
+> (`mgid_stats_daily`, `mgid_stats_creative`, `ms_creative_daily`) têm schema confirmado ao
+> vivo na seção "Schema real — 3 tabelas RAW novas" mais abaixo. Ainda sem STG/GOLD
+> correspondente (gap de integração, não de documentação).
 > Detalhes de implementação por plataforma (sketches históricos, superados por este doc): `_legacy/mediasmart_raw_sketch.md`, `_legacy/mgid_raw_sketch.md`, `_legacy/siprocal_raw_sketch.md`
 > **Rebuild RAW encerrado em 2026-06-24** — `raw.*` tinha 15 tabelas (14 novas + `io_plan_drive_snapshot`) neste momento. 19 tabelas órfãs dropadas. Próxima camada: STG.
 > **Auditoria de integridade + schema executada em 2026-06-24** — ver seção "Auditorias executadas" no final deste doc. Resultado: 14/14 tabelas íntegras (0 nulos em PK/FK, joins ≥99,3%) e 14/14 com schema real idêntico ao planejado (1 gap encontrado e corrigido em `ms_advertisers`).
@@ -314,62 +315,88 @@ Detalhes completos da investigação em `CHANGELOG.md` (entrada 2026-06-22).
 
 ---
 
-## Pendência — 3 tabelas RAW não documentadas aqui (achado 2026-08-08, não resolvido)
+## Schema real — 3 tabelas RAW novas (confirmado ao vivo, 2026-08-09)
 
 Produção tem **18 tabelas** em `raw.*`, não as 15 listadas na seção "Lista final de tabelas
-RAW" acima. Achado de auditoria anterior aponta 3 tabelas fora deste doc:
-`mgid_stats_daily`, `mgid_stats_creative`, `ms_creative_daily`.
+RAW" acima. Achado de auditoria anterior apontava 3 tabelas fora deste doc — schema
+confirmado ao vivo em 2026-08-09 via `INFORMATION_SCHEMA.COLUMNS`.
 
-**Não foi possível confirmar o schema real destas 3 nesta sessão** — consulta a
-`INFORMATION_SCHEMA.COLUMNS` ao vivo é o método correto (mesma metodologia da seção
-"Auditorias executadas" abaixo), mas `bq`/`gcloud auth`/o client Python via ADC pediram
-reautenticação interativa ("Reauthentication is needed... gcloud auth application-default
-login"), impossível nesta sessão não-interativa.
+### `raw.mgid_stats_daily`
+1.673 linhas, `MIN(day)=2025-10-01`, `MAX(day)=2026-02-20` (2026-08-09). Grain: `day +
+campaignid`. **Todas as colunas são STRING** (inclusive `day`, `impressions`, `clicks`,
+`spent`) — dump literal da API, sem type-casting na ingestão, mesmo padrão de `raw.sp_delivery`.
 
-**Não usar os DDLs legados como substituto:** `raw/ddl/mgid_stats_daily.sql` e
-`raw/ddl/mgid_stats_creative.sql` existem no repo, mas são da era pré-rebuild (mesma
-geração de `mgid_campaigns.sql`/`mgid_creatives.sql`/`mgid_delivery.sql`/
-`mediasmart_*.sql`, todos anteriores ao DROP de 2026-06-18/24 documentado nesta página) —
-não confiável para descrever o schema atual, dado que a RAW inteira foi reconstruída do
-zero depois desses arquivos terem sido escritos. `ms_creative_daily` não tem DDL nenhum
-no repo (nem legado) — se existe em produção, é objeto sem fonte de verdade versionada,
-mesma categoria de "shadow object" já visto em `core.dict_format`/`core.campaign_format_map`
-(ver `docs/known_issues.md` V1) e em `gold.fct_creative_daily` (ver `docs/known_issues.md`
-A5).
+| Campo | Tipo |
+|---|---|
+| day, campaignid, adrequests, impressions, clicks, spent, cpc, ctr, conversionsbuy, conversionsinterest, conversionsdecision, revenue, profit, roas, platform, report_name, raw_ingested_at | STRING (todas) |
 
-**Próximo passo, assim que houver acesso live ao BigQuery:** rodar
-`SELECT column_name, data_type FROM adframework.raw.INFORMATION_SCHEMA.COLUMNS WHERE
-table_name IN ('mgid_stats_daily','mgid_stats_creative','ms_creative_daily') ORDER BY
-table_name, ordinal_position`, confirmar se são objetos ativos do pipeline (então commitar
-DDL novo aqui) ou remanescentes órfãos do schema pré-rebuild que deveriam ter sido
-dropados junto com as outras 19 tabelas órfãs em 2026-06-24 mas escaparam.
+Status: 🟡 sem STG/GOLD correspondente — ver `docs/known_issues.md` para o gap de
+integração (dado financeiro/stats de campanha MGID, escopo T8 nunca formalizado, ver seção
+"Breakdowns descartados" acima).
 
-## Pendência — queda de linhas em `raw.mg_teasers` (167→153, achado de auditoria anterior, não resolvido)
+### `raw.mgid_stats_creative`
+4.183 linhas, `MIN(day)=2025-10-01`, `MAX(day)=2026-06-26` (2026-08-09). Grain: `day +
+campaignid + teaserid`. Mesmo padrão all-STRING de `mgid_stats_daily`, mais a coluna `teaserid`.
 
-Investigado nesta sessão via `CHANGELOG.md` (não via BigQuery ao vivo, indisponível — ver
-nota acima). Achados:
+| Campo | Tipo |
+|---|---|
+| day, campaignid, teaserid, adrequests, impressions, clicks, spent, cpc, ctr, conversionsbuy, conversionsinterest, conversionsdecision, revenue, profit, roas, platform, report_name, raw_ingested_at | STRING (todas) |
 
-- `raw.mg_teasers` foi validado com **167 linhas** em 2026-06-22 (T3 MGID, ver seção T3
-  acima e `CHANGELOG.md` entrada 2026-06-22).
-- Em 2026-06-30, durante o incidente "4 tabelas RAW corrompidas por deploy desatualizado"
-  (`CHANGELOG.md` entrada 2026-06-30), `raw.mg_teasers` foi **dropada e recriada**
-  (`DROP TABLE raw.mg_teasers` + re-execução do job, forçando autodetect de schema — causa
-  raiz: bug pré-existente em `bigquery.py::load_data()` que mantinha schema antigo mesmo
-  com `WRITE_TRUNCATE` quando havia sobreposição parcial de nomes de coluna entre schema
-  velho e novo). O resultado imediato registrado no `CHANGELOG.md` para essa recriação foi
-  **180 linhas**, não 153.
-- **Não encontrada em nenhum lugar do repo (CHANGELOG, docs, código) uma contagem de 153
-  linhas para `mg_teasers`** — nem um evento de dedup, DELETE manual ou nova recriação que
-  explique essa contagem específica. A cadeia 167→180 (recriação do incidente de 06-30) é
-  a única mudança de contagem documentada; 153 não bate com nenhuma etapa registrada.
+Status: 🟡 sem STG/GOLD correspondente — mesma observação de `mgid_stats_daily`.
 
-**Não confirmado — causa da queda para 153 permanece desconhecida.** Não é possível
-distinguir, sem consulta ao vivo (`SELECT COUNT(*) FROM raw.mg_teasers` +
-inspeção de `raw_ingested_at`/histórico de jobs), entre: (a) uma correção de dedup nunca
-registrada em texto, (b) exclusão acidental de registro, ou (c) um evento totalmente
-diferente não capturado em nenhum documento. Próximo passo: reconfirmar contagem atual e,
-se ainda 153 (ou outro valor), comparar `raw_ingested_at` das linhas restantes contra o
-histórico de jobs do Cloud Scheduler para tentar isolar quando a mudança aconteceu.
+### `raw.ms_creative_daily`
+375 linhas, `MIN(day)=2026-07-08`, `MAX(day)=2026-08-08` (2026-08-09) — jamais tem cobertura
+retroativa até 2025 como as outras, é ingestão recente. Grain: `day + event_id + creative_id`.
+Diferente das 2 tabelas MGID acima, **já vem tipada** (`day` DATE, `impressions`/`clicks`/
+`conversions_1..5` INT64) — schema nativo da API MediaSmart, sem passar por
+`normalize_data()`/dump genérico.
+
+| Campo | Tipo |
+|---|---|
+| day | DATE |
+| event_id, creative_id, creative_type, controlid, strategyid, size, source, convsource, platform, raw_ingested_at | STRING |
+| impressions, clicks, conversions_1, conversions_2, conversions_3, conversions_4, conversions_5 | INT64 |
+
+Status: 🟡 sem STG/GOLD correspondente. Corresponde ao job de captura por criativo já visto
+no `CHANGELOG.md` (`backfill_ms_creative_size.py`, working tree no momento desta consulta)
+— dado existe, integração STG ainda não desenhada.
+
+**Não usar os DDLs legados (`raw/ddl/mgid_stats_daily.sql`, `raw/ddl/mgid_stats_creative.sql`)
+como referência de schema** — são da era pré-rebuild (anteriores ao DROP de 2026-06-18/24) e
+não batem necessariamente com o schema real confirmado acima. `ms_creative_daily` segue sem
+DDL commitado no repo (nem legado) — schema documentado aqui pela primeira vez, direto do
+`INFORMATION_SCHEMA` ao vivo.
+
+## `raw.mg_teasers` — queda de linhas (167→153), investigado mas não totalmente explicado
+
+Confirmado ao vivo em 2026-08-09: `raw.mg_teasers` tem **153 linhas hoje**, todas com o
+mesmo `raw_ingested_at = 2026-08-04` — a tabela é **WRITE_TRUNCATE** (snapshot completo a
+cada ingestão, sem histórico acumulado), então não há como consultar o estado anterior
+diretamente na própria tabela.
+
+**Distribuição de `status` das 153 linhas atuais:**
+
+| status | linhas |
+|---|---|
+| campaignBlocked | 107 |
+| blocked | 40 |
+| active | 5 |
+| rejected | 1 |
+
+52 `campaign_id` distintos entre as 153 linhas (`raw.mg_campaigns` tem 176 campanhas
+cadastradas hoje). Só **5 de 153 teasers estão `active`** — a esmagadora maioria já está
+bloqueada por algum motivo (`campaignBlocked`/`blocked`).
+
+**Conclusão honesta — causa exata não confirmável:** como a tabela não retém histórico
+(`WRITE_TRUNCATE` diário), não há como comparar teaser-a-teaser quais dos 167 originais
+saíram da resposta da API entre 2026-06-22 e 2026-08-04. A distribuição de status observada
+hoje (maioria bloqueada) é **consistente** com a hipótese de que a MGID deixa de retornar
+teasers vinculados a campanhas que saem de circulação/são bloqueadas — mas isso é inferência
+a partir do estado atual, não uma confirmação direta de que os ~14 teasers que sumiram eram
+especificamente os que ficaram bloqueados. Não investigado mais a fundo por não haver dado
+histórico para comparar. Se a diferença exata importar no futuro, só um novo bug-report à
+MGID (ou logs de ingestão anteriores a 2026-08-04, se existirem fora do BigQuery) poderia
+confirmar com certeza.
 
 ---
 
