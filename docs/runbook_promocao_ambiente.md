@@ -48,6 +48,12 @@ então promover/reverter significa reaplicar (ou desfazer) DDL contra o projeto 
    `--env=prod` roda o arquivo exatamente como está no git, sem substituição de dataset —
    é por isso que o passo 3 precisa ter testado o texto real, não uma variação.
 
+   > **Confirmação interativa obrigatória (2026-08-09):** `--env=prod` só prossegue depois
+   > que uma pessoa digita ao vivo, num terminal, o nome exato do objeto sendo alterado.
+   > Não existe flag de bypass — rodar isso via automação/script não-interativo falha de
+   > propósito (`EOF` no `input()`), não é bug. O mesmo vale para `--rollback` (Caso 1
+   > abaixo), que também só escreve em produção.
+
 6. **Confirmar em produção** — reconferir o objeto criado/atualizado (contagem de linhas,
    uma query de sanidade) antes de considerar a promoção concluída.
 

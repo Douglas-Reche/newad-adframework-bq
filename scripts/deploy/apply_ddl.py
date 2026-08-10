@@ -425,6 +425,45 @@ def do_rollback(bq_client: bigquery.Client, project: str, change_id: str, reques
     print(f"[apply_ddl] Rollback de change_id={change_id} -- reaplicando definicao anterior de {row['object_dataset']}.{row['object_name']}:")
     print(previous_definition)
 
+    # Trava de nivel 2, mesma logica do fluxo principal de --env=prod (ver
+    # main()): rollback SEMPRE escreve em producao (nao existe rollback
+    # "de teste"), entao nenhuma reaplicacao pode acontecer sem uma pessoa
+    # digitando ao vivo num terminal interativo. De proposito NAO existe
+    # flag de bypass (--yes/--force). Um ambiente nao-interativo (CI, agente
+    # de IA sem terminal humano) recebe EOF no input() abaixo e portanto
+    # falha a confirmacao automaticamente.
+    print("=" * 70, file=sys.stderr)
+    print("[apply_ddl] CONFIRMACAO OBRIGATORIA -- ROLLBACK EM PRODUCAO", file=sys.stderr)
+    print("=" * 70, file=sys.stderr)
+    print(f"  Projeto:     {project}", file=sys.stderr)
+    print(f"  Change ID:   {change_id}", file=sys.stderr)
+    print(f"  Dataset:     {row['object_dataset']}", file=sys.stderr)
+    print(f"  Objeto:      {row['object_name']}", file=sys.stderr)
+    print("----- Preview da definicao anterior a ser reaplicada -----", file=sys.stderr)
+    print(previous_definition, file=sys.stderr)
+    print("-" * 70, file=sys.stderr)
+    try:
+        confirmation = input(
+            f"Digite o nome exato do objeto ({row['object_name']}) para confirmar "
+            f"o ROLLBACK em PRODUCAO, ou qualquer outra coisa para abortar: "
+        )
+    except EOFError:
+        print(
+            "[apply_ddl] ABORTADO -- input() recebeu EOF (ambiente nao-interativo, "
+            "sem terminal humano para confirmar). Nenhuma alteracao foi aplicada.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if confirmation.strip() != row["object_name"]:
+        print(
+            f"[apply_ddl] ABORTADO -- confirmacao '{confirmation.strip()}' nao "
+            f"corresponde ao objeto esperado '{row['object_name']}'. Nenhuma alteracao "
+            f"foi aplicada.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    print(f"[apply_ddl] Confirmado -- prosseguindo com ROLLBACK em PRODUCAO.")
+
     query_job = bq_client.query(previous_definition)
     query_job.result()
     print(f"[apply_ddl] OK -- rollback aplicado.")
@@ -560,6 +599,45 @@ def main():
             print(f"[apply_ddl] Definicao anterior de {log_dataset}.{creation_object} capturada para rollback.")
         else:
             print(f"[apply_ddl] Sem definicao anterior encontrada para {log_dataset}.{creation_object} (objeto novo, ou nao e VIEW/TABLE/FUNCTION reconhecida).")
+
+    if args.env == "prod":
+        # Trava de nivel 2: nenhuma aplicacao em producao pode acontecer sem
+        # uma pessoa digitando ao vivo num terminal interativo. De proposito
+        # NAO existe flag de bypass (--yes/--force) -- ver header do modulo e
+        # o relato da task que motivou isto. Um ambiente nao-interativo (CI,
+        # agente de IA sem terminal humano) recebe EOF/string vazia no
+        # input() abaixo e portanto falha a confirmacao automaticamente.
+        print("=" * 70, file=sys.stderr)
+        print("[apply_ddl] CONFIRMACAO OBRIGATORIA -- APLICACAO EM PRODUCAO", file=sys.stderr)
+        print("=" * 70, file=sys.stderr)
+        print(f"  Projeto:  {args.project}", file=sys.stderr)
+        print(f"  Dataset:  {log_dataset}", file=sys.stderr)
+        print(f"  Objeto:   {creation_object}", file=sys.stderr)
+        print(f"  Arquivo:  {args.sql_file}", file=sys.stderr)
+        print("----- Preview do SQL final -----", file=sys.stderr)
+        print(final_sql, file=sys.stderr)
+        print("-" * 70, file=sys.stderr)
+        try:
+            confirmation = input(
+                f"Digite o nome exato do objeto ({creation_object}) para confirmar "
+                f"aplicacao em PRODUCAO, ou qualquer outra coisa para abortar: "
+            )
+        except EOFError:
+            print(
+                "[apply_ddl] ABORTADO -- input() recebeu EOF (ambiente nao-interativo, "
+                "sem terminal humano para confirmar). Nenhuma alteracao foi aplicada.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if confirmation.strip() != creation_object:
+            print(
+                f"[apply_ddl] ABORTADO -- confirmacao '{confirmation.strip()}' nao "
+                f"corresponde ao objeto esperado '{creation_object}'. Nenhuma alteracao "
+                f"foi aplicada.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        print(f"[apply_ddl] Confirmado -- prosseguindo com aplicacao em PRODUCAO.")
 
     print(f"[apply_ddl] Executando contra --env={args.env} (dataset alvo: {log_dataset})")
     query_job = bq_client.query(final_sql)

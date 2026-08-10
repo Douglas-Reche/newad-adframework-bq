@@ -8,6 +8,23 @@
 
 ---
 
+## 2026-08-09 — Confirmação interativa obrigatória em `apply_ddl.py --env=prod` e `--rollback`
+
+**O que mudou:** `--env=prod` (fluxo principal) e `--rollback` (que também só escreve em
+produção) agora exigem que uma pessoa digite ao vivo, num terminal interativo, o nome
+exato do objeto sendo alterado antes de qualquer escrita acontecer. Sem flag de bypass
+(`--yes`/`--force`) por decisão deliberada — um ambiente não-interativo (CI, agente sem
+terminal humano) recebe `EOF` no `input()` e a confirmação falha sozinha (`sys.exit(1)`).
+
+**Por quê:** achado durante a implementação — `--project` já tinha `adframework`
+(produção) como default e `--env=prod` executava sem nenhuma confirmação; pedido
+explícito do Douglas ("nunca sem aprovação") já que `gold.*` alimenta Power BI ao vivo
+pra clientes.
+
+**Arquivos afetados:** `scripts/deploy/apply_ddl.py`.
+
+---
+
 ## 2026-08-09 — BigQuery ao vivo destravado: Frente A fechada (A4/A5/C1, RAW schema, `_resolve_test_simple`) + Frente B (B6, B9, B8)
 
 **O que mudou:** com acesso ao BigQuery restaurado, fechados os itens que ficaram bloqueados
