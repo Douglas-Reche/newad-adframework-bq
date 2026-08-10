@@ -54,14 +54,7 @@ WRITER_SA_EMAIL = os.environ.get(
 # definida mais abaixo) -- redeclarada aqui em cima porque e usada antes.
 HISTORICAL_OVERRIDE_PROJECT_ID = "douglas-bq-staging"
 
-# Escopo fechado do override historico -- decisao explicita: isso NAO generaliza
-# para outros clientes/periodos. So Cora, so Jan-Jun/2026. Ver docs/PROCESS.md
-# e memoria project_gold_layer_state para o contexto completo.
-CORA_CLIENT_ID = "banco_cora_fe13d78a"
-CORA_OVERRIDE_START = date(2026, 1, 1)
-CORA_OVERRIDE_END = date(2026, 6, 30)
 OVERRIDE_TABLE = f"{HISTORICAL_OVERRIDE_PROJECT_ID}.stg.historical_overrides_delivery"
-OVERRIDE_TARGET_FIELDS = ["day", "platform", "formato", "goal_type", "impressions", "clicks", "investimento"]
 
 # Desenho fechado com o Douglas em 2026-08-05: generaliza o override historico
 # para qualquer cliente (nao mais so Cora). O range de cada cliente (MIN/MAX day)
@@ -88,8 +81,8 @@ CLIENT_REPORTING_SOURCE_CONFIG_TABLE = f"{HISTORICAL_OVERRIDE_PROJECT_ID}.core.c
 #     column_names (ARRAY<STRING>), row_count, uploaded_at, uploaded_by
 # DDL em raw/ddl/historical_uploads.sql + historical_uploads_meta.sql. Script
 # CLI irmao (uso fora do Hub) em scripts/deploy/load_historical_raw.py -- o
-# Hub NAO chama esse script, escreve direto via BQ client (mesmo padrao de
-# commit_override), ver stage_raw_historical_upload().
+# Hub NAO chama esse script, escreve direto via BQ client, ver
+# stage_raw_historical_upload().
 RAW_LANDING_PROJECT_ID = HISTORICAL_OVERRIDE_PROJECT_ID
 RAW_LANDING_DATASET = "raw"
 RAW_UPLOADS_TABLE = f"{RAW_LANDING_PROJECT_ID}.{RAW_LANDING_DATASET}.historical_uploads"
@@ -453,8 +446,8 @@ def get_writer_bq_client() -> bigquery.Client:
 def get_staging_writer_bq_client() -> bigquery.Client:
     """Mesma credencial impersonada da writer SA, mas faturada/rodando jobs
     direto em `douglas-bq-staging` (nao em PROJECT_ID/adframework). Existe
-    para as 3 escritas que vivem 100% em staging (stage_raw_historical_upload,
-    commit_override, set_client_override_active) -- usar get_writer_bq_client()
+    para as escritas que vivem 100% em staging (stage_raw_historical_upload,
+    set_client_override_active) -- usar get_writer_bq_client()
     para elas exigiria conceder roles/bigquery.jobUser para a writer SA em
     PRODUCAO so pra rodar jobs contra tabelas de staging, o que viola o
     isolamento total de staging (decisao do Douglas, 2026-08-06). O dataEditor
@@ -506,70 +499,15 @@ def _read_excel_resilient(uploaded_file, **kwargs) -> pd.DataFrame:
         return pd.read_excel(buffer, **kwargs)
 
 
-def read_uploaded_spreadsheet(uploaded_file) -> pd.DataFrame:
-    if uploaded_file.name.lower().endswith(".csv"):
-        return pd.read_csv(uploaded_file)
-    return _read_excel_resilient(uploaded_file)
-
-
 def read_uploaded_spreadsheet_raw(uploaded_file) -> pd.DataFrame:
     """Le TODAS as colunas como STRING, sem inferencia de tipo do pandas --
     mesmo principio 'RAW = dump literal' de scripts/deploy/load_historical_raw.py
-    (a contraparte CLI que fixa este mesmo contrato). Usada so pela landing RAW
-    generica (nao pelo fluxo de override normalizado da Cora acima, que continua
-    usando read_uploaded_spreadsheet com inferencia de tipo -- ali o schema alvo
-    ja e conhecido e tipado)."""
+    (a contraparte CLI que fixa este mesmo contrato)."""
     uploaded_file.seek(0)
     read_kwargs = {"dtype": str, "keep_default_na": False, "na_values": [""]}
     if uploaded_file.name.lower().endswith(".csv"):
         return pd.read_csv(uploaded_file, **read_kwargs)
     return _read_excel_resilient(uploaded_file, **read_kwargs)
-
-
-def build_override_dataframe(raw_df: pd.DataFrame, mapping: dict) -> pd.DataFrame:
-    """Aplica o mapeamento de colunas (arquivo -> schema alvo) escolhido na UI.
-    Colunas alvo sem mapeamento (ex. arquivo nao tem `investimento`) viram NULL."""
-    out = pd.DataFrame()
-    for field in OVERRIDE_TARGET_FIELDS:
-        source_col = mapping.get(field)
-        out[field] = raw_df[source_col] if source_col else None
-    out["day"] = pd.to_datetime(out["day"]).dt.date
-    for col in ["impressions", "clicks", "investimento"]:
-        out[col] = pd.to_numeric(out[col], errors="coerce")
-    return out
-
-
-def validate_override_scope(df: pd.DataFrame) -> list[str]:
-    """Guarda-corpo: essa carga e fechada -- so Cora, so Jan-Jun/2026. Nunca deixar
-    passar outro periodo/cliente por engano (nao existe campo de cliente na UI
-    de proposito: o escopo inteiro so serve para Cora)."""
-    errors = []
-    out_of_range = df[(df["day"] < CORA_OVERRIDE_START) | (df["day"] > CORA_OVERRIDE_END)]
-    if not out_of_range.empty:
-        errors.append(
-            f"{len(out_of_range)} linha(s) fora da janela permitida "
-            f"({CORA_OVERRIDE_START} a {CORA_OVERRIDE_END}) -- este fluxo e exclusivo "
-            "para o historico Jan-Jun/2026 da Cora."
-        )
-    if df["day"].isna().any():
-        errors.append("Existem linhas com data invalida/vazia apos o mapeamento.")
-    return errors
-
-
-def commit_override(df: pd.DataFrame, source_file: str, notes: str) -> int:
-    """Escreve stg.historical_overrides_delivery em douglas-bq-staging. Usa a
-    writer SA impersonada, faturada direto em staging (get_staging_writer_bq_client)
-    -- nunca em PROJECT_ID/adframework."""
-    client = get_staging_writer_bq_client()
-    load_df = df.copy()
-    load_df["client_id"] = CORA_CLIENT_ID
-    load_df["source_file"] = source_file
-    load_df["loaded_by"] = "Douglas"
-    load_df["loaded_at"] = datetime.now(timezone.utc)
-    load_df["notes"] = notes
-    job = client.load_table_from_dataframe(load_df, OVERRIDE_TABLE)
-    job.result()
-    return len(load_df)
 
 
 @st.cache_data(ttl=300)
@@ -1776,92 +1714,19 @@ with tab_proposals:
                             st.error(f"Erro ao rejeitar: {exc}")
 
 # ─────────────────────────────────────────────────────────────────────────
-# Aba 8 -- Overrides Historicos. Duas secoes:
-#   1) Upload da Cora (Jan-Jun/2026) -- fluxo original, escopo fechado, NAO
-#      generaliza (guarda-corpo em validate_override_scope).
-#   2) Config por cliente (2026-08-05) -- generaliza o liga/desliga do
-#      override para qualquer cliente que ja tenha dado carregado em
-#      stg.historical_overrides_delivery (movida de core em 2026-08-06),
-#      com range real calculado ao vivo
-#      e status em core.client_reporting_source_config (SCD2).
+# Aba 8 -- Ajustes de Dados Historicos. Fluxo generico (2026-08-05/06,
+# generaliza overrides historicos alem da Cora, ver docs/known_issues.md item
+# S4 -- o fluxo antigo hardcoded so-Cora foi removido em 2026-08-11 a pedido
+# do Douglas, ver CHANGELOG.md):
+#   1) Upload -- sobe a planilha crua do comercial como landing RAW literal em
+#      douglas-bq-staging (raw.historical_uploads/_meta).
+#   2) Comparacao -- planilha pousada vs. amostra real de gold.fact_delivery.
+#   3) Config por cliente -- liga/desliga do override para qualquer cliente
+#      que ja tenha dado carregado em stg.historical_overrides_delivery
+#      (movida de core em 2026-08-06), range real calculado ao vivo e status
+#      em core.client_reporting_source_config (SCD2).
 # ─────────────────────────────────────────────────────────────────────────
 with tab_overrides:
-    st.subheader("Ajuste Manual de Dados -- Banco Cora (Jan-Jun/2026)")
-    st.warning(
-        ":material/warning: Fluxo fechado e pontual -- carrega a planilha legada da Cora "
-        "para o periodo Jan-Jun/2026 apenas. Nao e uma pratica recorrente para outros "
-        "clientes/periodos (guarda-corpo de escopo aplicado abaixo).",
-        icon=":material/warning:",
-    )
-
-    st.markdown("**1. Upload da planilha**")
-    uploaded = st.file_uploader("Arquivo (.xlsx ou .csv)", type=["xlsx", "csv"], key="override_upload")
-
-    if uploaded is not None:
-        raw_df = read_uploaded_spreadsheet(uploaded)
-        st.caption("Preview bruto do arquivo:")
-        st.dataframe(raw_df.head(20), use_container_width=True, hide_index=True)
-
-        st.markdown("**2. Mapeamento de colunas**")
-        st.caption("Para cada campo do schema alvo, escolha a coluna correspondente no arquivo.")
-        source_columns = ["(nenhuma)"] + list(raw_df.columns)
-        mapping = {}
-        map_cols = st.columns(len(OVERRIDE_TARGET_FIELDS))
-        for col, field in zip(map_cols, OVERRIDE_TARGET_FIELDS):
-            with col:
-                choice = st.selectbox(field, source_columns, key=f"override_map_{field}")
-                mapping[field] = None if choice == "(nenhuma)" else choice
-
-        if mapping.get("day") is None:
-            st.info("Mapeie ao menos a coluna `day` para continuar.")
-        else:
-            try:
-                normalized_df = build_override_dataframe(raw_df, mapping)
-            except Exception as exc:
-                st.error(f"Erro ao normalizar com esse mapeamento: {exc}")
-                normalized_df = None
-
-            if normalized_df is not None:
-                st.markdown("**3. Preview normalizado + validacao de escopo**")
-                st.dataframe(normalized_df, use_container_width=True, hide_index=True)
-
-                scope_errors = validate_override_scope(normalized_df)
-                for err in scope_errors:
-                    st.error(err)
-
-                if not scope_errors:
-                    st.markdown("**4. Comparacao com o gold atual (mesmo cliente/periodo)**")
-                    if st.button("Comparar com gold.fact_delivery", key="override_compare_btn"):
-                        compare_sql = f"""
-                        SELECT
-                          ROUND(SUM(impressions)) AS impressions_gold_atual,
-                          ROUND(SUM(clicks)) AS clicks_gold_atual
-                        FROM `{PROJECT_ID}.gold.fact_delivery`
-                        WHERE client_id = '{CORA_CLIENT_ID}'
-                          AND day BETWEEN '{CORA_OVERRIDE_START}' AND '{CORA_OVERRIDE_END}'
-                        """
-                        gold_totals = get_bq_client().query(compare_sql).to_dataframe()
-                        file_totals = pd.DataFrame([{
-                            "impressions_arquivo": normalized_df["impressions"].sum(),
-                            "clicks_arquivo": normalized_df["clicks"].sum(),
-                        }])
-                        st.dataframe(pd.concat([gold_totals, file_totals], axis=1), use_container_width=True, hide_index=True)
-
-                    st.markdown("**5. Confirmar carga**")
-                    notes = st.text_input("Notas (opcional)", key="override_notes")
-                    confirm = st.checkbox(
-                        "Confirmo que revisei o preview e a comparacao acima antes de commitar",
-                        key="override_confirm_checkbox",
-                    )
-                    if st.button("Confirmar carga em stg.historical_overrides_delivery", disabled=not confirm, key="override_commit_btn"):
-                        try:
-                            with st.spinner("Escrevendo (writer SA impersonada)..."):
-                                n_rows = commit_override(normalized_df, uploaded.name, notes)
-                            st.success(f"{n_rows} linha(s) inserida(s) em `stg.historical_overrides_delivery`.")
-                        except Exception as exc:
-                            st.error(f"Erro ao commitar: {exc}")
-
-    st.divider()
     st.subheader("Upload de Planilha Historica")
     st.caption(
         "Peca (a) do desenho fechado em 2026-08-05/06 para generalizar overrides "
@@ -2127,6 +1992,12 @@ with tab_overrides:
                 columns=["client_id", "override_active", "effective_from", "reason", "confirmed_by", "confirmed_at"]
             )
             config_table_missing = True
+        except Exception as exc:
+            st.error(f"Erro ao consultar configuracao de overrides: {exc}")
+            active_config = pd.DataFrame(
+                columns=["client_id", "override_active", "effective_from", "reason", "confirmed_by", "confirmed_at"]
+            )
+            config_table_missing = True
 
         if config_table_missing:
             st.warning(
@@ -2194,9 +2065,9 @@ with tab_overrides:
 # ─────────────────────────────────────────────────────────────────────────
 # Aba 9 -- Regras de Negocio: listagem de core.client_business_rules (staging,
 # ver comentario de BUSINESS_RULES_TABLE) + criacao de regra nova + Pausar
-# (dentro de cada card, ver _render_business_rule_card). Sem preview/simulacao
-# de impacto -- decisao explicita do Douglas 2026-08-10 para nao atrasar;
-# fica para uma iteracao seguinte. Fluxo de "nova versao substituindo uma
+# (dentro de cada card, ver _render_business_rule_card) + Simulador de Impacto
+# (dado real ou modo demonstracao, ver mock_pacing_demo_data). Fluxo de "nova
+# versao substituindo uma
 # vigente" tambem NAO esta implementado nesta entrega -- se ja existe versao
 # vigente para o (tipo, escopo) escolhido, a criacao e bloqueada com aviso
 # (ver business_rule_exists_active); so cobre criar quando nao ha vigente e
@@ -2220,6 +2091,10 @@ with tab_business_rules:
             "aplicar o DDL antes desta aba ter o que listar.",
             icon=":material/info:",
         )
+        rules_df = pd.DataFrame()
+        client_names_df = pd.DataFrame()
+    except Exception as exc:
+        st.error(f"Erro ao consultar regras de negocio: {exc}")
         rules_df = pd.DataFrame()
         client_names_df = pd.DataFrame()
 
