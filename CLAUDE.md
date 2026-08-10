@@ -40,6 +40,7 @@ fisicamente nesta pasta".
 | Tabelas do Admin UI do Shiro (lista completa em `core/OWNERSHIP.yaml`) | **Nunca referenciar no pipeline gold.** `core/OWNERSHIP.yaml` é a fonte única — não copiar/manter essa lista em mais de um arquivo; `backend.md`, `hub-frontend.md` e este documento todos apontam pra lá |
 | Projeto `striped-bonfire-489318-t9` | **Nunca modificar** — dashboard emergencial temporário |
 | Repo `rshiro-newad/adframework` | **Somente leitura** — analisar, nunca modificar |
+| Aplicar DDL/schema novo (`apply_ddl.py` ou qualquer execução contra BigQuery) | **Sempre `--project douglas-bq-staging` primeiro, nunca produção direto.** Produção (`adframework`) só recebe algo depois de passar por staging e ser 100% aprovado pelo Douglas. Antes de rodar qualquer comando de deploy, declarar explicitamente pro usuário qual ambiente vai ser afetado e esperar confirmação — mesmo que o `.sql` referencie `adframework` no texto (é o padrão do repo, `swap_project()` troca pro projeto real no momento do deploy, não o arquivo que decide). Nunca assumir "só staging" sem confirmar o comando real que será rodado. |
 
 ---
 

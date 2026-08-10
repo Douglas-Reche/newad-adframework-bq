@@ -125,6 +125,15 @@ Grain: `client_id + day + platform + formato`. UNION de `stg.ms_delivery` + `stg
 
 Status: ✅ validado em 2026-08-08 (schema real).
 
+**CTR não é materializado no Gold** — confirmado em 2026-08-09 via `INFORMATION_SCHEMA.VIEWS`
+de `gold`/`core`/`marts`/`share` (projeto `adframework`), zero ocorrências da coluna `ctr`. O
+cálculo (`SAFE_DIVIDE(clicks, impressions)`) existe só na STG (`stg.ms_delivery`,
+`stg.sp_delivery`, `stg.mg_delivery`); `fact_delivery` não projeta essa coluna no `UNION ALL`.
+Mais provável que o CTR consumido hoje seja uma measure DAX no Power BI
+(`SUM(clicks)/SUM(impressions)`) lendo direto de `fact_delivery`/`fact_pacing` —
+**não confirmado**, o `.pbix` não está neste repositório. Ver: task Notion
+[Investigar onde CTR é calculado](https://app.notion.com/p/3b89d0f6219e81648307d0501424fcdd).
+
 ### `fact_delivery_by_device` — não coberta na versão anterior deste doc
 Grain: `client_id + day + platform + formato + device_type (+ operating_system)`. UNION de `stg.ms_delivery_by_device` + `stg.mg_delivery_by_device`, agregado.
 
