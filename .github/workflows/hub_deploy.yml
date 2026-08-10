@@ -12,7 +12,7 @@ name: Deploy Data Hub (Cloud Run)
 
 on:
   push:
-    branches: [main]
+    branches: [master]
     paths:
       - "hub/**"
   workflow_dispatch:
