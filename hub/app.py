@@ -98,6 +98,34 @@ RAW_UPLOADS_META_TABLE = f"{RAW_LANDING_PROJECT_ID}.{RAW_LANDING_DATASET}.histor
 # So a aba "Propostas de Mudanca" le/escreve aqui -- ver commit_proposal_decision abaixo.
 PROPOSALS_TABLE = f"{PROJECT_ID}.core.change_proposals"
 
+# Regras de negocio configuraveis por cliente (ex: teto de impressao diaria) --
+# sub-etapa "b" (listagem) da task "Desenhar UX/fluxo do formulario de regras de
+# negocio no Hub". A tabela SO existe em douglas-bq-staging ate agora (nunca
+# aplicada em producao -- ver CHANGELOG.md 2026-08-09 e docs/core_layer_design.md),
+# entao a leitura fica qualificada com HISTORICAL_OVERRIDE_PROJECT_ID de proposito,
+# nao PROJECT_ID. dim_client de staging (copia com paridade validada, ver comentario
+# de HISTORICAL_OVERRIDE_PROJECT_ID acima) e usada so para o lookup de nome de
+# cliente nos cards -- client_id de teste (test_client_fake_*) nao existe la, tratado
+# como "nao encontrado" na UI, nao como erro. So leitura nesta sub-etapa: formulario
+# de criacao/pausa e escrita ficam para sub-etapas seguintes.
+BUSINESS_RULES_TABLE = f"{HISTORICAL_OVERRIDE_PROJECT_ID}.core.client_business_rules"
+BUSINESS_RULES_DIM_CLIENT_TABLE = f"{HISTORICAL_OVERRIDE_PROJECT_ID}.core.dim_client"
+
+# Rotulo amigavel por rule_type -- fallback: mostra o rule_type cru se nao mapeado
+# aqui (a listagem nunca deve quebrar so porque um rule_type novo apareceu).
+RULE_TYPE_LABELS = {
+    "impression_cap_pct": "Teto de Impressao Diaria (%)",
+}
+
+# status da linha HISTORICA (effective_to preenchido) -> (rotulo, cor do st.badge).
+# Ver comentario de design em core/ddl/client_business_rules.sql: 'active' numa linha
+# fechada significa "substituida por versao nova" (SCD2 natural), 'paused' significa
+# "fechada sem substituto" (pausa deliberada) -- badges diferentes de proposito.
+HISTORY_STATUS_STYLE = {
+    "active": ("substituida", "blue"),
+    "paused": ("pausada", "orange"),
+}
+
 # Datasets que este hub tem permissao de listar, na ORDEM real do pipeline.
 # NUNCA adicionar aqui: pixel, adtracking, analytics, finops_billing (intocaveis)
 # ou datasets exclusivos do Admin UI do Shiro.
@@ -931,6 +959,103 @@ def reject_proposal(proposal_id: str) -> None:
     client.query(update_sql, job_config=job_config).result()
 
 
+@st.cache_data(ttl=180)
+def load_business_rules() -> pd.DataFrame:
+    """Le TODAS as linhas (vigentes + historico fechado) de core.client_business_rules
+    em douglas-bq-staging -- staging, fase de teste, tabela ainda NAO existe em
+    producao (ver comentario de BUSINESS_RULES_TABLE acima). Volume esperado e
+    pequeno (config de regra de negocio, nao dado de evento) -- agrupamento
+    vigente/historico e feito em pandas na UI, nao em SQL. So leitura, SA principal."""
+    client = get_bq_client()
+    query = f"""
+    SELECT
+      rule_id, rule_type, client_id, TO_JSON_STRING(rule_params) AS rule_params_json,
+      confirmed_at, confirmed_by, notes, effective_from, effective_to, status
+    FROM `{BUSINESS_RULES_TABLE}`
+    ORDER BY rule_type, client_id, effective_from DESC
+    """
+    df = client.query(query).to_dataframe()
+    df["rule_params"] = df["rule_params_json"].apply(_parse_json_field)
+    return df
+
+
+@st.cache_data(ttl=300)
+def load_business_rules_client_names() -> pd.DataFrame:
+    """client_id -> name para os cards de override, lido do dim_client de
+    STAGING (mesmo projeto de BUSINESS_RULES_TABLE, nao PROJECT_ID/producao) --
+    client_business_rules so existe em staging por enquanto, entao o lookup
+    precisa vir do dim_client que tem paridade com esses client_id (incluindo os
+    fake de teste, que nao existem em nenhum dos dois de verdade)."""
+    client = get_bq_client()
+    query = f"SELECT client_id, name FROM `{BUSINESS_RULES_DIM_CLIENT_TABLE}`"
+    return client.query(query).to_dataframe()
+
+
+def summarize_rule_params(rule_type: str, params: dict) -> str:
+    """Resumo legivel de rule_params para exibicao em card (ex: 'Teto 20% --
+    Native, Push') -- pura, sem I/O. Conhece o formato de qualquer rule_type que
+    comece com 'impression_cap_pct' (cobre tambem os rule_type de teste reais em
+    staging, ex: impression_cap_pct_test) explicitamente; qualquer rule_type sem
+    esse formato cai no fallback generico (par chave=valor), nunca quebra a UI."""
+    params = params or {}
+    if (rule_type or "").startswith("impression_cap_pct") and "threshold_pct" in params:
+        strategies = params.get("strategies") or []
+        strategies_label = ", ".join(s.title() for s in strategies) if strategies else "todas as estrategias"
+        return f"Teto {params['threshold_pct']}% -- {strategies_label}"
+    if not params:
+        return "(sem parametros)"
+    return ", ".join(f"{k}={v}" for k, v in params.items())
+
+
+def history_status_badge(status: str) -> None:
+    label, color = HISTORY_STATUS_STYLE.get(status, (status or "desconhecido", "gray"))
+    st.badge(label, color=color)
+
+
+def _render_business_rule_card(rule_type: str, scope_label: str, is_general: bool,
+                                current_row, history_df: pd.DataFrame) -> None:
+    """Um card por escopo (Geral ou 1 cliente) dentro de um rule_type: badge de
+    escopo + resumo legivel da versao vigente + expander de historico. Nao pura
+    (chama st.*) -- so agrupa a repeticao de UI entre a regra geral e cada
+    override de cliente. `current_row` pode ser None quando o escopo so tem
+    historico fechado (ex: override pausado sem substituto, sem nenhuma versao
+    vigente hoje) -- a listagem ainda mostra o card, so sem o resumo vigente,
+    para nunca esconder um historico so porque nao ha versao ativa agora."""
+    with st.container(border=True):
+        c1, c2 = st.columns([1, 4])
+        with c1:
+            if is_general:
+                st.badge("Geral", icon=":material/public:", color="blue")
+            else:
+                st.badge(scope_label, icon=":material/person:", color="gray")
+        with c2:
+            if current_row is not None:
+                st.markdown(f"**{summarize_rule_params(rule_type, current_row['rule_params'])}**")
+                st.caption(
+                    f"vigente desde {current_row['effective_from']} -- confirmado por "
+                    f"{current_row['confirmed_by']} em {current_row['confirmed_at']}"
+                )
+                if current_row.get("notes"):
+                    st.caption(f"nota: {current_row['notes']}")
+            else:
+                st.badge("sem versao vigente -- pausada", icon=":material/pause_circle:", color="orange")
+
+        if not history_df.empty:
+            with st.expander(f"Ver historico ({len(history_df)} versao(oes))"):
+                header = st.columns([3, 2.5, 1.3])
+                for h, txt in zip(header, ["Resumo / vigencia", "Confirmado por / notas", "Status"]):
+                    h.markdown(f"<span style='color:gray;font-size:0.8em'>{txt}</span>", unsafe_allow_html=True)
+                for _, h in history_df.iterrows():
+                    hc1, hc2, hc3 = st.columns([3, 2.5, 1.3])
+                    with hc1:
+                        st.write(summarize_rule_params(rule_type, h["rule_params"]))
+                        st.caption(f"{h['effective_from']} a {h['effective_to']}")
+                    with hc2:
+                        st.caption(f"{h['confirmed_by']} -- {h['notes'] or 'sem notas'}")
+                    with hc3:
+                        history_status_badge(h["status"])
+
+
 def check_password() -> bool:
     """Gate simples por senha compartilhada, so ativo quando HUB_PASSWORD esta setada
     (ou seja, so em Cloud Run -- rodando local ninguem mais tem acesso, entao nao pede senha)."""
@@ -990,7 +1115,7 @@ with farol3:
 
 st.divider()
 
-tab_freshness, tab_jobs, tab_powerbi, tab_costs, tab_browser, tab_query, tab_proposals, tab_overrides = st.tabs([
+tab_freshness, tab_jobs, tab_powerbi, tab_costs, tab_browser, tab_query, tab_proposals, tab_overrides, tab_business_rules = st.tabs([
     ":material/database: Visao Geral BQ",
     ":material/sync: Status dos Jobs",
     ":material/bar_chart: Power BI em Construcao",
@@ -999,6 +1124,7 @@ tab_freshness, tab_jobs, tab_powerbi, tab_costs, tab_browser, tab_query, tab_pro
     ":material/terminal: Query Runner",
     ":material/fact_check: Propostas de Mudanca",
     ":material/history: Overrides Historicos",
+    ":material/gavel: Regras de Negocio",
 ])
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -1828,3 +1954,75 @@ with tab_overrides:
                 )
             except Exception as exc:
                 st.error(f"Erro ao gravar: {exc}")
+
+# ─────────────────────────────────────────────────────────────────────────
+# Aba 9 -- Regras de Negocio: listagem read-only de core.client_business_rules
+# (staging, ver comentario de BUSINESS_RULES_TABLE). Formulario de criacao,
+# botoes de acao (Nova versao/Pausar) e simulacao ficam para sub-etapas
+# seguintes -- aqui e so leitura, SA principal.
+# ─────────────────────────────────────────────────────────────────────────
+with tab_business_rules:
+    st.subheader("Regras de Negocio")
+    st.caption(
+        "Regras de negocio configuraveis por cliente (ex: teto de impressao diaria), com "
+        "historico completo (SCD2). Tabela ainda so existe em staging -- ver hub/README.md."
+    )
+
+    try:
+        with st.spinner("Consultando core.client_business_rules..."):
+            rules_df = load_business_rules()
+        client_names_df = load_business_rules_client_names()
+    except NotFound:
+        st.info(
+            "`core.client_business_rules` ainda nao existe no BigQuery -- o backend precisa "
+            "aplicar o DDL antes desta aba ter o que listar.",
+            icon=":material/info:",
+        )
+        rules_df = pd.DataFrame()
+        client_names_df = pd.DataFrame()
+
+    if rules_df.empty:
+        st.info("Nenhuma regra de negocio cadastrada ainda.")
+    else:
+        client_name_map = (
+            dict(zip(client_names_df["client_id"], client_names_df["name"]))
+            if not client_names_df.empty else {}
+        )
+
+        for rule_type, type_df in rules_df.groupby("rule_type", sort=False):
+            st.markdown(f"### {RULE_TYPE_LABELS.get(rule_type, rule_type)}")
+
+            current_df = type_df[type_df["effective_to"].isna()]
+            history_df = type_df[type_df["effective_to"].notna()]
+
+            # Regra geral (client_id nulo) -- card sempre primeiro, se existir.
+            general_current = current_df[current_df["client_id"].isna()]
+            general_history = history_df[history_df["client_id"].isna()]
+            if not general_current.empty or not general_history.empty:
+                _render_business_rule_card(
+                    rule_type=rule_type,
+                    scope_label="Geral",
+                    is_general=True,
+                    current_row=general_current.iloc[0] if not general_current.empty else None,
+                    history_df=general_history,
+                )
+
+            # Overrides por cliente -- um card por client_id, incluindo os que so
+            # tem historico fechado (sem versao vigente hoje).
+            client_ids = sorted(
+                set(current_df.loc[current_df["client_id"].notna(), "client_id"])
+                | set(history_df.loc[history_df["client_id"].notna(), "client_id"])
+            )
+            for client_id in client_ids:
+                scope_label = client_name_map.get(client_id, f"{client_id} (cliente nao encontrado)")
+                client_current = current_df[current_df["client_id"] == client_id]
+                client_history = history_df[history_df["client_id"] == client_id]
+                _render_business_rule_card(
+                    rule_type=rule_type,
+                    scope_label=scope_label,
+                    is_general=False,
+                    current_row=client_current.iloc[0] if not client_current.empty else None,
+                    history_df=client_history,
+                )
+
+            st.divider()
