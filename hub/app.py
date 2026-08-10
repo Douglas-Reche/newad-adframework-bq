@@ -15,10 +15,13 @@ Uso:
     streamlit run app.py
 """
 
+import io
 import json
 import os
+import random
 import uuid
-from datetime import date, datetime, timezone
+import zipfile
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import google.auth
@@ -457,10 +460,38 @@ def dry_run_bytes(sql: str) -> int:
     return job.total_bytes_processed
 
 
+def _read_excel_resilient(uploaded_file, **kwargs) -> pd.DataFrame:
+    """pd.read_excel com fallback para .xlsx com stylesheet corrompido -- erro real
+    encontrado em producao (2026-08-10): 'could not read stylesheet from ... this
+    is most probably because the workbook source files contain some invalid XML'.
+    Causa comum: arquivo .xlsx gerado/re-salvo por ferramenta que produz
+    xl/styles.xml fora do padrao que o openpyxl aceita (ex: alguns exports do
+    Google Sheets, versoes antigas de LibreOffice). So lemos VALOR de celula aqui
+    (nunca formatacao/estilo), entao o fallback remove xl/styles.xml do zip do
+    xlsx antes de reler -- openpyxl usa estilo default e le o dado normalmente,
+    sem perder nenhuma linha/coluna."""
+    uploaded_file.seek(0)
+    try:
+        return pd.read_excel(uploaded_file, **kwargs)
+    except ValueError as exc:
+        if "stylesheet" not in str(exc).lower():
+            raise
+        uploaded_file.seek(0)
+        raw_bytes = uploaded_file.read()
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(io.BytesIO(raw_bytes)) as zin, zipfile.ZipFile(buffer, "w") as zout:
+            for item in zin.infolist():
+                if item.filename == "xl/styles.xml":
+                    continue
+                zout.writestr(item, zin.read(item.filename))
+        buffer.seek(0)
+        return pd.read_excel(buffer, **kwargs)
+
+
 def read_uploaded_spreadsheet(uploaded_file) -> pd.DataFrame:
     if uploaded_file.name.lower().endswith(".csv"):
         return pd.read_csv(uploaded_file)
-    return pd.read_excel(uploaded_file)
+    return _read_excel_resilient(uploaded_file)
 
 
 def read_uploaded_spreadsheet_raw(uploaded_file) -> pd.DataFrame:
@@ -474,7 +505,7 @@ def read_uploaded_spreadsheet_raw(uploaded_file) -> pd.DataFrame:
     read_kwargs = {"dtype": str, "keep_default_na": False, "na_values": [""]}
     if uploaded_file.name.lower().endswith(".csv"):
         return pd.read_csv(uploaded_file, **read_kwargs)
-    return pd.read_excel(uploaded_file, **read_kwargs)
+    return _read_excel_resilient(uploaded_file, **read_kwargs)
 
 
 def build_override_dataframe(raw_df: pd.DataFrame, mapping: dict) -> pd.DataFrame:
@@ -1012,6 +1043,39 @@ def load_pacing_for_simulation(client_id: str, strategies: tuple[str, ...]) -> p
         bigquery.ArrayQueryParameter("strategies", "STRING", [s.upper() for s in strategies]),
     ])
     return client.query(query, job_config=job_config).to_dataframe()
+
+
+def mock_pacing_demo_data(strategies: tuple[str, ...]) -> pd.DataFrame:
+    """Dado de EXEMPLO (fabricado, nao vem do BigQuery) para o modo demonstracao do
+    simulador -- rede de seguranca para apresentacao ao vivo, caso a consulta real
+    (load_pacing_for_simulation) falhe por qualquer motivo (rede, permissao, etc).
+    Perfil de volume/variacao inspirado no cliente Cora real (Native/Push, ~90
+    dias com IO Plan continuo), mas os numeros aqui sao gerados com seed fixa --
+    NUNCA sao dado real de nenhum cliente. Sempre exibido com aviso explicito na UI."""
+    rnd = random.Random(42)
+    base_by_strategy = {
+        "native": 11000, "push": 2300, "video": 8000, "display": 15000, "retargeting": 6000,
+    }
+    platform_by_strategy = {
+        "native": "MediaSmart", "display": "MediaSmart", "retargeting": "MediaSmart",
+        "push": "MGID", "video": "MediaSmart",
+    }
+    rows = []
+    for strategy in strategies:
+        base = base_by_strategy.get(strategy, 5000)
+        for i in range(90):
+            day = date(2026, 1, 1) + timedelta(days=i)
+            planned = base * rnd.uniform(0.92, 1.08)
+            spike = rnd.choices([1.0, 1.3, 1.6], weights=[75, 18, 7])[0]
+            realized = max(planned * spike * rnd.uniform(0.9, 1.1), 0)
+            rows.append({
+                "day": day,
+                "formato": strategy.title(),
+                "platform": platform_by_strategy.get(strategy, "MediaSmart"),
+                "planned_impressions_daily": round(planned),
+                "realized_impressions": round(realized),
+            })
+    return pd.DataFrame(rows)
 
 
 def business_rule_exists_active(rule_type: str, client_id: str | None) -> bool:
@@ -2308,21 +2372,44 @@ with tab_business_rules:
         "nenhum dado do cliente."
     )
 
-    try:
-        sim_client_options_df = load_client_options()
-    except Exception as exc:
-        sim_client_options_df = pd.DataFrame()
-        st.error(f"Erro ao carregar lista de clientes: {exc}")
+    sim_demo_mode = st.checkbox(
+        "Modo demonstracao (dado de exemplo, nao consulta o BigQuery)",
+        key="sim_demo_mode",
+        help="Use se a consulta ao dado real falhar durante uma apresentacao -- os "
+             "numeros aqui sao fabricados (mesmo padrao de volume da Cora), nunca "
+             "dado real de nenhum cliente.",
+    )
+    if sim_demo_mode:
+        st.info(
+            ":material/theaters: Modo demonstracao ativo -- os numeros abaixo sao "
+            "de exemplo, nao vem de nenhum cliente real.",
+            icon=":material/theaters:",
+        )
 
-    if sim_client_options_df.empty:
+    if sim_demo_mode:
+        sim_client_options_df = pd.DataFrame()
+    else:
+        try:
+            sim_client_options_df = load_client_options()
+        except Exception as exc:
+            sim_client_options_df = pd.DataFrame()
+            st.error(f"Erro ao carregar lista de clientes: {exc}")
+
+    if not sim_demo_mode and sim_client_options_df.empty:
         st.warning("Nenhum cliente ativo encontrado.")
     else:
-        sim_client_label_map = dict(zip(sim_client_options_df["name"], sim_client_options_df["client_id"]))
+        sim_client_label_map = (
+            dict(zip(sim_client_options_df["name"], sim_client_options_df["client_id"]))
+            if not sim_demo_mode else {}
+        )
         sim_col1, sim_col2, sim_col3 = st.columns([2, 1, 2])
         with sim_col1:
-            sim_client_label = st.selectbox(
-                "Cliente", options=list(sim_client_label_map.keys()), key="sim_client",
-            )
+            if not sim_demo_mode:
+                sim_client_label = st.selectbox(
+                    "Cliente", options=list(sim_client_label_map.keys()), key="sim_client",
+                )
+            else:
+                st.text_input("Cliente", value="Exemplo (dado fabricado)", disabled=True)
         with sim_col2:
             sim_threshold_pct = st.number_input(
                 "Teto (%)", min_value=1, max_value=100, value=20, step=1, key="sim_threshold",
@@ -2334,9 +2421,19 @@ with tab_business_rules:
             )
 
         if st.button("Rodar simulacao", key="sim_run", disabled=not sim_strategies):
-            sim_client_id = sim_client_label_map[sim_client_label]
             with st.spinner("Calculando..."):
-                pacing_df = load_pacing_for_simulation(sim_client_id, tuple(sim_strategies))
+                if sim_demo_mode:
+                    pacing_df = mock_pacing_demo_data(tuple(sim_strategies))
+                else:
+                    try:
+                        sim_client_id = sim_client_label_map[sim_client_label]
+                        pacing_df = load_pacing_for_simulation(sim_client_id, tuple(sim_strategies))
+                    except Exception as exc:
+                        st.error(
+                            f"Erro ao consultar dado real: {exc}. Marque 'Modo "
+                            "demonstracao' acima e rode de novo para usar dado de exemplo."
+                        )
+                        pacing_df = pd.DataFrame()
 
             if pacing_df.empty:
                 st.info("Sem dado de entrega para esse cliente/estrategia no periodo disponivel.")
