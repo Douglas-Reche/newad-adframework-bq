@@ -991,6 +991,83 @@ def load_business_rules_client_names() -> pd.DataFrame:
     return client.query(query).to_dataframe()
 
 
+def business_rule_exists_active(rule_type: str, client_id: str | None) -> bool:
+    """SELECT antes de INSERT (guarda-corpo pedido explicitamente) -- confirma que
+    nao ha versao vigente (effective_to IS NULL) para este (rule_type, client_id)
+    antes de deixar criar uma regra nova. So leitura, SA principal -- nao precisa
+    da writer so para checar. client_id NULL usa `IS NULL` (comparacao `= NULL`
+    nunca e verdadeira em SQL, por isso o branch separado)."""
+    client = get_bq_client()
+    if client_id is None:
+        query = f"""
+        SELECT COUNT(*) AS n FROM `{BUSINESS_RULES_TABLE}`
+        WHERE rule_type = @rule_type AND client_id IS NULL AND effective_to IS NULL
+        """
+        params = [bigquery.ScalarQueryParameter("rule_type", "STRING", rule_type)]
+    else:
+        query = f"""
+        SELECT COUNT(*) AS n FROM `{BUSINESS_RULES_TABLE}`
+        WHERE rule_type = @rule_type AND client_id = @client_id AND effective_to IS NULL
+        """
+        params = [
+            bigquery.ScalarQueryParameter("rule_type", "STRING", rule_type),
+            bigquery.ScalarQueryParameter("client_id", "STRING", client_id),
+        ]
+    job_config = bigquery.QueryJobConfig(query_parameters=params)
+    return int(client.query(query, job_config=job_config).to_dataframe()["n"].iloc[0]) > 0
+
+
+def create_business_rule(rule_type: str, client_id: str | None, rule_params: dict,
+                          confirmed_by: str, notes: str, effective_from: date) -> None:
+    """INSERT simples de uma regra nova -- so chamado depois que
+    business_rule_exists_active ja confirmou que nao ha versao vigente para esse
+    (rule_type, client_id). Nao implementa 'nova versao substituindo uma
+    existente' (fechar a antiga + abrir a nova) -- simplificacao explicita desta
+    entrega, sinalizada no relato; ver procedimento completo em
+    core/ddl/client_business_rules.sql. rule_id e status ficam fora da lista de
+    colunas para os DEFAULTs do BQ (GENERATE_UUID() / 'active') preencherem
+    sozinhos, como o DDL manda. Escreve com a writer SA impersonada, faturada em
+    staging (get_staging_writer_bq_client) -- BUSINESS_RULES_TABLE ja aponta pra
+    douglas-bq-staging."""
+    client = get_staging_writer_bq_client()
+    insert_sql = f"""
+        INSERT INTO `{BUSINESS_RULES_TABLE}`
+          (rule_type, client_id, rule_params, confirmed_at, confirmed_by, notes, effective_from, effective_to)
+        VALUES (
+          @rule_type, @client_id, PARSE_JSON(@rule_params), CURRENT_DATE(), @confirmed_by,
+          @notes, @effective_from, NULL
+        )
+    """
+    job_config = bigquery.QueryJobConfig(query_parameters=[
+        bigquery.ScalarQueryParameter("rule_type", "STRING", rule_type),
+        bigquery.ScalarQueryParameter("client_id", "STRING", client_id),
+        bigquery.ScalarQueryParameter("rule_params", "STRING", json.dumps(rule_params)),
+        bigquery.ScalarQueryParameter("confirmed_by", "STRING", confirmed_by),
+        bigquery.ScalarQueryParameter("notes", "STRING", notes),
+        bigquery.ScalarQueryParameter("effective_from", "DATE", effective_from),
+    ])
+    client.query(insert_sql, job_config=job_config).result()
+
+
+def pause_business_rule(rule_id: str, notes: str) -> None:
+    """Fecha a linha vigente SEM substituto (status='paused'), a partir de hoje --
+    ver procedimento de PAUSA documentado em core/ddl/client_business_rules.sql.
+    O WHERE inclui `effective_to IS NULL` como guarda-corpo -- nunca reabre/toca
+    uma linha ja fechada, mesmo que o rule_id passado seja de uma linha antiga.
+    Escreve com a writer SA impersonada, faturada em staging."""
+    client = get_staging_writer_bq_client()
+    update_sql = f"""
+        UPDATE `{BUSINESS_RULES_TABLE}`
+        SET effective_to = CURRENT_DATE(), status = 'paused', notes = @notes
+        WHERE rule_id = @rule_id AND effective_to IS NULL
+    """
+    job_config = bigquery.QueryJobConfig(query_parameters=[
+        bigquery.ScalarQueryParameter("rule_id", "STRING", rule_id),
+        bigquery.ScalarQueryParameter("notes", "STRING", notes),
+    ])
+    client.query(update_sql, job_config=job_config).result()
+
+
 def summarize_rule_params(rule_type: str, params: dict) -> str:
     """Resumo legivel de rule_params para exibicao em card (ex: 'Teto 20% --
     Native, Push') -- pura, sem I/O. Conhece o formato de qualquer rule_type que
@@ -1037,6 +1114,40 @@ def _render_business_rule_card(rule_type: str, scope_label: str, is_general: boo
                 )
                 if current_row.get("notes"):
                     st.caption(f"nota: {current_row['notes']}")
+
+                rule_id = current_row["rule_id"]
+                pause_open_key = f"pause_open_{rule_id}"
+                if st.button("Pausar", key=f"pause_btn_{rule_id}"):
+                    st.session_state[pause_open_key] = True
+
+                if st.session_state.get(pause_open_key):
+                    with st.container(border=True):
+                        pause_notes = st.text_area(
+                            "Motivo da pausa (obrigatorio)", key=f"pause_notes_{rule_id}",
+                        )
+                        pause_confirm = st.checkbox(
+                            "Confirmo que quero pausar esta regra a partir de hoje",
+                            key=f"pause_confirm_{rule_id}",
+                        )
+                        commit_col, cancel_col = st.columns([1, 1])
+                        with commit_col:
+                            if st.button(
+                                "Confirmar pausa", key=f"pause_commit_{rule_id}",
+                                disabled=not (pause_notes.strip() and pause_confirm),
+                            ):
+                                try:
+                                    with st.spinner("Pausando regra..."):
+                                        pause_business_rule(rule_id, pause_notes.strip())
+                                    st.success("Regra pausada.")
+                                    load_business_rules.clear()
+                                    st.session_state[pause_open_key] = False
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"Erro ao pausar: {exc}")
+                        with cancel_col:
+                            if st.button("Cancelar", key=f"pause_cancel_{rule_id}"):
+                                st.session_state[pause_open_key] = False
+                                st.rerun()
             else:
                 st.badge("sem versao vigente -- pausada", icon=":material/pause_circle:", color="orange")
 
@@ -1956,10 +2067,16 @@ with tab_overrides:
                 st.error(f"Erro ao gravar: {exc}")
 
 # ─────────────────────────────────────────────────────────────────────────
-# Aba 9 -- Regras de Negocio: listagem read-only de core.client_business_rules
-# (staging, ver comentario de BUSINESS_RULES_TABLE). Formulario de criacao,
-# botoes de acao (Nova versao/Pausar) e simulacao ficam para sub-etapas
-# seguintes -- aqui e so leitura, SA principal.
+# Aba 9 -- Regras de Negocio: listagem de core.client_business_rules (staging,
+# ver comentario de BUSINESS_RULES_TABLE) + criacao de regra nova + Pausar
+# (dentro de cada card, ver _render_business_rule_card). Sem preview/simulacao
+# de impacto -- decisao explicita do Douglas 2026-08-10 para nao atrasar;
+# fica para uma iteracao seguinte. Fluxo de "nova versao substituindo uma
+# vigente" tambem NAO esta implementado nesta entrega -- se ja existe versao
+# vigente para o (tipo, escopo) escolhido, a criacao e bloqueada com aviso
+# (ver business_rule_exists_active); so cobre criar quando nao ha vigente e
+# pausar. Escrita via get_staging_writer_bq_client() -- nunca a writer de
+# producao.
 # ─────────────────────────────────────────────────────────────────────────
 with tab_business_rules:
     st.subheader("Regras de Negocio")
@@ -2026,3 +2143,124 @@ with tab_business_rules:
                 )
 
             st.divider()
+
+    with st.expander("+ Nova regra", expanded=False):
+        st.caption(
+            "Cria uma regra nova (INSERT direto -- sem preview/simulacao de impacto, "
+            "decisao explicita para nao atrasar). So funciona quando NAO ha versao "
+            "vigente para o (tipo, escopo) escolhido; se ja houver, use Pausar na "
+            "listagem acima antes de recriar -- 'nova versao substituindo uma vigente' "
+            "ainda nao esta implementado."
+        )
+
+        existing_types = (
+            sorted(rules_df["rule_type"].dropna().unique().tolist()) if not rules_df.empty else []
+        )
+        new_type_option = "➕ novo tipo..."
+        selected_type_option = st.selectbox(
+            "Tipo de regra", options=existing_types + [new_type_option], key="new_rule_type_select",
+        )
+        rule_type_input = (
+            st.text_input("Novo rule_type (ex: meu_novo_tipo)", key="new_rule_type_text")
+            if selected_type_option == new_type_option
+            else selected_type_option
+        )
+
+        scope_choice = st.radio(
+            "Escopo", options=["Regra geral (todos os clientes)", "Cliente especifico"],
+            key="new_rule_scope",
+        )
+        client_id_input = None
+        client_scope_ready = scope_choice == "Regra geral (todos os clientes)"
+        if scope_choice == "Cliente especifico":
+            try:
+                client_options_df = load_client_options()
+            except Exception as exc:
+                client_options_df = pd.DataFrame()
+                st.error(f"Erro ao carregar lista de clientes: {exc}")
+            if not client_options_df.empty:
+                client_label_map = dict(zip(client_options_df["name"], client_options_df["client_id"]))
+                client_label = st.selectbox(
+                    "Cliente", options=list(client_label_map.keys()), key="new_rule_client",
+                )
+                client_id_input = client_label_map.get(client_label)
+                client_scope_ready = client_id_input is not None
+            else:
+                st.warning("Nenhum cliente ativo encontrado em core.dim_client.")
+
+        is_known_type = bool(rule_type_input) and rule_type_input.startswith("impression_cap_pct")
+        rule_params = None
+        params_valid = False
+
+        if is_known_type:
+            threshold_pct = st.number_input(
+                "Teto de impressao (%)", min_value=1, max_value=100, value=20, step=1,
+                key="new_rule_threshold",
+            )
+            strategies = st.multiselect(
+                "Estrategias", options=["native", "push", "video", "display", "retargeting"],
+                key="new_rule_strategies",
+            )
+            params_valid = bool(strategies)
+            rule_params = {"threshold_pct": int(threshold_pct), "strategies": strategies}
+        elif rule_type_input:
+            raw_json_text = st.text_area(
+                "Parametros (JSON bruto)", key="new_rule_json",
+                help="Formato livre por rule_type -- validado como JSON antes de habilitar salvar.",
+            )
+            try:
+                rule_params = json.loads(raw_json_text) if raw_json_text.strip() else None
+                params_valid = rule_params is not None
+            except (ValueError, AttributeError):
+                params_valid = False
+                if raw_json_text.strip():
+                    st.error("JSON invalido.")
+
+        effective_from_input = st.date_input(
+            "Vigente a partir de", value=date.today(), min_value=date.today(),
+            key="new_rule_effective_from",
+        )
+        confirmed_by_input = st.text_input("Confirmado por", key="new_rule_confirmed_by")
+        notes_input = st.text_area("Notas (contexto/evidencia da decisao)", key="new_rule_notes")
+
+        already_active = False
+        if rule_type_input and client_scope_ready:
+            try:
+                already_active = business_rule_exists_active(rule_type_input, client_id_input)
+            except Exception as exc:
+                st.error(f"Erro ao checar regra vigente: {exc}")
+                already_active = True  # nao deixa salvar se a checagem falhou -- guarda-corpo do lado seguro
+
+        if already_active:
+            st.warning(
+                "Ja existe uma versao vigente para esse tipo/escopo -- criacao bloqueada "
+                "nesta entrega. Pause a versao atual (na listagem acima) antes de criar outra.",
+                icon=":material/warning:",
+            )
+
+        can_save = (
+            bool(rule_type_input)
+            and client_scope_ready
+            and params_valid
+            and bool(confirmed_by_input.strip())
+            and bool(notes_input.strip())
+            and effective_from_input >= date.today()
+            and not already_active
+        )
+
+        if st.button("Salvar regra", disabled=not can_save, key="new_rule_save"):
+            try:
+                with st.spinner("Gravando nova regra (writer SA impersonada, staging)..."):
+                    create_business_rule(
+                        rule_type=rule_type_input,
+                        client_id=client_id_input,
+                        rule_params=rule_params,
+                        confirmed_by=confirmed_by_input.strip(),
+                        notes=notes_input.strip(),
+                        effective_from=effective_from_input,
+                    )
+                st.success("Regra criada.")
+                load_business_rules.clear()
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Erro ao criar regra: {exc}")
