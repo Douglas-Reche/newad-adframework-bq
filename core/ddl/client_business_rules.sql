@@ -30,24 +30,76 @@
 -- e de quem lê). Exemplo para 'impression_cap_pct':
 --   {"threshold_pct": 20, "strategies": ["native", "push"]}
 --
+-- rule_id (decisão de design 2026-08-09 — Douglas, motivada pela futura tela
+-- do Hub que vai referenciar/editar uma regra específica): STRING, chave
+-- própria por LINHA/VERSÃO, gerada via GENERATE_UUID() no momento do INSERT
+-- (coluna tem DEFAULT GENERATE_UUID() — basta omitir a coluna da lista de
+-- colunas do INSERT para o BigQuery gerar sozinho). IMPORTANTE: rule_id é
+-- único por VERSÃO, não por "regra" ao longo do tempo — cada nova versão de
+-- uma (rule_type, client_id) que substitui uma anterior ganha um rule_id
+-- NOVO, mesmo sendo conceitualmente "a mesma regra" evoluindo. Não existe um
+-- id estável que atravesse várias versões. Essa é a decisão mais simples e é
+-- consistente com o padrão SCD2 já usado aqui: cada linha é uma versão
+-- imutável e auto-contida, então uma chave por linha (não por entidade
+-- lógica) é o alinhamento natural — a "regra" como conceito contínuo ao
+-- longo do tempo é o par (rule_type, client_id), não um id sintético
+-- separado. Se uma necessidade futura exigir referenciar "a linha do tempo
+-- inteira" de uma regra (não uma versão específica), isso é feito com
+-- (rule_type, client_id), não com rule_id.
+--
+-- status (decisão de design 2026-08-09 — Douglas, motivada por relatórios
+-- futuros que precisam diferenciar "pausado de propósito" de "nunca teve
+-- regra"/"versão antiga naturalmente substituída"): STRING, valores
+-- aceitos 'active' ou 'paused' (BigQuery não suporta CHECK CONSTRAINT — a
+-- validação de valor é responsabilidade de quem escreve, documentada aqui).
+-- Toda linha nasce com status='active'. O valor SÓ muda no momento em que a
+-- linha é FECHADA (effective_to preenchido), e só para 'paused' — nunca de
+-- volta para 'active' (uma linha fechada não reabre; reativar é sempre um
+-- INSERT novo). Regra de preenchimento no fechamento:
+--   - Substituição natural (uma nova versão está assumindo o valor,
+--     mesmo INSERT que fecha e abre em sequência): a linha fechada
+--     PERMANECE com status='active' — nunca foi pausada, só foi superada
+--     por uma versão mais nova. É por isso que 'active' é o default da
+--     coluna, não algo setado explicitamente na maioria dos UPDATEs.
+--   - Pausa (a linha é fechada e NENHUMA linha nova é aberta em seguida
+--     para aquele (rule_type, client_id) — a regra deixou de valer sem
+--     substituto): a linha fechada recebe status='paused' explicitamente
+--     no mesmo UPDATE que preenche effective_to.
+-- `status='paused'` é metadado para consulta de HISTÓRICO (diferenciar os
+-- dois motivos de uma linha estar fechada) — não influencia
+-- core.resolve_client_business_rule, que já ignora qualquer linha com
+-- effective_to no passado independente do motivo do fechamento (ver
+-- resolve_client_business_rule.sql).
+--
 -- Ativação/pausa de uma regra (geral ou por cliente) NÃO usa flag booleana
--- separada — segue o mesmo mecanismo SCD2 de fechar/abrir linha:
---   - Pausar: UPDATE ... SET effective_to = <data da pausa> na linha vigente.
---     A partir dessa data, resolve_client_business_rule retorna NULL pra
---     esse (rule_type, client_id) — comportamento idêntico a "sem regra".
+-- separada como controle de "resolução" — segue o mesmo mecanismo SCD2 de
+-- fechar/abrir linha; `status` é só o metadado de motivo do fechamento
+-- (ver acima), não um segundo mecanismo de resolução:
+--   - Pausar: UPDATE ... SET effective_to = <data da pausa>,
+--     status = 'paused' na linha vigente. A partir dessa data,
+--     resolve_client_business_rule retorna NULL pra esse
+--     (rule_type, client_id) — comportamento idêntico a "sem regra", mas
+--     agora distinguível de "nunca teve regra" via SELECT direto na tabela
+--     (status='paused' + effective_to preenchido, vs. ausência de qualquer
+--     linha para esse (rule_type, client_id)).
 --   - Reativar (mesmos parâmetros ou novos): INSERT de uma linha nova com
---     effective_from = <data da reativação>, effective_to = NULL.
---   Isso evita um segundo mecanismo de estado (is_active) conflitando com o
---   já existente (effective_to) — a mesma linha do tempo responde as duas
---   perguntas ("qual o valor da regra" e "está ativa").
+--     effective_from = <data da reativação>, effective_to = NULL,
+--     status = 'active' (default).
 --
 -- Como adicionar/trocar/pausar uma regra (procedimento SCD2 — mesmo padrão
--- de dict_format e advertiser_platform_rules):
+-- de dict_format e advertiser_platform_rules, agora com o passo extra de
+-- status):
 --   1. UPDATE ... SET effective_to = <data da mudança> WHERE rule_type = ...
 --      AND client_id = ... (ou IS NULL) AND effective_to IS NULL;
+--      - Se o passo 2 (nova versão) SEGUE em seguida: não mexer em status
+--        (fica 'active', substituição natural).
+--      - Se é uma pausa (sem nova versão): incluir `status = 'paused'` no
+--        MESMO UPDATE acima, e parar aqui — não executar o passo 2.
 --   2. Se a regra continua ativa com novo valor: INSERT INTO ... a nova
---      linha com effective_from = <mesma data>, effective_to = NULL.
---      Se é uma pausa (sem nova versão), pare no passo 1.
+--      linha com effective_from = <mesma data>, effective_to = NULL,
+--      rule_id omitido da lista de colunas (DEFAULT GENERATE_UUID()
+--      preenche sozinho), status omitido (DEFAULT 'active' preenche
+--      sozinho).
 --   NUNCA fazer UPDATE do rule_params de uma linha existente — isso
 --   reinterpretaria retroativamente tudo que já foi reportado com a versão
 --   antiga da regra. Sempre preencher confirmed_by e notes com evidência da
@@ -55,6 +107,7 @@
 --   pro mesmo (rule_type, client_id) com effective_to IS NULL.
 
 CREATE TABLE IF NOT EXISTS `adframework.core.client_business_rules` (
+  rule_id         STRING  DEFAULT GENERATE_UUID() NOT NULL,  -- chave própria por LINHA/VERSÃO (não por regra ao longo do tempo — ver comentário no topo). BigQuery exige a ordem DEFAULT antes de NOT NULL na definição de coluna.
   rule_type       STRING  NOT NULL,  -- tipo de regra, extensível (ex: 'impression_cap_pct')
   client_id       STRING,            -- NULL = regra geral (todos os clientes); preenchido = override por cliente
   rule_params     JSON    NOT NULL,  -- parâmetros específicos do rule_type, formato livre (ver exemplo no topo)
@@ -62,15 +115,20 @@ CREATE TABLE IF NOT EXISTS `adframework.core.client_business_rules` (
   confirmed_by    STRING  NOT NULL,  -- quem confirmou (ex: 'rafael', 'douglas')
   notes           STRING,            -- contexto / evidência da decisão
   effective_from  DATE    NOT NULL,  -- desde quando esta versão da regra vale para fins de reprocessamento retroativo
-  effective_to    DATE               -- até quando valeu (ou quando foi pausada); NULL = versão ainda ativa
+  effective_to    DATE,              -- até quando valeu (ou quando foi pausada/substituída); NULL = versão ainda ativa
+  status          STRING  DEFAULT 'active' NOT NULL  -- 'active' ou 'paused' (sem CHECK constraint — BigQuery não suporta; validar no código que escreve). Só muda para 'paused' no momento do fechamento SEM substituto — ver comentário no topo
 )
 OPTIONS (
-  description = 'Regras de negocio configuraveis por cliente (client_id) ou gerais (client_id NULL), versionadas (SCD2) por effective_from/effective_to. rule_type extensivel, rule_params em JSON livre por tipo. Primeiro rule_type: impression_cap_pct (teto de 20% de impressao diaria Native/Push, confirmado por Rafael).'
+  description = 'Regras de negocio configuraveis por cliente (client_id) ou gerais (client_id NULL), versionadas (SCD2) por effective_from/effective_to. rule_id e chave por linha/versao (GENERATE_UUID() no INSERT), nao por regra ao longo do tempo. status (active/paused) diferencia pausa deliberada de substituicao natural por versao nova -- metadado de historico, nao usado por resolve_client_business_rule. rule_type extensivel, rule_params em JSON livre por tipo. Primeiro rule_type: impression_cap_pct (teto de 20% de impressao diaria Native/Push, confirmado por Rafael).'
 );
 
 -- Exemplo de INSERT (procedimento SCD2, ver comentário no topo do arquivo) —
--- regra geral NewAd (client_id NULL) de teto de 20% para Native e Push:
--- INSERT INTO `adframework.core.client_business_rules` VALUES (
+-- regra geral NewAd (client_id NULL) de teto de 20% para Native e Push.
+-- Lista de colunas EXPLÍCITA, omitindo rule_id e status para que os
+-- DEFAULTs (GENERATE_UUID() e 'active') preencham sozinhos:
+-- INSERT INTO `adframework.core.client_business_rules`
+--   (rule_type, client_id, rule_params, confirmed_at, confirmed_by, notes, effective_from, effective_to)
+-- VALUES (
 --   'impression_cap_pct',
 --   NULL,
 --   JSON '{"threshold_pct": 20, "strategies": ["native", "push"]}',
@@ -83,7 +141,9 @@ OPTIONS (
 --
 -- Exemplo de override específico de cliente (ex: threshold diferente pra um
 -- cliente específico), com prioridade sobre a regra geral acima:
--- INSERT INTO `adframework.core.client_business_rules` VALUES (
+-- INSERT INTO `adframework.core.client_business_rules`
+--   (rule_type, client_id, rule_params, confirmed_at, confirmed_by, notes, effective_from, effective_to)
+-- VALUES (
 --   'impression_cap_pct',
 --   'novo_cliente_id',
 --   JSON '{"threshold_pct": 10, "strategies": ["native", "push"]}',
@@ -91,5 +151,31 @@ OPTIONS (
 --   'confirmado_por',
 --   'descrição da evidência',
 --   DATE 'YYYY-MM-DD',
+--   NULL
+-- );
+--
+-- Exemplo de PAUSA (fechar sem substituto — status vira 'paused' no mesmo
+-- UPDATE que fecha a linha):
+-- UPDATE `adframework.core.client_business_rules`
+-- SET effective_to = DATE '2026-09-01', status = 'paused'
+-- WHERE rule_type = 'impression_cap_pct' AND client_id IS NULL AND effective_to IS NULL;
+--
+-- Exemplo de SUBSTITUIÇÃO NATURAL (fechar + abrir nova versão — a linha
+-- fechada NÃO recebe status='paused', fica 'active' por default, porque não
+-- foi pausada, foi superada por uma versão nova):
+-- UPDATE `adframework.core.client_business_rules`
+-- SET effective_to = DATE '2026-09-01'
+-- WHERE rule_type = 'impression_cap_pct' AND client_id IS NULL AND effective_to IS NULL;
+--
+-- INSERT INTO `adframework.core.client_business_rules`
+--   (rule_type, client_id, rule_params, confirmed_at, confirmed_by, notes, effective_from, effective_to)
+-- VALUES (
+--   'impression_cap_pct',
+--   NULL,
+--   JSON '{"threshold_pct": 15, "strategies": ["native", "push"]}',
+--   DATE '2026-09-01',
+--   'rafael',
+--   'Ajuste de 20% para 15% após revisão de CTR em agosto.',
+--   DATE '2026-09-01',
 --   NULL
 -- );

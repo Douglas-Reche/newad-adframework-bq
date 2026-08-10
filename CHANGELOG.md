@@ -8,6 +8,69 @@
 
 ---
 
+## 2026-08-09 — `core.client_business_rules`: `rule_id` + `status` — decisões de design confirmadas pelo Douglas, re-testado em staging (7/7 casos)
+
+**O que mudou:** `core/ddl/client_business_rules.sql` ganhou duas colunas, fechando as 3
+decisões de design que estavam em aberto (ver entrada abaixo, "5/5 casos"):
+- `rule_id STRING DEFAULT GENERATE_UUID() NOT NULL` (primeira coluna) — chave própria por
+  LINHA/VERSÃO, não por "regra" ao longo do tempo: cada nova versão de um
+  `(rule_type, client_id)` que substitui uma anterior ganha `rule_id` novo.
+- `status STRING DEFAULT 'active' NOT NULL` (última coluna) — `'active'`/`'paused'`,
+  metadado do MOTIVO do fechamento de uma linha (`effective_to` preenchido). Só muda pra
+  `'paused'` quando a linha é fechada SEM substituto (pausa deliberada); substituição
+  natural por versão nova mantém `status='active'`. Complementa o SCD2 já existente — não é
+  um segundo mecanismo de resolução, e `resolve_client_business_rule.sql` não referencia
+  `status` (não mudou de lógica, continua filtrando só por `effective_from`/`effective_to`).
+
+Re-aplicado em `douglas-bq-staging`, **7 casos testados** (os 5 anteriores + 2 novos que
+validam a diferenciação de pausa), todos corretos — incluindo o caso que prova
+`status='paused'` vs. `status='active'` em duas linhas igualmente fechadas via
+`effective_to`.
+
+**Por quê:** Douglas confirmou explicitamente as 3 decisões que a entrada anterior deixava
+pendentes — quer `rule_id` surrogate, e quer poder diferenciar pausa de substituição natural
+em consultas de histórico.
+
+**Achado técnico de brinde:** BigQuery exige a ordem `DEFAULT <expr> NOT NULL` na definição
+de coluna — `NOT NULL DEFAULT <expr>` é erro de sintaxe. Documentado como comentário inline
+na própria definição de `rule_id` em `client_business_rules.sql`.
+
+**Arquivos afetados:** `core/ddl/client_business_rules.sql` (`resolve_client_business_rule.sql`
+não mudou).
+
+---
+
+## 2026-08-09 — `core.client_business_rules` + `resolve_client_business_rule` validados em staging (5/5 casos)
+
+**O que mudou:** `core/ddl/client_business_rules.sql` e `core/ddl/resolve_client_business_rule.sql`
+aplicados em `douglas-bq-staging` (nunca produção) via `apply_ddl.py --env=test`
+(`change_ids` `6ce6d782-81d9-4405-af4c-274e1f93a6e5` e `2867814b-0fc2-47c8-acca-2b2a1d3e6d66`
+em `core.schema_change_log`). Testado com dado real: regra geral (`client_id=NULL`,
+`impression_cap_pct`, threshold 20%, vigente desde 2026-01-01) e override de cliente
+fictício (`test_client_fake_001`, threshold 10%, vigente desde 2026-03-01). 5 casos rodados
+via `resolve_client_business_rule`, todos corretos: (1) override vigente → retorna override;
+(2) sem override → cai pra regra geral; (3) override existe mas data anterior à vigência dele
+→ ignora corretamente, cai pra geral; (4) data anterior a qualquer vigência → `NULL`; (5)
+`rule_type` inexistente → `NULL`.
+
+**Por quê:** valida empiricamente duas incertezas técnicas pendentes do design — que
+`ARRAY_AGG(...ORDER BY...)[OFFSET(0)]` funciona pra tipo `JSON` no BigQuery real, e que a
+prioridade cliente-específico-vence-sobre-geral funciona como desenhado.
+
+**Nota:** dado de teste ficou em `douglas-bq-staging.core.client_business_rules`
+(`confirmed_by='douglas_test'`), não removido — não confundir com dado real numa sessão
+futura. Isto é "criado e testado tecnicamente em staging", não "aprovado pra produção".
+**Atualização:** as 3 decisões de design mencionadas abaixo foram confirmadas pelo Douglas
+no mesmo dia — ver entrada acima ("`rule_id` + `status`") para o resultado final. Ainda não
+aplicado em produção.
+
+**Achado paralelo (não corrigido):** bug em `apply_ddl.py` (`CREATE_STATEMENT_RE` não
+reconhece `CREATE TABLE IF NOT EXISTS`) — ver `docs/known_issues.md` S5.
+
+**Arquivos afetados:** `core/ddl/client_business_rules.sql`, `core/ddl/resolve_client_business_rule.sql`.
+
+---
+
 ## 2026-08-09 — Confirmação interativa obrigatória em `apply_ddl.py --env=prod` e `--rollback`
 
 **O que mudou:** `--env=prod` (fluxo principal) e `--rollback` (que também só escreve em
