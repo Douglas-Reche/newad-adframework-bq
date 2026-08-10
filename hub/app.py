@@ -734,9 +734,12 @@ def load_gold_sample_for_range(client_id: str, start_day: date, end_day: date, l
     stg.historical_overrides_delivery como 4a fonte do UNION ALL (ver
     core/ddl/resolve_reporting_source.sql) -- fact_delivery nao tem nenhuma
     logica de override, comparar contra ela nunca refletiria o efeito real do
-    override. Colunas realized_* aliadas para impressions/clicks/conversions
-    pra manter compatibilidade com o resto desta tela (preview do arquivo
-    upado usa esses mesmos nomes)."""
+    override. Todas as colunas de fact_pacing incluidas (nao so
+    impressions/clicks/conversions -- ampliado 2026-08-11 a pedido do Douglas,
+    ver task 'Ampliar Comparacao...'), planejado+realizado+investimento, pra
+    dar visao completa do que a planilha historica precisaria cobrir.
+    Colunas realized_* aliadas para impressions/clicks/conversions pra manter
+    compatibilidade com o preview do arquivo upado (que usa esses nomes)."""
     client = get_bq_client()
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
@@ -747,6 +750,8 @@ def load_gold_sample_for_range(client_id: str, start_day: date, end_day: date, l
     )
     query = f"""
     SELECT day, platform, formato, goal_type,
+      planned_impressions_daily, planned_clicks_daily, planned_spend_daily,
+      unit_price, investimento_realizado,
       realized_impressions AS impressions, realized_clicks AS clicks,
       realized_conversions AS conversions
     FROM `{HISTORICAL_OVERRIDE_PROJECT_ID}.gold.fact_pacing`
@@ -1131,6 +1136,45 @@ def pause_business_rule(rule_id: str, notes: str) -> None:
     client.query(update_sql, job_config=job_config).result()
 
 
+def edit_business_rule_dates(rule_id: str, effective_from: date, effective_to: date | None) -> None:
+    """UPDATE direto de effective_from/effective_to numa linha existente -- foge do
+    padrao SCD2 (fechar+abrir nova linha) usado no resto do pipeline, decisao
+    explicita do Douglas (2026-08-11): como admin/unico usuario de escrita hoje,
+    ele precisa poder corrigir range de vigencia sem passar pelo fluxo de
+    pausa+recriacao. Restringir isso a usuarios nao-admin fica para quando o Hub
+    tiver controle de acesso por papel (nao existe ainda). Sem guarda-corpo de
+    'so linha vigente' de proposito -- serve tambem para corrigir historico
+    fechado por engano. Escreve com a writer SA impersonada, staging."""
+    client = get_staging_writer_bq_client()
+    update_sql = f"""
+        UPDATE `{BUSINESS_RULES_TABLE}`
+        SET effective_from = @effective_from, effective_to = @effective_to
+        WHERE rule_id = @rule_id
+    """
+    job_config = bigquery.QueryJobConfig(query_parameters=[
+        bigquery.ScalarQueryParameter("rule_id", "STRING", rule_id),
+        bigquery.ScalarQueryParameter("effective_from", "DATE", effective_from),
+        bigquery.ScalarQueryParameter("effective_to", "DATE", effective_to),
+    ])
+    client.query(update_sql, job_config=job_config).result()
+
+
+def delete_business_rule(rule_id: str) -> None:
+    """DELETE definitivo de uma linha de core.client_business_rules -- nao e
+    'pausar' (que preserva a linha como historico fechado), apaga o registro por
+    completo. Decisao explicita do Douglas (2026-08-11): admin precisa poder
+    apagar regra criada por engano/teste, sem deixar rastro de historico se nao
+    quiser. Restringir isso a usuarios nao-admin fica para quando o Hub tiver
+    controle de acesso por papel (nao existe ainda). Escreve com a writer SA
+    impersonada, staging."""
+    client = get_staging_writer_bq_client()
+    delete_sql = f"DELETE FROM `{BUSINESS_RULES_TABLE}` WHERE rule_id = @rule_id"
+    job_config = bigquery.QueryJobConfig(query_parameters=[
+        bigquery.ScalarQueryParameter("rule_id", "STRING", rule_id),
+    ])
+    client.query(delete_sql, job_config=job_config).result()
+
+
 def summarize_rule_params(rule_type: str, params: dict) -> str:
     """Resumo legivel de rule_params para exibicao em card (ex: 'Teto 20% --
     Native, Push') -- pura, sem I/O. Conhece o formato de qualquer rule_type que
@@ -1190,8 +1234,18 @@ def _render_business_rule_card(rule_type: str, scope_label: str, is_general: boo
 
                 rule_id = current_row["rule_id"]
                 pause_open_key = f"pause_open_{rule_id}"
-                if st.button("Pausar", key=f"pause_btn_{rule_id}"):
-                    st.session_state[pause_open_key] = True
+                edit_open_key = f"edit_open_{rule_id}"
+                delete_open_key = f"delete_open_{rule_id}"
+                btn_col1, btn_col2, btn_col3 = st.columns(3)
+                with btn_col1:
+                    if st.button("Pausar", key=f"pause_btn_{rule_id}"):
+                        st.session_state[pause_open_key] = True
+                with btn_col2:
+                    if st.button("Editar datas", key=f"edit_btn_{rule_id}"):
+                        st.session_state[edit_open_key] = True
+                with btn_col3:
+                    if st.button("Deletar", key=f"delete_btn_{rule_id}"):
+                        st.session_state[delete_open_key] = True
 
                 if st.session_state.get(pause_open_key):
                     with st.container(border=True):
@@ -1221,16 +1275,97 @@ def _render_business_rule_card(rule_type: str, scope_label: str, is_general: boo
                             if st.button("Cancelar", key=f"pause_cancel_{rule_id}"):
                                 st.session_state[pause_open_key] = False
                                 st.rerun()
+
+                if st.session_state.get(edit_open_key):
+                    with st.container(border=True):
+                        st.caption(
+                            "Ajuste direto de vigencia -- foge do fluxo normal de "
+                            "pausa/criacao, uso admin. Nao gera historico novo, altera "
+                            "a linha existente."
+                        )
+                        new_effective_from = st.date_input(
+                            "Vigente a partir de", value=current_row["effective_from"],
+                            key=f"edit_from_{rule_id}",
+                        )
+                        current_eff_to = current_row.get("effective_to")
+                        has_end_date = st.checkbox(
+                            "Tem data fim", value=current_eff_to is not None,
+                            key=f"edit_has_end_{rule_id}",
+                        )
+                        new_effective_to = None
+                        if has_end_date:
+                            new_effective_to = st.date_input(
+                                "Vigente ate",
+                                value=current_eff_to if current_eff_to is not None else date.today(),
+                                key=f"edit_to_{rule_id}",
+                            )
+                        edit_confirm = st.checkbox(
+                            "Confirmo o ajuste manual de datas desta regra",
+                            key=f"edit_confirm_{rule_id}",
+                        )
+                        edit_commit_col, edit_cancel_col = st.columns([1, 1])
+                        with edit_commit_col:
+                            if st.button(
+                                "Salvar datas", key=f"edit_commit_{rule_id}",
+                                disabled=not edit_confirm,
+                            ):
+                                try:
+                                    with st.spinner("Atualizando vigencia..."):
+                                        edit_business_rule_dates(
+                                            rule_id, new_effective_from, new_effective_to,
+                                        )
+                                    st.success("Datas atualizadas.")
+                                    load_business_rules.clear()
+                                    st.session_state[edit_open_key] = False
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"Erro ao editar datas: {exc}")
+                        with edit_cancel_col:
+                            if st.button("Cancelar", key=f"edit_cancel_{rule_id}"):
+                                st.session_state[edit_open_key] = False
+                                st.rerun()
+
+                if st.session_state.get(delete_open_key):
+                    with st.container(border=True):
+                        st.warning(
+                            ":material/warning: Apaga a linha por completo -- diferente de "
+                            "Pausar, nao deixa rastro de historico.",
+                            icon=":material/warning:",
+                        )
+                        delete_confirm = st.checkbox(
+                            "Confirmo que quero deletar esta regra definitivamente",
+                            key=f"delete_confirm_{rule_id}",
+                        )
+                        del_commit_col, del_cancel_col = st.columns([1, 1])
+                        with del_commit_col:
+                            if st.button(
+                                "Confirmar delete", key=f"delete_commit_{rule_id}",
+                                disabled=not delete_confirm,
+                            ):
+                                try:
+                                    with st.spinner("Deletando regra..."):
+                                        delete_business_rule(rule_id)
+                                    st.success("Regra deletada.")
+                                    load_business_rules.clear()
+                                    st.session_state[delete_open_key] = False
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"Erro ao deletar: {exc}")
+                        with del_cancel_col:
+                            if st.button("Cancelar", key=f"delete_cancel_{rule_id}"):
+                                st.session_state[delete_open_key] = False
+                                st.rerun()
             else:
                 st.badge("sem versao vigente -- pausada", icon=":material/pause_circle:", color="orange")
 
         if not history_df.empty:
             with st.expander(f"Ver historico ({len(history_df)} versao(oes))"):
-                header = st.columns([3, 2.5, 1.3])
-                for h, txt in zip(header, ["Resumo / vigencia", "Confirmado por / notas", "Status"]):
+                header = st.columns([3, 2.5, 1.3, 1])
+                for h, txt in zip(header, ["Resumo / vigencia", "Confirmado por / notas", "Status", ""]):
                     h.markdown(f"<span style='color:gray;font-size:0.8em'>{txt}</span>", unsafe_allow_html=True)
                 for _, h in history_df.iterrows():
-                    hc1, hc2, hc3 = st.columns([3, 2.5, 1.3])
+                    hist_rule_id = h["rule_id"]
+                    hc1, hc2, hc3, hc4 = st.columns([3, 2.5, 1.3, 1])
                     with hc1:
                         st.write(summarize_rule_params(rule_type, h["rule_params"]))
                         st.caption(f"{h['effective_from']} a {h['effective_to']}")
@@ -1238,6 +1373,26 @@ def _render_business_rule_card(rule_type: str, scope_label: str, is_general: boo
                         st.caption(f"{h['confirmed_by']} -- {h['notes'] or 'sem notas'}")
                     with hc3:
                         history_status_badge(h["status"])
+                    with hc4:
+                        hist_delete_key = f"hist_delete_open_{hist_rule_id}"
+                        if st.button("Deletar", key=f"hist_delete_btn_{hist_rule_id}"):
+                            st.session_state[hist_delete_key] = True
+                        if st.session_state.get(hist_delete_key):
+                            hist_confirm = st.checkbox(
+                                "Confirmo", key=f"hist_delete_confirm_{hist_rule_id}",
+                            )
+                            if st.button(
+                                "Confirmar", key=f"hist_delete_commit_{hist_rule_id}",
+                                disabled=not hist_confirm,
+                            ):
+                                try:
+                                    delete_business_rule(hist_rule_id)
+                                    st.success("Deletada.")
+                                    load_business_rules.clear()
+                                    st.session_state[hist_delete_key] = False
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"Erro: {exc}")
 
 
 def check_password() -> bool:
