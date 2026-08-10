@@ -34,6 +34,9 @@ RAW  →  STG  →  CORE  →  GOLD
 | **CORE** | Tabelas + Views | Atribuição de `client_id`, IO binding, regras de negócio |
 | **GOLD** | Views | Output analítico por cliente — consumido pelo dashboard |
 
+> Diagrama executivo (sem jargão técnico, para apresentar a stakeholders não-técnicos):
+> [`docs/architecture_overview.md`](docs/architecture_overview.md).
+
 ---
 
 ## Estrutura do repositório

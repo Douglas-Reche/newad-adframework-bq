@@ -8,6 +8,23 @@
 
 ---
 
+## 2026-08-09 — Commit do diagrama executivo (B7) + referências cruzadas
+
+**O que mudou:** `docs/architecture_overview.md` (diagrama executivo C4 Nível 2 em
+Mermaid — Ingestão MediaSmart/MGID/Siprocal → Transformação BigQuery, um bloco só →
+Consumo Hub `douglas-data-hub`/Power BI, zero jargão técnico) commitado — já estava
+criado e registrado em `docs/INDEX.md`/`HANDOVER.md`/`README.md` numa sessão anterior,
+mas ainda não tinha entrado no git (untracked). Este commit inclui o arquivo em si mais
+as referências que já apontavam pra ele.
+
+**Por quê:** item B7 do plano de reestruturação de documentação — fechar a lacuna entre
+"doc criado" e "doc versionado".
+
+**Arquivos:** `docs/architecture_overview.md` (novo), `docs/INDEX.md`, `HANDOVER.md`,
+`README.md`.
+
+---
+
 ## 2026-08-09 — Reclassificação/poda de docs mestres: migração pro Notion, 5 movidos para histórico, 1 fusão (28→22 mestres)
 
 **O que mudou:** `docs/commercial_questions.md` migrado para o Notion (escopo de negócio/
