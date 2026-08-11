@@ -63,8 +63,25 @@ CREATE TABLE IF NOT EXISTS `adframework.stg.fact_pacing_base`
   realized_impressions      FLOAT64,
   realized_clicks           FLOAT64,
   realized_conversions      FLOAT64,
-  investimento_realizado    FLOAT64
+  investimento_realizado    FLOAT64,
+  is_override                BOOLEAN
 )
 OPTIONS (
   description = 'Materializacao fisica do cruzamento planejado (gold.fact_io_plan) x realizado (gold.fact_delivery) por client_id+dia+formato+platform -- quebra a cadeia de UNION ALL/FULL OUTER JOIN que impede chamada direta de core.resolve_client_business_rule() dentro de gold.fact_pacing (correlated subquery nao decorrelacionavel). Populada via stg/ddl/fact_pacing_base_refresh.sql (CREATE OR REPLACE TABLE AS SELECT) -- refresh manual, agendamento fora de escopo. Este arquivo so garante o schema, nunca popula/sobrescreve dado.'
 );
+
+-- Safety net para ambiente onde a tabela JA existia antes desta mudanca
+-- (staging populado por refreshes anteriores sem is_override) -- CREATE
+-- TABLE IF NOT EXISTS acima e no-op nesse caso, entao a coluna nova precisa
+-- ser adicionada explicitamente. No-op tambem se ja tiver sido adicionada.
+-- is_override (2026-08-11, task "Regras de Negocio Configuraveis por
+-- Cliente -- Cap 20% Impressoes (Native/Push)", 2 lacunas estruturais):
+-- propaga adframework.core.resolve_reporting_source(client_id, day,
+-- CURRENT_DATE()) = 'override' pra esta tabela -- permite que
+-- gold.fact_pacing saiba, sem reconsultar a funcao, se a linha vem de
+-- historico manual (stg.historical_overrides_delivery) em vez do dado real
+-- da plataforma. Ver stg/ddl/fact_pacing_base_refresh.sql para o calculo e
+-- gold/ddl/fact_pacing.sql para o uso (bloqueia business_rule_* em dias de
+-- override).
+ALTER TABLE `adframework.stg.fact_pacing_base`
+  ADD COLUMN IF NOT EXISTS is_override BOOLEAN;

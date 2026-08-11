@@ -65,7 +65,17 @@ rule_expanded AS (
     -- caixa, ex: "Native"/"Push") precisa de LOWER().
     resolved_rule_params IS NOT NULL
       AND formato IS NOT NULL
-      AND LOWER(formato) IN UNNEST(JSON_VALUE_ARRAY(resolved_rule_params, '$.strategies')) AS rule_applies,
+      AND LOWER(formato) IN UNNEST(JSON_VALUE_ARRAY(resolved_rule_params, '$.strategies'))
+      -- 2026-08-11 (task "Regras de Negocio Configuraveis por Cliente -- Cap
+      -- 20% Impressoes (Native/Push)", 2a lacuna estrutural): regra de cap
+      -- nunca se aplica a dia de override (historico manual). `is_override`
+      -- vem de stg.fact_pacing_base (propagado via pb.* na CTE pacing_base
+      -- acima) -- ver stg/ddl/fact_pacing_base_refresh.sql para o calculo.
+      -- COALESCE(..., FALSE) porque is_override so existe a partir deste
+      -- refresh -- uma linha antiga nunca reprocessada ficaria NULL, e NULL
+      -- nao pode travar o cap por engano (fail-open pro cap, nao pro
+      -- override).
+      AND NOT COALESCE(is_override, FALSE) AS rule_applies,
     CAST(JSON_VALUE(resolved_rule_params, '$.threshold_pct') AS FLOAT64) AS rule_threshold_pct,
     COALESCE(JSON_VALUE(resolved_rule_params, '$.base_field'), 'realized_impressions') AS rule_base_field,
     COALESCE(JSON_VALUE(resolved_rule_params, '$.reference_field'), 'planned_impressions_daily') AS rule_reference_field

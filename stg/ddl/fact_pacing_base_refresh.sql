@@ -34,6 +34,28 @@
 -- existia em gold/ddl/fact_pacing.sql antes desta mudanca -- ver esse
 -- arquivo (historico git) para o raciocinio completo de cada campo
 -- (investimento_realizado, agregacao de io_agg antes do JOIN, etc.).
+--
+-- is_override / override.investimento (2026-08-11, task "Regras de Negocio
+-- Configuraveis por Cliente -- Cap 20% Impressoes (Native/Push)", 2 lacunas
+-- estruturais encontradas ao construir o cap): duas mudancas juntas --
+--   1. is_override = adframework.core.resolve_reporting_source(client_id,
+--      day, CURRENT_DATE()) = 'override' -- reaproveita a MESMA funcao ja
+--      usada em gold/ddl/fact_delivery.sql (nao duplica a logica de range +
+--      regra vigente). Calculada 1x por linha final (client_id/day ja
+--      resolvidos via COALESCE), nao por lado do JOIN.
+--   2. LEFT JOIN em stg.historical_overrides_delivery (mesma chave
+--      client_id+day+formato+platform ja usada no FULL OUTER JOIN entre
+--      io_agg e gold.fact_delivery acima -- confirmado em douglas-bq-staging
+--      que client_id+day+platform+formato ja e chave suficiente, sem
+--      duplicata, nesta tabela hoje; goal_type NAO entra na chave porque o
+--      FULL OUTER JOIN principal (io_agg x fact_delivery) tambem nao usa
+--      goal_type como chave -- so como coluna de saida via COALESCE) --
+--      so pra expor `override.investimento`, a coluna NUMERIC que ja existia
+--      em stg.historical_overrides_delivery mas nunca era lida por nada (ver
+--      "Achado" no cabecalho de stg/ddl/historical_overrides_delivery.sql).
+--      investimento_realizado passa a ser COALESCE(override.investimento,
+--      <formula CPC/CPM original>) -- override com investimento preenchido
+--      ganha prioridade; fora isso, comportamento identico ao anterior.
 
 CREATE OR REPLACE TABLE `adframework.stg.fact_pacing_base` AS
 WITH io_agg AS (
@@ -49,30 +71,53 @@ WITH io_agg AS (
     SUM(planned_clicks_daily)      AS planned_clicks_daily
   FROM `adframework.gold.fact_io_plan`
   GROUP BY client_id, report_date, formato, platform, goal_type
+),
+joined AS (
+  SELECT
+    COALESCE(p.client_id, d.client_id) AS client_id,
+    COALESCE(p.report_date, d.day) AS day,
+    COALESCE(p.formato, d.formato) AS formato,
+    COALESCE(p.platform, d.platform) AS platform,
+    p.planned_spend_daily,
+    p.planned_impressions_daily,
+    p.planned_clicks_daily,
+    p.unit_price,
+    COALESCE(p.goal_type, d.goal_type) AS goal_type,
+    d.impressions AS realized_impressions,
+    d.clicks AS realized_clicks,
+    d.conversions AS realized_conversions,
+    CASE COALESCE(p.goal_type, d.goal_type)
+      WHEN 'CPC' THEN d.clicks * p.unit_price
+      WHEN 'CPM' THEN SAFE_DIVIDE(d.impressions * p.unit_price, 1000)
+      ELSE NULL
+    END AS investimento_realizado_formula
+  FROM io_agg p
+  FULL OUTER JOIN `adframework.gold.fact_delivery` d
+    ON p.client_id = d.client_id
+    AND p.report_date = d.day
+    AND UPPER(p.formato) = UPPER(d.formato)
+    AND p.platform = d.platform
+  WHERE COALESCE(p.client_id, d.client_id) IS NOT NULL
+    AND COALESCE(p.report_date, d.day) IS NOT NULL
 )
 SELECT
-  COALESCE(p.client_id, d.client_id) AS client_id,
-  COALESCE(p.report_date, d.day) AS day,
-  COALESCE(p.formato, d.formato) AS formato,
-  COALESCE(p.platform, d.platform) AS platform,
-  p.planned_spend_daily,
-  p.planned_impressions_daily,
-  p.planned_clicks_daily,
-  p.unit_price,
-  COALESCE(p.goal_type, d.goal_type) AS goal_type,
-  d.impressions AS realized_impressions,
-  d.clicks AS realized_clicks,
-  d.conversions AS realized_conversions,
-  CASE COALESCE(p.goal_type, d.goal_type)
-    WHEN 'CPC' THEN d.clicks * p.unit_price
-    WHEN 'CPM' THEN SAFE_DIVIDE(d.impressions * p.unit_price, 1000)
-    ELSE NULL
-  END AS investimento_realizado
-FROM io_agg p
-FULL OUTER JOIN `adframework.gold.fact_delivery` d
-  ON p.client_id = d.client_id
-  AND p.report_date = d.day
-  AND UPPER(p.formato) = UPPER(d.formato)
-  AND p.platform = d.platform
-WHERE COALESCE(p.client_id, d.client_id) IS NOT NULL
-  AND COALESCE(p.report_date, d.day) IS NOT NULL;
+  j.client_id,
+  j.day,
+  j.formato,
+  j.platform,
+  j.planned_spend_daily,
+  j.planned_impressions_daily,
+  j.planned_clicks_daily,
+  j.unit_price,
+  j.goal_type,
+  j.realized_impressions,
+  j.realized_clicks,
+  j.realized_conversions,
+  COALESCE(ov.investimento, j.investimento_realizado_formula) AS investimento_realizado,
+  `adframework.core.resolve_reporting_source`(j.client_id, j.day, CURRENT_DATE()) = 'override' AS is_override
+FROM joined j
+LEFT JOIN `adframework.stg.historical_overrides_delivery` ov
+  ON ov.client_id = j.client_id
+  AND ov.day = j.day
+  AND UPPER(ov.formato) = UPPER(j.formato)
+  AND UPPER(ov.platform) = UPPER(j.platform);

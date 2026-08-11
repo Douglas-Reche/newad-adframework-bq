@@ -42,6 +42,14 @@ preenchidas com NULL silenciosamente -- um arquivo faltando `client_id`
 por exemplo e quase certamente um bug de normalizacao upstream, nao uma
 omissao intencional).
 
+Validacao de `platform` (2026-08-11): quando a coluna nao for NULL, o
+valor precisa bater (normalizado para minusculo) com
+historical_mappings.VALID_PLATFORMS = {"mediasmart", "mgid", "siprocal"}
+-- lista fechada, mesma usada em gold/ddl/fact_delivery.sql. Falha alto e
+cedo em validate_rows() -- ver comentario la para o raciocinio completo
+(platform, diferente de formato, nao tinha nenhuma reconciliacao em
+nenhum outro lugar do fluxo ate esta mudanca).
+
 Auth: usa Application Default Credentials, mesmo padrao do apply_ddl.py
 (`gcloud auth application-default login`).
 """
@@ -53,6 +61,8 @@ from pathlib import Path
 
 import pandas as pd
 from google.cloud import bigquery
+
+from historical_mappings import VALID_PLATFORMS
 
 PROJECT_DEFAULT = "adframework"
 TABLE_ID = "stg.historical_overrides_delivery"
@@ -138,6 +148,39 @@ def validate_rows(df: pd.DataFrame) -> list:
             f"intencional (correcao intencional = nova linha com dado novo, nao "
             f"duplicata identica)."
         )
+
+    # platform contra lista fechada (2026-08-11, achado ao blindar o JOIN
+    # novo em stg/ddl/fact_pacing_base_refresh.sql com
+    # stg.historical_overrides_delivery): diferente de `formato`
+    # (reconciliado via core.dict_format/core.resolve_dict_format), a coluna
+    # `platform` nao tem NENHUMA validacao/reconciliacao em nenhum outro
+    # lugar do fluxo hoje -- um mapeamento de cliente com "MediaSmart" (em
+    # vez do padrao real, minusculo, hardcoded em gold/ddl/fact_delivery.sql)
+    # passaria por aqui sem erro e so quebraria silenciosamente mais tarde
+    # (JOIN contra stg.historical_overrides_delivery cai pra formula sem
+    # avisar ninguem). Falha alto e cedo, aqui, em vez de la. `platform`
+    # pode ser NULL (nem todo cliente historico precisa preencher) -- so
+    # valida quando nao-NULL. Comparacao normalizada pra minusculo (mesmo
+    # criterio de match do JOIN em fact_pacing_base_refresh.sql, que agora
+    # usa UPPER() dos dois lados) -- nao exige que o arquivo de entrada ja
+    # venha em minusculo, so que o VALOR seja um dos 3 validos.
+    non_null_platform = df["platform"].dropna()
+    if not non_null_platform.empty:
+        normalized = non_null_platform.astype(str).str.strip().str.lower()
+        invalid_mask = ~normalized.isin(VALID_PLATFORMS)
+        if invalid_mask.any():
+            bad_rows = df.loc[non_null_platform.index[invalid_mask], ["client_id", "platform"]]
+            details = ", ".join(
+                f"linha client_id={row.client_id!r} platform={row.platform!r}"
+                for row in bad_rows.itertuples(index=False)
+            )
+            problems.append(
+                f"{int(invalid_mask.sum())} linha(s) com `platform` fora da lista "
+                f"fechada {sorted(VALID_PLATFORMS)} (comparacao normalizada para "
+                f"minusculo): {details}. Corrija o mapeamento de cliente "
+                f"(historical_mappings/<client_id>.py) -- este script nao tenta "
+                f"adivinhar o valor certo."
+            )
 
     return problems
 

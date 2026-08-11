@@ -8,6 +8,41 @@
 
 ---
 
+## 2026-08-11 — stg.fact_pacing_base: override em investimento_realizado + cap de regra ignora dia de override (staging)
+
+**O que mudou** (working tree, nenhum commit ainda — pipeline BQ):
+- Fix 1: `stg/ddl/fact_pacing_base_refresh.sql` — `investimento_realizado` agora usa
+  `COALESCE(override.investimento, fórmula CPC/CPM)` via novo `LEFT JOIN` em
+  `stg.historical_overrides_delivery` (chave `client_id+day+UPPER(formato)+UPPER(platform)`).
+- Fix 2: `stg/ddl/fact_pacing_base.sql` ganhou coluna `is_override BOOLEAN` (via
+  `core.resolve_reporting_source`); `gold/ddl/fact_pacing.sql` — `rule_applies` ganhou
+  `AND NOT COALESCE(is_override, FALSE)`, cap de 20% nunca retroage sobre dia de override.
+- Fix A: JOIN do Fix 1 blindado com `UPPER()` também em `platform` (só `formato` tinha).
+- Fix B: `scripts/deploy/historical_mappings/__init__.py` (`VALID_PLATFORMS`) +
+  `scripts/deploy/load_historical_override.py` (`validate_rows()`) — `platform` passa a
+  ser validado contra lista fechada (`mediasmart`/`mgid`/`siprocal`), variação de caixa
+  tolerada, valor inexistente rejeitado alto e cedo.
+
+**Por quê, em uma frase:** override histórico existia mas `investimento` nunca era lido
+(coluna morta) e o cap de impressões corrompia dado já reportado ao cliente em dias de
+override — achado durante investigação do mapeamento histórico da Cora (2026-08-11).
+
+**Testado:** regressão nas 8.530 linhas reais de `stg.fact_pacing_base` em
+`douglas-bq-staging` (0 divergências, sem override real carregado ainda), teste sintético
+isolado por `client_id` de teste, validação de `platform` via `--dry-run`. Nada promovido
+para produção.
+
+**Arquivos afetados:** `stg/ddl/fact_pacing_base.sql`, `stg/ddl/fact_pacing_base_refresh.sql`,
+`gold/ddl/fact_pacing.sql`, `scripts/deploy/historical_mappings/__init__.py`,
+`scripts/deploy/load_historical_override.py`.
+
+**Pendência aberta:** `is_override` não é exposto na SELECT final de `gold.fact_pacing` —
+Hub/Power BI não conseguem ver diretamente se uma linha é dado histórico ajustado; expor
+ou não fica pendente de decisão. Ver task Notion
+[6. Materializar base de fact_pacing na STG](https://app.notion.com/p/3b89d0f6219e818eac51e4afe52d2404).
+
+---
+
 ## 2026-08-11 — Hub: comentário por upload + delete provisório (staging)
 
 **O que mudou** (commit `bceb9ee`, deployado — ver entrada de deploy acima):

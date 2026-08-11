@@ -39,3 +39,24 @@ Um arquivo por cliente:
     esse conhecimento importa, sem vazar pra um parser generico que ninguem
     entende depois de 6 meses.
 """
+
+# VALID_PLATFORMS -- lista fechada de `platform` (2026-08-11).
+# Constante compartilhada entre os mapeamentos de cliente (`normalize()` de
+# cada arquivo deste pacote) e a validacao em
+# scripts/deploy/load_historical_override.py. Confirmada por leitura de
+# gold/ddl/fact_delivery.sql -- as 3 unicas plataformas com conector real no
+# pipeline hoje, sempre em minusculo (convencao hardcoded la, ex:
+# `'mediasmart' AS platform`). `platform` pode ser NULL na saida de
+# `normalize()` (nem todo cliente historico precisa preencher) -- so quando
+# NAO-NULL o valor precisa bater com esta lista (normalizado para minusculo
+# antes de comparar). Mesmo principio ja usado para `formato`
+# (core.dict_format/core.resolve_dict_format -- reconciliar com taxonomia
+# existente, falhar alto e cedo se nao bater) -- aqui aplicado no ponto de
+# entrada do dado (load_historical_override.py), antes de chegar no
+# BigQuery, porque `platform` nao tem NENHUMA reconciliacao/normalizacao em
+# nenhum outro lugar do fluxo hoje (achado real, 2026-08-11, ao blindar o
+# JOIN novo em stg/ddl/fact_pacing_base_refresh.sql com
+# stg.historical_overrides_delivery -- um mapeamento de cliente escrevendo
+# "MediaSmart" em vez de "mediasmart" faria esse JOIN falhar silenciosamente,
+# sem nenhum aviso).
+VALID_PLATFORMS = {"mediasmart", "mgid", "siprocal"}
