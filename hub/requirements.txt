@@ -5,3 +5,4 @@ pyyaml>=6.0
 pandas>=2.2
 db-dtypes>=1.2
 openpyxl>=3.1
+gspread>=6.0

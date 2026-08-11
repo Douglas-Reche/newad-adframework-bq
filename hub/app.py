@@ -19,12 +19,14 @@ import io
 import json
 import os
 import random
+import re
 import uuid
 import zipfile
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import google.auth
+import gspread
 import pandas as pd
 import streamlit as st
 import yaml
@@ -508,6 +510,59 @@ def read_uploaded_spreadsheet_raw(uploaded_file) -> pd.DataFrame:
     if uploaded_file.name.lower().endswith(".csv"):
         return pd.read_csv(uploaded_file, **read_kwargs)
     return _read_excel_resilient(uploaded_file, **read_kwargs)
+
+
+# Upload via link do Google Sheets -- alternativa ao file_uploader acima, mesmo
+# fluxo de preview/mapeamento a partir daqui (task Notion 3b99d0f6, filha de
+# "Desenhar override historico por cliente"). Mesmo padrao de credencial/scopes
+# de scripts/etl/cora_sheets_sync.py (leitura pontual de UI aqui, nao job
+# agendado). Nao passamos value_render_option -- comportamento padrao da API
+# ja retorna valor calculado, nunca formula.
+GSHEETS_SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets.readonly",
+    "https://www.googleapis.com/auth/drive.readonly",
+]
+
+
+@st.cache_resource
+def get_gspread_client():
+    creds, _ = google.auth.default(scopes=GSHEETS_SCOPES)
+    return gspread.authorize(creds)
+
+
+def extract_gsheet_id(link_or_id: str) -> str:
+    """Aceita tanto o link completo (https://docs.google.com/spreadsheets/d/<ID>/edit...)
+    quanto o ID puro colado direto."""
+    link_or_id = (link_or_id or "").strip()
+    m = re.search(r"/d/([a-zA-Z0-9-_]+)", link_or_id)
+    return m.group(1) if m else link_or_id
+
+
+@st.cache_data(ttl=120, show_spinner=False)
+def list_gsheet_worksheets(spreadsheet_id: str) -> list:
+    """Lista os titulos de todas as abas da planilha, para o usuario escolher
+    qual e a correta antes de seguir pro fluxo de mapeamento."""
+    gc = get_gspread_client()
+    ss = gc.open_by_key(spreadsheet_id)
+    return [ws.title for ws in ss.worksheets()]
+
+
+@st.cache_data(ttl=120, show_spinner=False)
+def read_gsheet_worksheet_raw(spreadsheet_id: str, worksheet_title: str) -> pd.DataFrame:
+    """Le uma aba do Google Sheets como RAW literal -- mesmo contrato 'tudo
+    string, sem tratamento' de read_uploaded_spreadsheet_raw acima.
+    ws.get_all_values() ja retorna tudo como string por padrao (valor
+    calculado, nao formula), entao o dtype ja bate sem conversao extra."""
+    gc = get_gspread_client()
+    ss = gc.open_by_key(spreadsheet_id)
+    ws = ss.worksheet(worksheet_title)
+    rows = ws.get_all_values()
+    if not rows:
+        return pd.DataFrame()
+    headers = rows[0]
+    data_rows = [r + [""] * max(0, len(headers) - len(r)) for r in rows[1:] if any(c.strip() for c in r)]
+    data_rows = [r[: len(headers)] for r in data_rows]
+    return pd.DataFrame(data_rows, columns=headers)
 
 
 @st.cache_data(ttl=300)
@@ -1934,87 +1989,124 @@ with tab_overrides:
             key="landing_upload",
         )
 
-        if landing_upload is not None:
-            landing_raw_df = None
+        st.markdown("**ou** cole o link de uma planilha do Google Sheets")
+        landing_gsheet_link = st.text_input(
+            "Link do Google Sheets",
+            key="landing_gsheet_link",
+            placeholder="https://docs.google.com/spreadsheets/d/...",
+            help=(
+                "A planilha precisa estar compartilhada (permissao de visualizacao) com a "
+                "service account de leitura do hub -- se a leitura falhar por permissao, a "
+                "mensagem de erro abaixo vai indicar isso."
+            ),
+        )
+
+        landing_raw_df = None
+        landing_source_name = None
+
+        if landing_gsheet_link.strip():
+            gsheet_id = extract_gsheet_id(landing_gsheet_link)
+            worksheet_titles = None
+            try:
+                worksheet_titles = list_gsheet_worksheets(gsheet_id)
+            except Exception as exc:
+                st.error(
+                    "Nao consegui abrir essa planilha -- confirme que o link/ID esta correto e "
+                    "que a planilha foi compartilhada (permissao de visualizacao) com a service "
+                    f"account de leitura do hub. Erro: {exc}"
+                )
+
+            if worksheet_titles:
+                landing_gsheet_tab = st.selectbox(
+                    "Aba da planilha", worksheet_titles, key="landing_gsheet_tab"
+                )
+                try:
+                    landing_raw_df = read_gsheet_worksheet_raw(gsheet_id, landing_gsheet_tab)
+                    landing_source_name = f"gsheet:{gsheet_id}:{landing_gsheet_tab}"
+                except Exception as exc:
+                    landing_raw_df = None
+                    st.error(f"Nao consegui ler a aba '{landing_gsheet_tab}' dessa planilha: {exc}")
+        elif landing_upload is not None:
             try:
                 landing_raw_df = read_uploaded_spreadsheet_raw(landing_upload)
+                landing_source_name = landing_upload.name
             except Exception as exc:
                 st.error(f"Nao consegui ler o arquivo (formato invalido?): {exc}")
 
-            if landing_raw_df is not None:
-                if landing_raw_df.empty:
-                    st.error("Arquivo lido, mas esta vazio -- nada para subir.")
-                else:
-                    st.markdown("**Estrutura real do arquivo (sem nenhum tratamento)**")
-                    col_a, col_b = st.columns(2)
-                    with col_a:
-                        st.metric("Total de linhas", len(landing_raw_df))
-                    with col_b:
-                        st.metric("Total de colunas", len(landing_raw_df.columns))
-                    st.caption("Colunas encontradas, na ordem do arquivo:")
-                    st.code(", ".join(str(c) for c in landing_raw_df.columns), language=None)
-                    st.caption("Amostra (10 primeiras linhas):")
-                    st.dataframe(landing_raw_df.head(10), use_container_width=True, hide_index=True)
+        if landing_raw_df is not None:
+            if landing_raw_df.empty:
+                st.error("Arquivo lido, mas esta vazio -- nada para subir.")
+            else:
+                st.markdown("**Estrutura real do arquivo (sem nenhum tratamento)**")
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    st.metric("Total de linhas", len(landing_raw_df))
+                with col_b:
+                    st.metric("Total de colunas", len(landing_raw_df.columns))
+                st.caption("Colunas encontradas, na ordem do arquivo:")
+                st.code(", ".join(str(c) for c in landing_raw_df.columns), language=None)
+                st.caption("Amostra (10 primeiras linhas):")
+                st.dataframe(landing_raw_df.head(10), use_container_width=True, hide_index=True)
 
-                    landing_confirm = st.checkbox(
-                        f"Confirmo que este arquivo e o historico cru de "
-                        f"**{landing_client_row['name']}** (`{landing_client_id}`) e deve subir "
-                        "como landing RAW literal, sem tratamento",
-                        key="landing_confirm_checkbox",
-                    )
-                    if st.button(
-                        "Confirmar upload para landing RAW",
-                        key="landing_commit_btn",
-                        disabled=not landing_confirm,
-                    ):
-                        with st.spinner("Escrevendo (writer SA impersonada)..."):
-                            result = stage_raw_historical_upload(landing_raw_df, landing_client_id, landing_upload.name)
-                        if result["staged"]:
-                            st.success(
-                                f"Landing gravado em `{result['would_be_table']}` "
-                                f"(upload_id `{result['upload_id']}`)."
-                            )
-                            st.session_state["landing_last_upload_id"] = result["upload_id"]
-                        else:
-                            st.warning(
-                                f"Preview validado ({result['n_rows']} linha(s), "
-                                f"{len(result['columns'])} coluna(s) para `{landing_client_id}`) mas "
-                                f"AINDA NAO gravado no BigQuery -- {result['reason']}",
-                                icon=":material/warning:",
-                            )
-
-                    last_upload_id = st.session_state.get("landing_last_upload_id")
-                    if last_upload_id:
-                        st.markdown("**Estrutura real do que pousou em `douglas-bq-staging.raw`**")
-                        st.caption(
-                            "Lido de volta de historical_uploads_meta + historical_uploads (nao do "
-                            "arquivo local) -- confirma o que de fato ficou gravado, base para a "
-                            "analise humana/IA que decide como normalizar depois."
+                landing_confirm = st.checkbox(
+                    f"Confirmo que este arquivo e o historico cru de "
+                    f"**{landing_client_row['name']}** (`{landing_client_id}`) e deve subir "
+                    "como landing RAW literal, sem tratamento",
+                    key="landing_confirm_checkbox",
+                )
+                if st.button(
+                    "Confirmar upload para landing RAW",
+                    key="landing_commit_btn",
+                    disabled=not landing_confirm,
+                ):
+                    with st.spinner("Escrevendo (writer SA impersonada)..."):
+                        result = stage_raw_historical_upload(landing_raw_df, landing_client_id, landing_source_name)
+                    if result["staged"]:
+                        st.success(
+                            f"Landing gravado em `{result['would_be_table']}` "
+                            f"(upload_id `{result['upload_id']}`)."
                         )
-                        try:
-                            landed_meta, landed_sample = load_landed_historical_upload(last_upload_id)
-                        except (NotFound, Forbidden) as exc:
-                            landed_meta, landed_sample = None, None
-                            st.error(
-                                "Nao consegui ler de volta o que pousou -- provavelmente falta leitura "
-                                f"da SA principal (`douglas-data-hub-sa`) no projeto `{RAW_LANDING_PROJECT_ID}` "
-                                f"ainda (identificar/reportar, nao aplicar agora). Erro: {exc}"
-                            )
-                        except Exception as exc:
-                            landed_meta, landed_sample = None, None
-                            st.error(f"Erro ao ler o landing gravado: {exc}")
+                        st.session_state["landing_last_upload_id"] = result["upload_id"]
+                    else:
+                        st.warning(
+                            f"Preview validado ({result['n_rows']} linha(s), "
+                            f"{len(result['columns'])} coluna(s) para `{landing_client_id}`) mas "
+                            f"AINDA NAO gravado no BigQuery -- {result['reason']}",
+                            icon=":material/warning:",
+                        )
 
-                        if landed_meta:
-                            col_c, col_d = st.columns(2)
-                            with col_c:
-                                st.metric("Total de linhas (BQ)", int(landed_meta.get("row_count", 0)))
-                            with col_d:
-                                st.metric("Total de colunas (BQ)", len(landed_meta.get("column_names") or []))
-                            st.caption("Colunas (de historical_uploads_meta.column_names):")
-                            st.code(", ".join(str(c) for c in (landed_meta.get("column_names") or [])), language=None)
-                            if landed_sample is not None and not landed_sample.empty:
-                                st.caption("Amostra (de historical_uploads.raw_row, parseado):")
-                                st.dataframe(landed_sample, use_container_width=True, hide_index=True)
+                last_upload_id = st.session_state.get("landing_last_upload_id")
+                if last_upload_id:
+                    st.markdown("**Estrutura real do que pousou em `douglas-bq-staging.raw`**")
+                    st.caption(
+                        "Lido de volta de historical_uploads_meta + historical_uploads (nao do "
+                        "arquivo local) -- confirma o que de fato ficou gravado, base para a "
+                        "analise humana/IA que decide como normalizar depois."
+                    )
+                    try:
+                        landed_meta, landed_sample = load_landed_historical_upload(last_upload_id)
+                    except (NotFound, Forbidden) as exc:
+                        landed_meta, landed_sample = None, None
+                        st.error(
+                            "Nao consegui ler de volta o que pousou -- provavelmente falta leitura "
+                            f"da SA principal (`douglas-data-hub-sa`) no projeto `{RAW_LANDING_PROJECT_ID}` "
+                            f"ainda (identificar/reportar, nao aplicar agora). Erro: {exc}"
+                        )
+                    except Exception as exc:
+                        landed_meta, landed_sample = None, None
+                        st.error(f"Erro ao ler o landing gravado: {exc}")
+
+                    if landed_meta:
+                        col_c, col_d = st.columns(2)
+                        with col_c:
+                            st.metric("Total de linhas (BQ)", int(landed_meta.get("row_count", 0)))
+                        with col_d:
+                            st.metric("Total de colunas (BQ)", len(landed_meta.get("column_names") or []))
+                        st.caption("Colunas (de historical_uploads_meta.column_names):")
+                        st.code(", ".join(str(c) for c in (landed_meta.get("column_names") or [])), language=None)
+                        if landed_sample is not None and not landed_sample.empty:
+                            st.caption("Amostra (de historical_uploads.raw_row, parseado):")
+                            st.dataframe(landed_sample, use_container_width=True, hide_index=True)
 
     st.divider()
     st.subheader("Comparacao: Planilha vs. Dado Real")
