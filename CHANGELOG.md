@@ -8,6 +8,71 @@
 
 ---
 
+## 2026-08-10 — Hub: UI de editar/deletar regra conectada + Comparação Planilha vs. Dado Real ampliada
+
+**O que mudou:** dois itens pendentes do checkpoint anterior (ver entrada seguinte,
+"Não incluído aqui") foram concluídos e deployados em produção — revisão
+`douglas-data-hub-00012-cwm`, commit `25c68df`:
+- Sub-item 9 de "Construir aba de gerenciamento de regras no Hub (CRUD)": UI conectada
+  às funções `edit_business_rule_dates`/`delete_business_rule` já existentes. Cada card de
+  regra vigente ganhou botões "Editar datas" (ajusta `effective_from`/`effective_to`
+  direto via UPDATE, sem passar pelo fluxo de pausa) e "Deletar" (DELETE definitivo, sem
+  rastro de histórico — diferente de Pausar). Cada linha do histórico expandido também
+  ganhou "Deletar" individual, para limpar dado de teste.
+- "Ampliar Comparação: Planilha vs. Dado Real": `load_gold_sample_for_range` em
+  `hub/app.py` agora traz todas as colunas de `gold.fact_pacing`
+  (`planned_impressions_daily`, `planned_clicks_daily`, `planned_spend_daily`,
+  `unit_price`, `investimento_realizado`, além de `impressions/clicks/conversions` já
+  existentes), não só as 3 de antes.
+
+**Arquivos afetados:** `hub/app.py`.
+
+**Registro Notion:** ambos os sub-itens marcados `Done` (sub-item 9 de "Construir aba de
+gerenciamento de regras no Hub (CRUD)"; "Ampliar Comparação: Planilha vs. Dado Real...",
+filha de "6. Materializar base de fact_pacing na STG").
+
+---
+
+## 2026-08-10 — Hub: Simulador de Impacto + construtor de regra por campo + limpeza de fluxo legado da Cora
+
+**O que mudou:** checkpoint de tarde, 7 commits deployados em produção (revisão
+`douglas-data-hub-00011-q89`, 100% do tráfego):
+- `ae65586` — Simulador de Impacto (nova seção na aba Regras de Negócio, lê dado real de
+  `gold.fact_pacing` e calcula em memória o efeito de um teto — não persiste nada; farol
+  operacional recolhido por padrão; listagem passa a filtrar `rule_type` de teste). Também
+  mitiga S6 (bindings IAM redundantes não abortam mais `deploy.sh`).
+- `379330a` — fix de upload: `.xlsx` com stylesheet corrompido gerava "could not read
+  stylesheet ... invalid XML" (erro real, planilha da Cora); fallback remove
+  `xl/styles.xml` do zip antes de reler. Simulador ganhou modo demonstração (dado
+  fabricado, seed fixa) como rede de segurança de apresentação.
+- `fd5cb97` — construtor de regra por campo: troca do "Teto de Impressão (%)" abstrato por
+  seleção explícita de 2 campos reais de `gold.fact_pacing` (campo a limitar + campo de
+  referência), mesma lógica aplicada ao Simulador — porque o formulário antigo não deixava
+  expressar a regra real do Rafael ("entregue não pode superar planejado em mais de 20%").
+- `a571516` — remoção do fluxo antigo hardcoded da Cora (Jan-Jun/2026) na aba Ajustes de
+  Dados Históricos, que duplicava o fluxo genérico (fecha S3 do `known_issues.md` por
+  remoção); e fix de erro não capturado — 3 blocos `try/except` só pegavam `NotFound`,
+  adicionado `except Exception` genérico (sintoma: erro derrubava o Hub inteiro).
+- `be6a767` — fix de comparação errada: "Comparação: Planilha vs. Dado Real" comparava
+  contra `gold.fact_delivery`, corrigido para `gold.fact_pacing` (quem de fato consome
+  `stg.historical_overrides_delivery`).
+
+**Limpeza de dado de teste:** as 6 linhas sintéticas em
+`douglas-bq-staging.stg.historical_overrides_delivery` (3 do teste Cora + 3 de
+`teste_agente_backend_xyz`) foram apagadas — staging confirmado limpo para teste
+end-to-end real.
+
+**Arquivos afetados:** `hub/app.py`, `hub/deploy.sh`.
+
+**Não incluído aqui (em andamento, não finalizado):** funções `edit_business_rule_dates`/
+`delete_business_rule` escritas em `hub/app.py`, mas a UI (botões nos cards) ainda não foi
+conectada nem deployada.
+
+**Registro completo com rastreio Kanban/Timeline:** Notion, sub-itens 1-9 de "Construir
+aba de gerenciamento de regras no Hub (CRUD)".
+
+---
+
 ## 2026-08-10 — Aba "Regras de Negócio" no ar no Hub + bug crítico de deploy automático corrigido
 
 **O que mudou:** aba nova no Hub (`hub/app.py`) com listagem (`5a7131d`) e formulário de
