@@ -340,6 +340,25 @@ def load_cost_current_month():
 
 
 @st.cache_data(ttl=600)
+def load_cost_previous_month():
+    """Resumo gross/net do mes calendario anterior (janela fechada), so pra comparacao de
+    variacao no farol -- mesma view curada finops_billing.vw_cost_daily_service, leitura apenas."""
+    client = get_bq_client()
+    query = f"""
+    SELECT
+      SUM(gross_cost) AS gross,
+      SUM(net_cost) AS net
+    FROM `{PROJECT_ID}.{FINOPS_DATASET}.vw_cost_daily_service`
+    WHERE usage_date >= DATE_TRUNC(DATE_SUB(CURRENT_DATE(), INTERVAL 1 MONTH), MONTH)
+      AND usage_date < DATE_TRUNC(CURRENT_DATE(), MONTH)
+    """
+    df = client.query(query).to_dataframe()
+    if df.empty or pd.isna(df["gross"].iloc[0]):
+        return 0.0, 0.0
+    return float(df["gross"].iloc[0]), float(df["net"].iloc[0] if pd.notna(df["net"].iloc[0]) else 0.0)
+
+
+@st.cache_data(ttl=600)
 def load_cost_by_project(days: int = 30):
     """Todos os projetos cobrados na mesma conta de faturamento -- confere se so adframework/nwd-aat aparecem."""
     client = get_bq_client()
@@ -1490,6 +1509,7 @@ with st.expander(":material/visibility_off: Farol operacional (saude, propostas,
         _pipeline_status = worst_status(_farol_meta["freshness"].tolist()) if not _farol_meta.empty else "sem_dado"
         _pending_count = count_pending_proposals()
         _month_gross, _month_net = load_cost_current_month()
+        _prev_month_gross, _prev_month_net = load_cost_previous_month()
 
     farol1, farol2, farol3 = st.columns(3)
     with farol1:
@@ -1505,8 +1525,17 @@ with st.expander(":material/visibility_off: Farol operacional (saude, propostas,
     with farol3:
         with st.container(border=True):
             st.markdown(f"**Custo do mes -- {date.today().strftime('%m/%Y')}**")
-            st.metric("gross", f"US$ {_month_gross:,.2f}", label_visibility="collapsed")
-            st.caption(f"net US$ {_month_net:,.2f} -- detalhe na aba Custos")
+            _cost_delta = None
+            if _prev_month_gross:
+                _cost_delta = f"{((_month_gross - _prev_month_gross) / _prev_month_gross * 100):+.1f}% vs mes anterior"
+            st.metric(
+                "gross", f"US$ {_month_gross:,.2f}", delta=_cost_delta,
+                delta_color="inverse", label_visibility="collapsed",
+            )
+            st.caption(
+                f"net US$ {_month_net:,.2f} -- mes em andamento (nao comparavel 1:1 com "
+                "mes anterior fechado) -- detalhe na aba Custos"
+            )
 
 st.divider()
 
