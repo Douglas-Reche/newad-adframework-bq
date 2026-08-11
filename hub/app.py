@@ -1561,7 +1561,10 @@ with tab_freshness:
     st.subheader("Camadas do pipeline")
     st.caption("RAW -> STG -> CORE -> MARTS -> SHARE -> GOLD. Cada card resume uma camada; clique para ver o detalhe.")
 
-    summary_cols = st.columns(len(LAYERS))
+    # Larguras relativas -- CORE e GOLD ganham mais peso visual (mais proximas do
+    # cliente final na jornada do dado), resto das camadas fica no padrao (1.0).
+    _LAYER_WEIGHT = {"core": 1.35, "gold": 1.35}
+    summary_cols = st.columns([_LAYER_WEIGHT.get(layer["id"], 1.0) for layer in LAYERS])
     layer_counts = {}
     for col, layer in zip(summary_cols, LAYERS):
         subset = df[df["dataset"] == layer["id"]]
@@ -1611,14 +1614,7 @@ with tab_jobs:
     jobs_cfg = load_yaml("jobs_config.yaml")["jobs"]
     meta = load_table_metadata()
 
-    for job in jobs_cfg:
-        dataset, table = job["table"].split(".")
-        match = meta[(meta["dataset"] == dataset) & (meta["tabela"] == table)]
-        if match.empty:
-            status, last_mod = "tabela_nao_encontrada", None
-        else:
-            status, last_mod = match["freshness"].iloc[0], match["ultima_modificacao"].iloc[0]
-
+    def _render_job_card(job, status, last_mod):
         with st.container(border=True):
             c1, c2, c3, c4 = st.columns([3, 1.5, 2, 1.5])
             with c1:
@@ -1630,6 +1626,31 @@ with tab_jobs:
                 st.write(last_mod.strftime("%d/%m/%Y %H:%M") if pd.notna(last_mod) else "sem dado ainda")
             with c4:
                 status_badge(status)
+
+    # Divulgacao progressiva: por padrao so mostra jobs com problema real
+    # (severidade >= 1, ver STATUS_SEVERITY) -- jobs saudaveis ficam atras de um
+    # expander, reduzindo carga cognitiva pra checagem rapida do dia a dia.
+    problem_jobs, healthy_jobs = [], []
+    for job in jobs_cfg:
+        dataset, table = job["table"].split(".")
+        match = meta[(meta["dataset"] == dataset) & (meta["tabela"] == table)]
+        if match.empty:
+            status, last_mod = "tabela_nao_encontrada", None
+        else:
+            status, last_mod = match["freshness"].iloc[0], match["ultima_modificacao"].iloc[0]
+        entry = (job, status, last_mod)
+        (problem_jobs if STATUS_SEVERITY.get(status, 0) >= 1 else healthy_jobs).append(entry)
+
+    if not problem_jobs:
+        st.success(f"Todos os {len(healthy_jobs)} jobs saudaveis.", icon=":material/check_circle:")
+    else:
+        for job, status, last_mod in problem_jobs:
+            _render_job_card(job, status, last_mod)
+
+    if healthy_jobs:
+        with st.expander(f"Ver historico completo ({len(healthy_jobs)} job(s) saudavel(is))"):
+            for job, status, last_mod in healthy_jobs:
+                _render_job_card(job, status, last_mod)
 
 # ─────────────────────────────────────────────────────────────────────────
 # Aba 3 -- Power BI em construcao: tracker manual
@@ -1940,7 +1961,7 @@ with tab_proposals:
                 with b1:
                     if st.button(
                         "Aprovar", key=f"proposal_approve_{prop['proposal_id']}",
-                        disabled=ambiguous or not confirmed,
+                        disabled=ambiguous or not confirmed, type="primary",
                     ):
                         try:
                             with st.spinner("Inserindo na tabela alvo (writer SA impersonada)..."):
@@ -2573,7 +2594,7 @@ with tab_business_rules:
             and not already_active
         )
 
-        if st.button("Salvar regra", disabled=not can_save, key="new_rule_save"):
+        if st.button("Salvar regra", disabled=not can_save, key="new_rule_save", type="primary"):
             try:
                 with st.spinner("Gravando nova regra (writer SA impersonada, staging)..."):
                     create_business_rule(
