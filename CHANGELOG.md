@@ -8,6 +8,55 @@
 
 ---
 
+## 2026-08-10 — Hub: tema visual com identidade da NewAd (Manual de Marca)
+
+**O que mudou** (commit `fb62817`, deployado em produção — revisão
+`douglas-data-hub-00014-g7g`, 100% do tráfego, conforme reportado pela sessão que fez o
+deploy; não re-verificado via `gcloud run revisions list` nesta passada por falta de
+`gcloud` no ambiente do agente de documentação):
+- `hub/.streamlit/config.toml`: tema trocado de escuro genérico (azul GitHub
+  `#58a6ff`/fundo `#0e1117`) para claro com as cores reais do Manual de Marca da NewAd —
+  `backgroundColor` branco, `textColor` azul-marinho `#0C2443`, `primaryColor` roxo
+  `#6742F4`, `chartCategoricalColors` com roxo/ciano/marinho/rosa (`#6742F4`, `#01D3E2`,
+  `#0C2443`, `#94A3B8`, `#F884B3`).
+- Tipografia Montserrat aplicada via `[[theme.fontFaces]]` nativo do Streamlit (pesos
+  300/500/700, arquivos direto do Google Fonts) — sem injeção de CSS.
+
+**Por quê, em uma frase:** 2ª rodada de pesquisa de design (via Gemini) recomendou cor só
+como ferramenta de comunicação (filosofia "Quiet Chrome"), nunca decoração estrutural — o
+tema anterior era um genérico de dashboard técnico, não refletia a marca.
+
+**Arquivos afetados:** `hub/.streamlit/config.toml`.
+
+**Pendente:** checklist completo de recomendações da 2ª rodada de pesquisa (Bento Grid,
+badges condicionais, layout por aba) ainda não implementado — só o tema base
+(cor/tipografia) foi aplicado nesta sessão. Ver task Notion `3b99d0f6-219e-81bd-8454-cfa2096c897a`
+("🎨 Auditoria de UX/UI e Design do Hub") para o checklist completo por tela.
+
+---
+
+## 2026-08-10 — Hub: upload via link do Google Sheets na aba Ajustes de Dados Históricos
+
+**O que mudou** (commit `c475763`):
+- `hub/app.py`: novo caminho de entrada alternativo ao `file_uploader` local, na aba
+  Ajustes de Dados Históricos — campo de texto para colar link (ou ID) de uma planilha
+  Google Sheets. Lê via `gspread` (credencial ADC, escopos
+  `spreadsheets.readonly`/`drive.readonly`), lista as abas da planilha para o usuário
+  escolher, e retorna sempre valor calculado (nunca fórmula — comportamento padrão da
+  API, sem `value_render_option` customizado). Reaproveita o fluxo de preview/mapeamento
+  já existente para upload de arquivo, sem duplicar lógica.
+- `hub/requirements.txt`: `gspread` adicionado — já era dependência do projeto via
+  `scripts/etl/cora_sheets_sync.py`, mas não estava listada para o hub.
+
+**Por quê, em uma frase:** evita o ciclo manual de exportar a planilha do Sheets para
+Excel antes de subir no hub.
+
+**Arquivos afetados:** `hub/app.py`, `hub/requirements.txt`.
+
+**Registro Notion:** filha de "Desenhar override histórico por cliente".
+
+---
+
 ## 2026-08-10 — Core: `resolve_client_business_rule()` reescrita — fecha desvio do ADR-0001
 
 **O que mudou** (commit `88c09d6`, testado só em `douglas-bq-staging`, nada aplicado em

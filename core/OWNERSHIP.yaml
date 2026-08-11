@@ -39,7 +39,18 @@ objects:
   - name: historical_overrides_delivery
     dataset: core
     owner: pipeline
-    notes: "Override historico Cora, escopo fechado Jan-Jul/2026 -- ver hub/README.md"
+    notes: "Override historico, generico por client_id (fluxo hardcoded so-Cora removido em 2026-08-10, ver docs/known_issues.md S3 resolvido e hub/README.md)"
+  - name: client_business_rules
+    dataset: core
+    owner: pipeline
+    status: "staging_only"
+    notes: "Regra de negocio configuravel por cliente/geral (rule_type extensivel, ex: impression_cap_pct), SCD2 (rule_id por linha/versao, status active/paused). Criada 2026-08-09/10, testada so em douglas-bq-staging -- promocao pra producao bloqueada ate autorizacao explicita do Douglas. Ver core/ddl/client_business_rules.sql e docs/core_layer_design.md."
+  - name: resolve_client_business_rule
+    dataset: core
+    owner: pipeline
+    type: function
+    status: "staging_only"
+    notes: "Resolve client_business_rules por (client_id, rule_type, as_of_date). Reescrita 2026-08-10 (commit 88c09d6) para fechar desvio do ADR-0001 -- ver docs/known_issues.md G9 resolvido. So em douglas-bq-staging."
   - name: change_proposals
     dataset: core
     owner: pipeline

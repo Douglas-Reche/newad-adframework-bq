@@ -66,12 +66,37 @@ view (confirmado via `INFORMATION_SCHEMA.VIEWS` ao vivo nos dois projetos, 2026-
 Ver `docs/technical_dataflow.md` (Diagrama 2) para o desenho completo dessa divergência
 staging×produção.
 
-### `core.client_business_rules` — planejado, não construído
+### `core.client_business_rules` + `resolve_client_business_rule()` — construído, testado só em staging
 
-Não existe em nenhum dos dois projetos (confirmado ao vivo em 2026-08-09). Objetivo
-futuro: permitir que regra de negócio por cliente seja inserida via Hub, em vez de só por
-`INSERT` manual — ver task Notion "Desenhar core.client_business_rules" (`Status:
-Waiting`). Citado aqui só para não ser confundido com objeto real ao ler este doc.
+✅ construído em 2026-08-09/10 (banner anterior — "planejado, não construído" — obsoleto,
+corrigido em 2026-08-10). Regra de negócio configurável por cliente (`client_id`
+preenchido) ou geral (`client_id NULL`), mesmo padrão SCD2 de `dict_format`/
+`advertiser_platform_rules`, com duas colunas extras: `rule_id` (chave própria por
+LINHA/VERSÃO, `DEFAULT GENERATE_UUID()`) e `status` (`active`/`paused`, metadado de
+histórico — diferencia pausa deliberada de substituição natural por versão nova; não usado
+por `resolve_client_business_rule`). Primeiro `rule_type` real: `impression_cap_pct` (teto
+de 20% de impressão diária Native/Push, confirmado por Rafael). DDL completo com
+procedimento de INSERT/pausa/substituição: `core/ddl/client_business_rules.sql`.
+
+`core.resolve_client_business_rule(p_client_id, p_rule_type, p_as_of_date)` foi reescrita
+em 2026-08-10 (commit `88c09d6`) para fechar um desvio do ADR-0001 — `gold.fact_pacing`
+reimplementava a resolução inline em vez de chamar a função, porque a implementação
+original usava `ARRAY_AGG(...ORDER BY...LIMIT...)`, que nunca decorrelaciona numa SQL UDF
+chamada de forma correlacionada em BigQuery (achado confirmado por teste isolado, não
+documentado antes — só agregação simples tipo `MIN`/`MAX`/`ANY_VALUE` sem `ORDER BY`/
+`LIMIT` decorrelaciona). A função agora usa um único `MAX()` sobre uma STRING codificada
+(1 dígito de especificidade + 8 dígitos de data `AAAAMMDD` + `rule_params` serializado via
+`TO_JSON_STRING`) — `MAX()` escolhe a linha certa por ordenação lexicográfica,
+`SUBSTR`+`PARSE_JSON` reconstitui o payload. `gold/ddl/fact_pacing.sql` chama a função
+diretamente, mesmo padrão das outras 3 `resolve_*`. Ver `docs/known_issues.md` (G9,
+resolvido) e `docs/gold_layer_design.md` (seção `fact_pacing`) para o detalhe da
+investigação.
+
+✅ validado em 2026-08-10, só em `douglas-bq-staging` — chamada isolada + 8 cenários de
+vigência/prioridade/pausa/fronteira de data + caso real
+(`banco_cora_fe13d78a`/Native/2026-01-12). 🟡 **nada aplicado em produção ainda** —
+promoção bloqueada até autorização explícita do Douglas (guarda-corpo registrado na MÃE de
+Regras de Negócio no Notion).
 
 ---
 

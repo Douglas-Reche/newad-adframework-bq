@@ -1,9 +1,9 @@
 # STG Layer Design — AdFramework
 
-> **Manutenção:** Tier 1 (inventário de tabelas/schema — regenerar contra `INFORMATION_SCHEMA` quando desconfiar de desatualização) + Tier 2 (seção de racional/design — gatilho: nova tabela STG ou mudança de regra de resolução). Nota: o banner de status abaixo ("🟡 PLANO") está desatualizado em relação ao corpo (já validado) — não corrigido nesta tarefa por não ser o escopo pedido, mas fica sinalizado para quando este doc for tocado de novo.
+> **Manutenção:** Tier 1 (inventário de tabelas/schema — regenerar contra `INFORMATION_SCHEMA` quando desconfiar de desatualização) + Tier 2 (seção de racional/design — gatilho: nova tabela STG ou mudança de regra de resolução).
 
-> Criado: 2026-06-24
-> Status: 🟡 PLANO — aguardando validação antes de implementar
+> Criado: 2026-06-24 · Banner de status corrigido 2026-08-10 (doc tocado por outro motivo — nova seção `fact_pacing_base` — e o banner "🟡 PLANO" divergia do corpo há muito tempo)
+> Status: ✅ VALIDADO — T1-T7 MS+MGID e T1-T4 Siprocal criados e testados contra dado real em produção (2026-06-24); seção "Cross-plataforma" (`fact_pacing_base`) adicionada 2026-08-10, staging only
 > Pré-requisito: `raw_layer_design.md` (RAW layer 100% validada em produção)
 
 ---
@@ -274,6 +274,39 @@ Toda a normalização que a RAW propositalmente não fez (RAW = dump literal, de
 **Sem `client_id` aqui** — quem precisar junta com `stg.sp_clients` pelo `client_name`.
 
 ⚠️ **Pendências já registradas na RAW:** 193/1121 linhas com `coluna_1 = "(vazio)"` (sem PI), 2 valores não-numéricos (`"CS - 012"`, `"NW0825"`) — investigar se afeta `client_name`/atribuição antes de fechar.
+
+---
+
+## Cross-plataforma (regras de negócio / pacing)
+
+### `stg.fact_pacing_base` ← `gold.fact_io_plan` + `gold.fact_delivery` ✅ criada 2026-08-10 (parcial)
+
+Materialização física (TABLE, não VIEW) do cruzamento planejado×realizado que antes vivia
+como CTE inline (`pacing_base`, FULL OUTER JOIN) dentro de `gold/ddl/fact_pacing.sql`.
+Grain: `client_id` + `day` + `formato` + `platform`.
+
+| Campo | Tipo | Origem/lógica |
+|---|---|---|
+| client_id, day, formato, platform | STRING/DATE | chave de grain |
+| planned_spend_daily, planned_impressions_daily, planned_clicks_daily, unit_price, goal_type | NUMERIC/FLOAT64/STRING | `gold.fact_io_plan`, agregado por dia antes do JOIN (CTE `io_agg`, evita duplicação quando o mesmo dia tem 2 `unit_price`/`goal_type`) |
+| realized_impressions, realized_clicks, realized_conversions, investimento_realizado | FLOAT64 | `gold.fact_delivery` |
+
+Não inclui as colunas `business_rule_*` — essas continuam calculadas dentro da própria
+`gold.fact_pacing`, a partir de `core.client_business_rules`; `fact_pacing_base` é só
+"planejado × realizado", sem regra de negócio aplicada.
+
+Motivo de ser TABLE e não VIEW: quebrar a cadeia de `UNION ALL`/`FULL OUTER JOIN` que
+impedia `gold.fact_pacing` chamar `core.resolve_client_business_rule()` diretamente
+(correlated subquery não decorrelacionável em BigQuery) — ver `docs/core_layer_design.md`
+(seção `client_business_rules`) e `docs/known_issues.md` (G9, resolvido) para o desvio do
+ADR-0001 que motivou isso.
+
+Populada via `stg/ddl/fact_pacing_base_refresh.sql` (`CREATE OR REPLACE TABLE ... AS
+SELECT`, aplicável por `apply_ddl.py`). 🟡 **refresh manual sob demanda** — agendamento
+automático (Cloud Scheduler ou equivalente) fica fora de escopo, pendência registrada.
+Schema garantido só em `stg/ddl/fact_pacing_base.sql` — nunca popula/sobrescreve dado.
+
+✅ validado em 2026-08-10, só em `douglas-bq-staging`.
 
 ---
 
