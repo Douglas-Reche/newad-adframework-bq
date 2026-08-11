@@ -599,7 +599,7 @@ def load_client_options() -> pd.DataFrame:
     return client.query(query).to_dataframe()
 
 
-def stage_raw_historical_upload(raw_df: pd.DataFrame, client_id: str, source_filename: str) -> dict:
+def stage_raw_historical_upload(raw_df: pd.DataFrame, client_id: str, source_filename: str, notes: str = "") -> dict:
     """Landing RAW literal em douglas-bq-staging.raw -- contrato confirmado com o
     backend (repassado pelo orquestrador, 2026-08-06, ver docs/known_issues.md
     item S4): duas tabelas, `historical_uploads` (uma linha por linha do
@@ -629,6 +629,7 @@ def stage_raw_historical_upload(raw_df: pd.DataFrame, client_id: str, source_fil
         "row_count": len(raw_df),
         "uploaded_at": uploaded_at,
         "uploaded_by": uploaded_by,
+        "notes": notes.strip() if notes else None,
     }])
     def _row_to_json(row: pd.Series) -> str:
         # NaN (celula vazia) nao serializa em JSON valido -- vira None/null,
@@ -741,12 +742,32 @@ def load_historical_uploads_for_client(client_id: str) -> pd.DataFrame:
         query_parameters=[bigquery.ScalarQueryParameter("client_id", "STRING", client_id)]
     )
     query = f"""
-    SELECT upload_id, source_filename, row_count, uploaded_at
+    SELECT upload_id, source_filename, row_count, uploaded_at, notes
     FROM `{RAW_UPLOADS_META_TABLE}`
     WHERE client_id = @client_id
     ORDER BY uploaded_at DESC
     """
     return client.query(query, job_config=job_config).to_dataframe()
+
+
+def delete_historical_upload(upload_id: str) -> None:
+    """DELETE PROVISORIO de um upload inteiro (historical_uploads +
+    historical_uploads_meta) -- pedido explicito do Douglas durante o teste ao
+    vivo, ambiente de staging: precisava poder limpar upload de teste/engano
+    sem esperar o processo formal de expurgo. Foge do principio 'raw so
+    INSERT, nunca DELETE' documentado no cabecalho deste arquivo -- por isso
+    fica marcado como provisorio na UI (aviso explicito), nao um botao
+    permanente do fluxo formal. Escreve com a writer SA impersonada, staging."""
+    client = get_staging_writer_bq_client()
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ScalarQueryParameter("upload_id", "STRING", upload_id)]
+    )
+    client.query(
+        f"DELETE FROM `{RAW_UPLOADS_TABLE}` WHERE upload_id = @upload_id", job_config=job_config,
+    ).result()
+    client.query(
+        f"DELETE FROM `{RAW_UPLOADS_META_TABLE}` WHERE upload_id = @upload_id", job_config=job_config,
+    ).result()
 
 
 def load_full_landed_historical_upload(upload_id: str) -> pd.DataFrame:
@@ -2135,6 +2156,16 @@ with tab_overrides:
                 st.caption("Amostra (10 primeiras linhas):")
                 st.dataframe(landing_raw_df.head(10), use_container_width=True, hide_index=True)
 
+                landing_notes = st.text_area(
+                    "Comentario / contexto (opcional)",
+                    key="landing_notes",
+                    placeholder=(
+                        "Ex: planilha cobre Jan-Ago, mas so usar ate Jul (ago em diante "
+                        "vem da plataforma real); formato mudou a partir de Mar; coluna X "
+                        "esta em outra unidade..."
+                    ),
+                    help="Fica salvo junto com o upload -- ajuda a lembrar contexto na hora de normalizar depois.",
+                )
                 landing_confirm = st.checkbox(
                     f"Confirmo que este arquivo e o historico cru de "
                     f"**{landing_client_row['name']}** (`{landing_client_id}`) e deve subir "
@@ -2147,7 +2178,9 @@ with tab_overrides:
                     disabled=not landing_confirm,
                 ):
                     with st.spinner("Escrevendo (writer SA impersonada)..."):
-                        result = stage_raw_historical_upload(landing_raw_df, landing_client_id, landing_source_name)
+                        result = stage_raw_historical_upload(
+                            landing_raw_df, landing_client_id, landing_source_name, landing_notes,
+                        )
                     if result["staged"]:
                         st.success(
                             f"Landing gravado em `{result['would_be_table']}` "
@@ -2232,9 +2265,36 @@ with tab_overrides:
             compare_upload_display = st.selectbox(
                 "Upload", uploads_for_client["display"].tolist(), key="compare_upload_select"
             )
-            compare_upload_id = uploads_for_client[
+            compare_upload_row = uploads_for_client[
                 uploads_for_client["display"] == compare_upload_display
-            ].iloc[0]["upload_id"]
+            ].iloc[0]
+            compare_upload_id = compare_upload_row["upload_id"]
+            if compare_upload_row.get("notes"):
+                st.caption(f":material/sticky_note_2: {compare_upload_row['notes']}")
+
+            with st.expander(":material/science: Deletar este upload (provisorio -- staging)"):
+                st.warning(
+                    ":material/warning: Apaga o upload por completo (raw + meta) -- foge do "
+                    "principio 'RAW so INSERT' de proposito, so pra limpar teste/engano em "
+                    "staging. Nao existe em producao.",
+                    icon=":material/warning:",
+                )
+                del_upload_confirm = st.checkbox(
+                    "Confirmo que quero deletar este upload definitivamente",
+                    key=f"del_upload_confirm_{compare_upload_id}",
+                )
+                if st.button(
+                    "Deletar upload", key=f"del_upload_btn_{compare_upload_id}",
+                    disabled=not del_upload_confirm,
+                ):
+                    try:
+                        with st.spinner("Deletando..."):
+                            delete_historical_upload(compare_upload_id)
+                        st.success("Upload deletado.")
+                        load_historical_uploads_for_client.clear()
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Erro ao deletar: {exc}")
 
             with st.spinner("Lendo planilha pousada e inferindo periodo..."):
                 _, landing_sample_df = load_landed_historical_upload(compare_upload_id)
