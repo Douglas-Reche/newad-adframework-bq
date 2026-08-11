@@ -1,10 +1,30 @@
 [theme]
-base = "dark"
-primaryColor = "#58a6ff"
-backgroundColor = "#0e1117"
-secondaryBackgroundColor = "#161b22"
-textColor = "#c9d1d9"
-font = "sans serif"
+base = "light"
+primaryColor = "#6742F4"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F4F6FA"
+textColor = "#0C2443"
+font = "Montserrat"
+borderColor = "#E2E8F0"
+chartCategoricalColors = ["#6742F4", "#01D3E2", "#0C2443", "#94A3B8", "#F884B3"]
+
+[[theme.fontFaces]]
+family = "Montserrat"
+url = "https://fonts.gstatic.com/s/montserrat/v31/JTUHjIg1_i6t8kCHKm4532VJOt5-QNFgpCs16Ew-.ttf"
+weight = "300"
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Montserrat"
+url = "https://fonts.gstatic.com/s/montserrat/v31/JTUHjIg1_i6t8kCHKm4532VJOt5-QNFgpCtZ6Ew-.ttf"
+weight = "500"
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Montserrat"
+url = "https://fonts.gstatic.com/s/montserrat/v31/JTUHjIg1_i6t8kCHKm4532VJOt5-QNFgpCuM70w-.ttf"
+weight = "700"
+style = "normal"
 
 [browser]
 gatherUsageStats = false
