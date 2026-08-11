@@ -8,6 +8,44 @@
 
 ---
 
+## 2026-08-10 — Gold: materializa `stg.fact_pacing_base` (parcial — desvio do ADR-0001 continua)
+
+**O que mudou** (commit `f50ec8a`, testado só em `douglas-bq-staging`, nada aplicado em
+produção):
+- `stg/ddl/fact_pacing_base.sql` (novo) + `stg/ddl/fact_pacing_base_refresh.sql` (novo):
+  materializa como tabela física o cruzamento planejado×realizado que antes era CTE inline
+  (`FULL OUTER JOIN` + `io_agg`) dentro de `gold/ddl/fact_pacing.sql`. Refresh via
+  `CREATE OR REPLACE TABLE ... AS SELECT`, aplicável por `apply_ddl.py`; agendamento
+  automático fica fora de escopo (refresh manual sob demanda).
+- `gold/ddl/fact_pacing.sql`: `pacing_base` agora lê de `stg.fact_pacing_base` (`SELECT`
+  simples) em vez de recalcular o `JOIN` a cada leitura — mais barato de reprocessar.
+- `stg/ddl/historical_overrides_delivery.sql`: 4 colunas novas (`planned_impressions_daily`,
+  `planned_clicks_daily`, `planned_spend_daily`, `unit_price`), alinhando o schema do
+  override histórico ao de `stg.fact_pacing_base` (decisão do Douglas).
+
+**Por quê, em uma frase:** tentativa de resolver o desvio do ADR-0001 (`fact_pacing`
+reimplementando `resolve_client_business_rule()` inline em vez de chamar a função) — a
+hipótese era que a cadeia de `UNION`/`FULL OUTER JOIN` a montante impedia a decorrelação.
+
+**Achado — objetivo principal NÃO alcançado:** materializar a tabela física não resolveu a
+chamada direta da função. Causa raiz real, confirmada isolando com `TEMP FUNCTION`s de
+teste: dentro de `core/ddl/resolve_client_business_rule.sql`, o `ARRAY_AGG(...ORDER BY CASE
+WHEN client_id = p_client_id...)` referencia o **parâmetro correlacionado da função dentro
+do `ORDER BY`** — não o `UNION`/`JOIN` a montante como se pensava. O workaround (JOIN +
+`ARRAY_AGG` inline em `fact_pacing.sql`) continua em uso. Ver `docs/known_issues.md` (G9) e
+`docs/gold_layer_design.md` (seção `fact_pacing`) para o detalhe completo. Próximo passo
+(reescrever a função sem referenciar o parâmetro correlacionado no `ORDER BY`) fica como
+decisão pendente do Douglas.
+
+**Arquivos afetados:** `gold/ddl/fact_pacing.sql`, `stg/ddl/fact_pacing_base.sql`,
+`stg/ddl/fact_pacing_base_refresh.sql`, `stg/ddl/historical_overrides_delivery.sql`.
+
+**Registro Notion:** sub-task 6 "Materializar base de fact_pacing na STG" —
+`Status: In progress` (parcial, não `Done`; ganho real de simplificação da view entregue,
+objetivo principal de destravar a chamada direta da função não alcançado).
+
+---
+
 ## 2026-08-10 — Hub: UI de editar/deletar regra conectada + Comparação Planilha vs. Dado Real ampliada
 
 **O que mudou:** dois itens pendentes do checkpoint anterior (ver entrada seguinte,

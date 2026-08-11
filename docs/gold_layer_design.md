@@ -206,25 +206,67 @@ Grain: `client_id + report_date + formato + platform`. `stg.io_plan` expandido p
 Status: ✅ validado em 2026-08-08 (schema real).
 
 ### `fact_pacing`
-Grain: `client_id + day + formato + platform`. `fact_io_plan FULL OUTER JOIN fact_delivery`, com `investimento_realizado` calculado.
+Grain: `client_id + day + formato + platform`. Até 2026-08-10, o cruzamento planejado×realizado
+era uma CTE inline (`FULL OUTER JOIN fact_io_plan × fact_delivery`) dentro desta própria view.
+Desde `f50ec8a` (2026-08-10), essa CTE foi materializada como tabela física —
+`stg.fact_pacing_base` (schema em `stg/ddl/fact_pacing_base.sql`, populada por
+`stg/ddl/fact_pacing_base_refresh.sql` via `CREATE OR REPLACE TABLE ... AS SELECT`, refresh
+manual sob demanda, sem agendamento automático) — e `fact_pacing` passou a ler dela com um
+`SELECT` simples. Ganho: mais barato de reprocessar, sem recalcular o `FULL OUTER JOIN`/CTE
+`io_agg` a cada leitura. `stg.fact_pacing_base` não tem doc próprio no dicionário de STG por
+platform (não é derivada de uma única plataforma como as demais tabelas de `stg_layer_design.md`
+— cruza duas fontes já da GOLD) — documentada aqui, junto do objeto GOLD que ela serve.
 
 | Campo | Tipo | Origem/lógica |
 |---|---|---|
-| client_id | STRING | `fact_io_plan`/`fact_delivery` |
-| day | DATE | `fact_io_plan.report_date` / `fact_delivery.day` |
-| formato | STRING | `fact_io_plan`/`fact_delivery` |
-| platform | STRING | `fact_io_plan`/`fact_delivery` |
-| planned_spend_daily | NUMERIC | `fact_io_plan` |
-| planned_impressions_daily | FLOAT64 | `fact_io_plan` |
-| planned_clicks_daily | FLOAT64 | `fact_io_plan` |
-| unit_price | NUMERIC | `fact_io_plan` |
-| goal_type | STRING | `fact_io_plan` |
-| realized_impressions | FLOAT64 | `fact_delivery.impressions` |
-| realized_clicks | FLOAT64 | `fact_delivery.clicks` |
-| realized_conversions | FLOAT64 | `fact_delivery.conversions` |
-| investimento_realizado | FLOAT64 | calculado: `CPM` → `(realized_impressions × unit_price) / 1000`; `CPC` → `(realized_clicks × unit_price) / 1000` — ver "Princípio financeiro fundamental" acima |
+| client_id | STRING | `stg.fact_pacing_base` |
+| day | DATE | `stg.fact_pacing_base` |
+| formato | STRING | `stg.fact_pacing_base` |
+| platform | STRING | `stg.fact_pacing_base` |
+| planned_spend_daily | NUMERIC | `stg.fact_pacing_base` (originado de `fact_io_plan`) |
+| planned_impressions_daily | FLOAT64 | `stg.fact_pacing_base` |
+| planned_clicks_daily | FLOAT64 | `stg.fact_pacing_base` |
+| unit_price | NUMERIC | `stg.fact_pacing_base` |
+| goal_type | STRING | `stg.fact_pacing_base` |
+| realized_impressions | FLOAT64 | `stg.fact_pacing_base` (originado de `fact_delivery.impressions`) |
+| realized_clicks | FLOAT64 | `stg.fact_pacing_base` (originado de `fact_delivery.clicks`) |
+| realized_conversions | FLOAT64 | `stg.fact_pacing_base` (originado de `fact_delivery.conversions`) |
+| investimento_realizado | FLOAT64 | calculado em `stg.fact_pacing_base`: `CPM` → `(realized_impressions × unit_price) / 1000`; `CPC` → `(realized_clicks × unit_price) / 1000` — ver "Princípio financeiro fundamental" acima |
+| business_rule_base_field | STRING | nome do campo usado como base do teto de regra de negócio (ex: `realized_impressions`), `NULL` se nenhuma regra `impression_cap_pct` vigente pra esse client_id+dia+formato — ver bloco abaixo |
+| business_rule_reference_field | STRING | nome do campo usado como referência do teto (ex: `planned_impressions_daily`) |
+| business_rule_threshold_pct | FLOAT64 | percentual do teto configurado na regra (`client_business_rules.rule_params.threshold_pct`) |
+| business_rule_base_value | FLOAT64 | valor real do campo-base nesta linha |
+| business_rule_reference_value | FLOAT64 | valor real do campo-referência nesta linha |
+| business_rule_cap_value | FLOAT64 | `reference_value × (1 + threshold_pct/100)` |
+| business_rule_capped_value | FLOAT64 | `MIN(base_value, cap_value)` quando há referência; `base_value` sem teto quando não há |
+| business_rule_excess | FLOAT64 | `MAX(base_value − capped_value, 0)` |
 
-Status: ✅ validado em 2026-08-08 (schema real).
+**Regra de negócio configurável por cliente (`impression_cap_pct`)** — adicionada
+2026-08-09/10 (Rafael via Douglas, task Notion "Regras de Negócio Configuráveis por Cliente —
+Cap 20% Impressões (Native/Push)"). As colunas `business_rule_*` **nunca sobrescrevem** as
+colunas de dado bruto acima (`realized_impressions` etc. sempre mostram o valor real) — são
+colunas adicionais, `NULL` quando não há regra vigente ou o `formato` da linha não está em
+`rule_params.strategies`. Fonte da regra: `core.client_business_rules` (SCD2,
+`effective_from`/`effective_to`, prioridade client_id específico > regra geral).
+
+**Desvio deliberado do ADR-0001, causa raiz confirmada 2026-08-10** — diferente das outras
+tabelas de regra (`dict_format`, `campaign_format_map`, `advertiser_platform_rules`, que usam
+as funções `core.resolve_*` centralizadas, ver `docs/adr/0001-*.md`), `fact_pacing` **não**
+chama `core.resolve_client_business_rule()` diretamente — reimplementa a mesma lógica inline
+via `rule_candidates`/`rule_resolved` (JOIN real + `ARRAY_AGG`). Motivo: a chamada direta
+lança `"Correlated subqueries that reference other tables are not supported unless they can
+be de-correlated"`. A hipótese inicial (cadeia de `UNION ALL`/`FULL OUTER JOIN` a montante)
+foi descartada — o erro reproduz mesmo lendo `stg.fact_pacing_base` puro, sem JOIN algum.
+Causa raiz real, isolada com `TEMP FUNCTION`s de teste: dentro de
+`core/ddl/resolve_client_business_rule.sql`, o `ARRAY_AGG(... ORDER BY CASE WHEN client_id =
+p_client_id THEN 0 ELSE 1 END ...)` referencia o **parâmetro correlacionado da função dentro
+do `ORDER BY`** — é isso, não o `UNION`/`JOIN`, que o BigQuery recusa decorrelacionar. Corrigir
+exigiria reescrever a função (ex: 2 chamadas separadas — override do cliente e regra geral —
+com `COALESCE`, cada uma com agregação simples) — não feito ainda, decisão de priorização
+pendente do Douglas. Ver cabeçalho de `gold/ddl/fact_pacing.sql` para o achado completo.
+
+Status: ✅ validado em 2026-08-08 (schema base). 🟡 `business_rule_*` e `stg.fact_pacing_base`
+testados só em `douglas-bq-staging` (commit `f50ec8a`, 2026-08-10) — nada aplicado em produção.
 
 ### `vw_fact_delivery_reporting` — não coberta na versão anterior deste doc
 Grain: igual `fact_delivery` (`client_id + day + platform + formato`). **View de apresentação** que substitui, por override, os dias de `banco_cora_fe13d78a` anteriores a `2026-07-01` pelo valor de `core.historical_overrides_delivery` — mecanismo genérico de override histórico por cliente (ver `core/ddl/historical_overrides_delivery.sql`, `core/ddl/resolve_reporting_source.sql`, commit `98b8f50`). Fora do intervalo/cliente do override, é um passthrough puro de `fact_delivery`.

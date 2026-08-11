@@ -32,6 +32,7 @@ flowchart LR
     SP --> BQ
     BQ --> HUB
     BQ --> PBI
+    HUB -.->|"regras de negócio\n+ ajustes históricos"| BQ
 ```
 
 **Como ler:** cada plataforma de mídia entrega seus dados de campanha e entrega
@@ -39,6 +40,16 @@ publicitária para o pipeline central no BigQuery, que consolida e organiza tudo
 único lugar. A partir daí, o dado alimenta dois canais: o Hub de Operação (painel interno
 usado por Douglas para monitorar o pipeline) e o Power BI (dashboards de resultado
 usados com os clientes).
+
+> **Componente novo (2026-08-10): o Hub também alimenta o pipeline de volta, não só
+> consome.** Duas capacidades novas tornam o Hub um canal de entrada além de saída: (1)
+> regras de negócio configuráveis por cliente (ex: teto de 20% sobre impressões
+> Native/Push) — cadastradas no Hub, aplicadas automaticamente no BigQuery a partir daí;
+> (2) upload manual de planilha histórica de cliente, quando o dado real da plataforma
+> não pode ser reportado (ex: período anterior à integração) — o Hub recebe o arquivo, o
+> BigQuery normaliza e passa a usá-lo no lugar do dado ausente. Ambas ainda só rodam em
+> ambiente de teste (`douglas-bq-staging`), não em produção — detalhe técnico completo
+> (mecanismo, tabelas, divergência staging×produção) em `docs/technical_dataflow.md`.
 
 > **Nota lateral:** o pipeline roda em dois ambientes — `adframework` (produção, os dados
 > reais que alimentam Hub e Power BI) e `douglas-bq-staging` (ambiente de teste, usado
