@@ -1723,39 +1723,59 @@ with tab_costs:
             "(instancia sempre ligada mesmo sem trafego) -- normalmente o maior gasto oculto de Cloud Run.",
             icon=":material/warning:",
         )
-        st.dataframe(min_instance_df.round(2), use_container_width=True, hide_index=True)
+        st.dataframe(
+            min_instance_df, use_container_width=True, hide_index=True,
+            column_config={
+                "service": st.column_config.TextColumn("Servico"),
+                "sku": st.column_config.TextColumn("SKU"),
+                "cost_30d": st.column_config.NumberColumn("Custo (30d)", format="dollar"),
+            },
+        )
     else:
         st.badge("nenhum min-instance gerando custo detectado", icon=":material/check_circle:", color="green")
 
     st.divider()
 
+    # Formatacao monetaria consistente em todas as tabelas de custo desta aba --
+    # numeros tabulares (fonte Montserrat via tema) + prefixo de moeda, em vez de
+    # round(2) cru sem alinhamento. Reaproveitada nas 3 tabelas gross_30d/net_30d.
+    _COST_COLUMN_CONFIG = {
+        "gross_30d": st.column_config.NumberColumn("Gross (30d)", format="dollar"),
+        "net_30d": st.column_config.NumberColumn("Net (30d)", format="dollar"),
+    }
+
     col_run, col_svc = st.columns(2)
     with col_run:
         st.markdown("**Cloud Run por servico -- de quem e**")
         if not cloud_run_df.empty:
-            display = cloud_run_df.copy()
-            display["gross_30d"] = display["gross_30d"].round(2)
-            display["net_30d"] = display["net_30d"].round(2)
-            st.dataframe(display[["service", "owner", "gross_30d", "net_30d"]], use_container_width=True, hide_index=True)
+            st.dataframe(
+                cloud_run_df[["service", "owner", "gross_30d", "net_30d"]],
+                use_container_width=True, hide_index=True,
+                column_config={
+                    "service": st.column_config.TextColumn("Servico"),
+                    "owner": st.column_config.TextColumn("Responsavel"),
+                    **_COST_COLUMN_CONFIG,
+                },
+            )
         else:
             st.info("Sem dados de Cloud Run no periodo.")
     with col_svc:
         st.markdown("**Custo total por servico GCP**")
         if not service_df.empty:
-            display = service_df.copy()
-            display["gross_30d"] = display["gross_30d"].round(2)
-            display["net_30d"] = display["net_30d"].round(2)
-            st.dataframe(display, use_container_width=True, hide_index=True)
+            st.dataframe(
+                service_df, use_container_width=True, hide_index=True,
+                column_config={"service": st.column_config.TextColumn("Servico"), **_COST_COLUMN_CONFIG},
+            )
         else:
             st.info("Sem dados de custo por servico no periodo.")
 
     st.markdown("**Projetos cobrados nessa conta de faturamento**")
     st.caption("Sanidade: confirma que so `adframework` (e eventualmente `nwd-aat`) aparecem aqui -- se surgir outro projeto, vale investigar.")
     if not project_df.empty:
-        display = project_df.copy()
-        display["gross_30d"] = display["gross_30d"].round(2)
-        display["net_30d"] = display["net_30d"].round(2)
-        st.dataframe(display, use_container_width=True, hide_index=True)
+        st.dataframe(
+            project_df, use_container_width=True, hide_index=True,
+            column_config={"project_id": st.column_config.TextColumn("Projeto"), **_COST_COLUMN_CONFIG},
+        )
 
     st.divider()
     st.subheader("BigQuery -- a parte que voce controla direto")
@@ -1783,8 +1803,17 @@ with tab_costs:
 
     st.markdown("**Volume de queries por usuario/service account**")
     if not jobs_df.empty:
-        display = jobs_df.copy()
-        st.dataframe(display[["user", "owner", "n_queries", "tb_processed", "tb_billed"]], use_container_width=True, hide_index=True)
+        st.dataframe(
+            jobs_df[["user", "owner", "n_queries", "tb_processed", "tb_billed"]],
+            use_container_width=True, hide_index=True,
+            column_config={
+                "user": st.column_config.TextColumn("Usuario"),
+                "owner": st.column_config.TextColumn("Responsavel"),
+                "n_queries": st.column_config.NumberColumn("Queries", format="%d"),
+                "tb_processed": st.column_config.NumberColumn("TB processados", format="%.4f"),
+                "tb_billed": st.column_config.NumberColumn("TB cobrados", format="%.4f"),
+            },
+        )
     else:
         st.info("Nenhuma query registrada nos ultimos 30 dias.")
 
