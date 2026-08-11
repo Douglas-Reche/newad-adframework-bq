@@ -17,15 +17,22 @@ Tema visual (2026-08-10): cores e tipografia do Manual de Marca da NewAd
 `[[theme.fontFaces]]` nativo do Streamlit, sem CSS injetado).
 
 Checklist de UX/UI (task Notion "Auditoria de UX/UI e Design do Hub",
-`3b99d0f6-219e-81bd-8454-cfa2096c897a`) -- feito **no repositorio** em 2026-08-11
-(commits `c0ceb02`/`e904535`, **deploy pendente**, ver aviso no topo de
-`docs/known_issues.md` -- secao "Aberto -- Hub / Deploy"):
+`3b99d0f6-219e-81bd-8454-cfa2096c897a`) -- **ao vivo em producao** desde 2026-08-11
+(commits `c0ceb02`/`e904535`, revisao `douglas-data-hub-00016-fj8`, 100% do trafego;
+bloqueio de deploy por `gcloud auth` expirada resolvido na mesma sessao, ver
+`docs/known_issues.md` secao "Resolvidos em 2026-08-11"):
 - Farol: comparacao de custo do mes vs. mes anterior fechado (delta no `st.metric`).
 - Visao Geral BQ: cards de camada com largura relativa -- CORE/GOLD 35% mais largos.
 - Status dos Jobs: divulgacao progressiva -- so jobs com problema aparecem por padrao,
   saudaveis atras de um expander.
 - Botoes "Salvar regra"/"Aprovar" com `type="primary"` (roxo da marca); demais acoes
   seguem estilo padrao, deliberadamente.
+
+Facelift de tabelas via `st.column_config` (2026-08-11, tambem ao vivo na mesma revisao):
+aba Custos (`ff730c4`) -- `NumberColumn(format="dollar")` nas 4 tabelas de custo (min-instance,
+Cloud Run por servico, custo por servico GCP, projetos cobrados) + formatacao numerica
+dedicada em volume de queries, rotulos traduzidos; Navegador de Tabelas (`978d34f`) --
+rotulos em portugues e larguras ajustadas na tabela de schema (coluna/tipo/modo/descricao).
 
 Ainda pendente do checklist original: badges condicionais do Farol alem do custo,
 contorno de celula em Ajustes Historicos, Simulador de Impacto nao dividir tela.
@@ -75,6 +82,16 @@ chave JSON) -- nenhuma outra aba/funcao do app tem acesso a essa credencial:
   da aba (escopo `core`, sem binding de IAM novo). `core.client_reporting_source_config`
   segue existindo **só em `douglas-bq-staging`** — nunca promovida pra produção (ver
   `docs/core_layer_design.md`, seção `client_reporting_source_config`).
+  4) **Comentário por upload** (2026-08-11, commit `bceb9ee`, pedido do Douglas durante
+  teste ao vivo): campo opcional "Comentário / contexto" no upload, gravado em
+  `raw.historical_uploads_meta.notes` (coluna nova, nullable, `douglas-bq-staging`, ver
+  `raw/ddl/historical_uploads_meta.sql`) — mostrado como caption ao escolher o upload na
+  seção Comparação. 5) **Deletar upload** (mesmo commit, **provisório, só staging**):
+  apaga `raw.historical_uploads` + `raw.historical_uploads_meta` de um `upload_id`
+  inteiro via `DELETE`, fora de propósito do princípio "RAW só INSERT" — serve só pra
+  limpar upload de teste/engano sem esperar o expurgo formal, avisado como tal na UI.
+  Usa a mesma writer SA (reaproveita o `dataEditor` no dataset `raw` já concedido pra
+  Propostas de Mudança, sem binding de IAM novo).
 - **Propostas de Mudanca** -- fila generica sobre `core.change_proposals` (populada hoje
   pela reconciliacao incremental da Siprocal, `source='siprocal_diff'`). Aprovar sempre gera
   um **INSERT** (nunca UPDATE/DELETE) na tabela alvo indicada pela proposta (hoje sempre

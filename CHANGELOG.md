@@ -8,15 +8,98 @@
 
 ---
 
+## 2026-08-11 — Hub: comentário por upload + delete provisório (staging)
+
+**O que mudou** (commit `bceb9ee`, deployado — ver entrada de deploy acima):
+- Aba Ajustes de Dados Históricos, upload de planilha: campo novo "Comentário / contexto
+  (opcional)", gravado em `raw.historical_uploads_meta.notes` (coluna nova, nullable,
+  `douglas-bq-staging`, ver `raw/ddl/historical_uploads_meta.sql`). Mostrado como caption
+  ao selecionar o upload na seção Comparação.
+- Botão "Deletar upload" (provisório, só staging) — apaga `raw.historical_uploads` +
+  `raw.historical_uploads_meta` de um `upload_id` inteiro. Foge de propósito do princípio
+  "RAW só INSERT" documentado no cabeçalho do arquivo de DDL — só para limpar upload de
+  teste/engano sem esperar o processo formal de expurgo; avisado como provisório na UI.
+- Confirmado sem precisar de mudança de código: múltiplos uploads por `client_id` já
+  funcionavam (cada upload gera `upload_id` novo, seletor dropdown já existia).
+
+**Por quê, em uma frase:** pedido do Douglas durante teste ao vivo do fluxo de override
+histórico — precisava anotar contexto da planilha (ex: "só tem Jan-Jun, formato mudou a
+partir de Mar") e corrigir upload enganado sem esperar expurgo formal.
+
+**Arquivos afetados:** `hub/app.py`, `raw/ddl/historical_uploads_meta.sql`.
+
+**Pendência aberta (sem resposta ainda):** Douglas perguntou se o "US$" mostrado na aba
+Custos reflete a moeda real de faturamento da conta GCP ou é só prefixo fixo. Confirmado
+que é hardcoded (`f"US$ {...}"` em `hub/app.py`, sem campo `currency` verificado contra
+`finops_billing`) — falta confirmar no Console GCP (Billing → Configurações → Moeda) ou
+via query.
+
+---
+
+## 2026-08-11 — Hub: facelift Navegador de Tabelas — rótulos e larguras via column_config
+
+**O que mudou** (commit `978d34f`, deployado — ver entrada de deploy acima):
+- Tabela de schema (coluna/tipo/modo/descrição) ganha `st.column_config` com rótulos em
+  português e largura ajustada (coluna/descrição mais largas que tipo/modo).
+- Preview de dado mantido sem `column_config` específico, de propósito — colunas variam
+  por tabela, não dá pra prever schema de antemão.
+- Card de custo do Farol avaliado e descartado como item acionável: `column_config` é
+  recurso exclusivo de `st.dataframe`/`st.data_editor`, não se aplica a `st.metric`.
+
+**Por quê, em uma frase:** continuação do checklist de facelift (rótulo/formatação
+consistente em todas as tabelas do Hub), mesmo padrão já aplicado em Custos.
+
+**Arquivos afetados:** `hub/app.py`.
+
+---
+
+## 2026-08-11 — Hub: facelift na aba Custos — formatação monetária via column_config
+
+**O que mudou** (commit `ff730c4`, deployado — ver entrada de deploy acima):
+- `st.column_config.NumberColumn(format="dollar")` substitui `round(2)` cru nas 4
+  tabelas de custo (min-instance, Cloud Run por serviço, custo por serviço GCP, projetos
+  cobrados) + formatação numérica dedicada na tabela de volume de queries (contagem
+  inteira + TB com 4 casas).
+- Rótulos traduzidos (Serviço, Responsável, Gross/Net) no lugar dos nomes de coluna SQL
+  crus. Nenhuma mudança de dado ou lógica de carregamento, só exibição.
+
+**Por quê, em uma frase:** alinhamento numérico/tabular pedido pela pesquisa de design
+desta sessão (2ª rodada, via Gemini).
+
+**Arquivos afetados:** `hub/app.py`.
+
+---
+
+## 2026-08-11 — Hub: deploy resolvido — 6 commits acumulados agora ao vivo em produção
+
+**Correção sobre as duas entradas abaixo desta:** ambas foram registradas com banner
+"BLOQUEIO DE DEPLOY" (`gcloud auth` expirada em ambiente autônomo, sem possibilidade de
+`gcloud auth login` interativo). O Douglas logou de novo manualmente e o deploy rodou —
+os banners abaixo descrevem um estado que **não é mais real**, mantidos como estavam por
+serem registro histórico do que aconteceu naquele momento; esta entrada é a atualização.
+
+**O que mudou:** `hub/deploy.sh` executado com sucesso. Revisão ativa confirmada ao vivo
+via `gcloud run services describe douglas-data-hub`: `douglas-data-hub-00016-fj8`, 100%
+do tráfego. Ficaram ao vivo, de uma vez: `82fd96c` (varredura de docs), `c0ceb02` (Farol
+— variação de custo vs. mês anterior), `e904535` (checklist UX/UI — Bento Grid, filtro de
+Jobs, botões primários), `fb62817`/`c475763`/`640c1f7` e os 3 commits documentados acima
+(`ff730c4`, `978d34f`, `bceb9ee`).
+
+**Arquivos afetados:** nenhum (deploy, não código). `docs/known_issues.md` D1 marcado
+como resolvido nesta mesma passada.
+
+---
+
 ## 2026-08-11 — Hub: checklist de UX/UI — Bento Grid, divulgação progressiva em Jobs, botões primários
 
-> **BLOQUEIO DE DEPLOY — leia antes de assumir que isto está em produção.** Este commit
-> (`e904535`), o anterior (`c0ceb02`) e a varredura de docs que os antecede (`82fd96c`)
-> estão **só no repositório**, não no Hub ao vivo — deploy manual travou por `gcloud auth`
-> expirada no ambiente autônomo (`Reauthentication failed: cannot prompt during
-> non-interactive execution`), que exige `gcloud auth login` interativo (navegador),
-> impossível em sessão não supervisionada. Ver `docs/known_issues.md` para o item aberto
-> e o comando exato de deploy pendente.
+> **[HISTÓRICO — deploy já resolvido, ver entrada acima datada da mesma sessão.]**
+> No momento em que esta entrada foi escrita, este commit (`e904535`), o anterior
+> (`c0ceb02`) e a varredura de docs que os antecede (`82fd96c`) estavam **só no
+> repositório**, não no Hub ao vivo — deploy manual travou por `gcloud auth` expirada no
+> ambiente autônomo (`Reauthentication failed: cannot prompt during non-interactive
+> execution`), que exige `gcloud auth login` interativo (navegador), impossível em sessão
+> não supervisionada. Isso foi resolvido mais tarde na mesma sessão (ver entrada de
+> deploy acima) — banner original mantido como estava, não editado retroativamente.
 
 **O que mudou** (commit `e904535`, **commitado, NÃO deployado**):
 - `hub/app.py`, aba Visão Geral BQ: cards de resumo por camada (`st.columns`) agora usam
@@ -47,10 +130,12 @@ Impacto não dividir tela — nenhum desses foi tocado nesta sessão.
 
 ## 2026-08-11 — Hub: Farol mostra variação de custo vs. mês anterior
 
-> **BLOQUEIO DE DEPLOY** — mesmo aviso da entrada acima: commitado, não deployado.
-> Ver `docs/known_issues.md`.
+> **[HISTÓRICO — deploy já resolvido, ver entrada datada de deploy no topo do arquivo,
+> mesma sessão.]** No momento em que esta entrada foi escrita, este commit estava só no
+> repositório, mesmo bloqueio de `gcloud auth` da entrada acima. Banner original mantido
+> como estava, não editado retroativamente.
 
-**O que mudou** (commit `c0ceb02`, **commitado, NÃO deployado**):
+**O que mudou** (commit `c0ceb02`, deployado — ver entrada de deploy acima):
 - `hub/app.py`: nova função `load_cost_previous_month()` (`@st.cache_data(ttl=600)`) —
   soma `gross_cost`/`net_cost` de `finops_billing.vw_cost_daily_service` para o mês
   calendário anterior fechado (`DATE_TRUNC(..., MONTH)` do mês corrente menos 1).
