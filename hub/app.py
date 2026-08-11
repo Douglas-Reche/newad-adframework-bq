@@ -1850,7 +1850,15 @@ with tab_browser:
             {"coluna": f.name, "tipo": f.field_type, "modo": f.mode, "descricao": f.description or ""}
             for f in table_ref.schema
         ]
-        st.dataframe(pd.DataFrame(schema_rows), use_container_width=True, hide_index=True)
+        st.dataframe(
+            pd.DataFrame(schema_rows), use_container_width=True, hide_index=True,
+            column_config={
+                "coluna": st.column_config.TextColumn("Coluna", width="medium"),
+                "tipo": st.column_config.TextColumn("Tipo"),
+                "modo": st.column_config.TextColumn("Modo"),
+                "descricao": st.column_config.TextColumn("Descricao", width="large"),
+            },
+        )
 
         st.markdown("**Preview (50 linhas)**")
         if st.button("Carregar preview", key="browser_preview_btn"):
