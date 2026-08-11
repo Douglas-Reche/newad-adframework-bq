@@ -44,6 +44,14 @@
 
 ---
 
+## ⚠️ Aberto — Hub / Deploy
+
+| # | Problema | Impacto | Ação |
+|---|---|---|---|
+| D1 | **`gcloud auth` expirada no ambiente da sessão noturna autônoma (2026-08-11, madrugada) — 3 commits no Hub prontos mas não deployados.** `hub/deploy.sh` falhou com `Reauthentication failed: cannot prompt during non-interactive execution` — requer `gcloud auth login` interativo (navegador), impossível numa sessão sem supervisão. Commits parados no repo, não em produção: `c0ceb02` (Farol — variação de custo vs. mês anterior), `82fd96c` (varredura de docs), `e904535` (checklist UX/UI — Bento Grid, filtro de Jobs, botões primários). | **O Hub em produção (`douglas-data-hub`) está visualmente e funcionalmente atrás do repo** — quem abrir o Hub esperando ver o tema/checklist de UX (pedido explicitamente pelo Douglas) ou a comparação de custo do Farol não vai encontrar nenhum dos dois até o deploy rodar. | Rodar `gcloud auth login` (interativo, só o Douglas consegue) e depois, a partir de `hub/`: `HUB_PASSWORD='Newad@2026' ./deploy.sh`. Depois do deploy, confirmar revisão ativa via `gcloud run revisions list --service douglas-data-hub` antes de marcar como resolvido. |
+
+---
+
 ## ✅ Resolvidos em 2026-08-09
 
 | # | Problema | Resolução |

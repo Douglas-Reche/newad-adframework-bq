@@ -8,6 +8,65 @@
 
 ---
 
+## 2026-08-11 — Hub: checklist de UX/UI — Bento Grid, divulgação progressiva em Jobs, botões primários
+
+> **BLOQUEIO DE DEPLOY — leia antes de assumir que isto está em produção.** Este commit
+> (`e904535`), o anterior (`c0ceb02`) e a varredura de docs que os antecede (`82fd96c`)
+> estão **só no repositório**, não no Hub ao vivo — deploy manual travou por `gcloud auth`
+> expirada no ambiente autônomo (`Reauthentication failed: cannot prompt during
+> non-interactive execution`), que exige `gcloud auth login` interativo (navegador),
+> impossível em sessão não supervisionada. Ver `docs/known_issues.md` para o item aberto
+> e o comando exato de deploy pendente.
+
+**O que mudou** (commit `e904535`, **commitado, NÃO deployado**):
+- `hub/app.py`, aba Visão Geral BQ: cards de resumo por camada (`st.columns`) agora usam
+  largura relativa — CORE e GOLD com peso `1.35` (35% a mais que as demais camadas, que
+  ficam em `1.0`), sem mudar a estrutura de `LAYERS`.
+- `hub/app.py`, aba Status dos Jobs: jobs divididos em `problem_jobs` (severidade `>= 1`
+  em `STATUS_SEVERITY`) e `healthy_jobs`. Por padrão só `problem_jobs` aparece renderizado
+  diretamente; `healthy_jobs` fica atrás de um `st.expander` ("Ver histórico completo").
+  Se não houver nenhum job com problema, mostra só um `st.success` com a contagem.
+- `hub/app.py`: botões "Aprovar" (proposta) e "Salvar regra" (Regras de Negócio) ganham
+  `type="primary"` (roxo da marca) — únicas ações de submissão positiva com cor sólida,
+  por design. Pausar/Deletar/Editar/Rejeitar mantidos no estilo padrão, deliberadamente.
+- Aba Custos: verificado que não existe gráfico hoje (só métricas/tabelas) — nenhuma
+  mudança de código necessária ali.
+
+**Por quê, em uma frase:** implementa parte do checklist da 2ª rodada de pesquisa de UX
+(task Notion `3b99d0f6-219e-81bd-8454-cfa2096c897a`) — peso visual pras camadas mais
+próximas do cliente final, menos ruído na checagem diária de jobs, cor reservada pra
+ação crítica.
+
+**Arquivos afetados:** `hub/app.py`.
+
+**Pendente do checklist original:** badges condicionais do Farol além da comparação de
+custo (ver entrada abaixo), contorno de célula em Ajustes Históricos, Simulador de
+Impacto não dividir tela — nenhum desses foi tocado nesta sessão.
+
+---
+
+## 2026-08-11 — Hub: Farol mostra variação de custo vs. mês anterior
+
+> **BLOQUEIO DE DEPLOY** — mesmo aviso da entrada acima: commitado, não deployado.
+> Ver `docs/known_issues.md`.
+
+**O que mudou** (commit `c0ceb02`, **commitado, NÃO deployado**):
+- `hub/app.py`: nova função `load_cost_previous_month()` (`@st.cache_data(ttl=600)`) —
+  soma `gross_cost`/`net_cost` de `finops_billing.vw_cost_daily_service` para o mês
+  calendário anterior fechado (`DATE_TRUNC(..., MONTH)` do mês corrente menos 1).
+- Farol operacional: card de custo do mês passa a mostrar `delta` no `st.metric`
+  (`delta_color="inverse"`) com a variação percentual vs. mês anterior, quando o mês
+  anterior tem custo `> 0`. Caption ajustada para deixar explícito que o mês corrente é
+  parcial e não é comparável 1:1 com um mês fechado.
+
+**Por quê, em uma frase:** a função `load_cost_previous_month()` já existia (definida,
+não usada) de uma sessão anterior interrompida por limite de sessão de API — este commit
+termina a conexão pendente.
+
+**Arquivos afetados:** `hub/app.py`.
+
+---
+
 ## 2026-08-10 — Hub: tema visual com identidade da NewAd (Manual de Marca)
 
 **O que mudou** (commit `fb62817`, deployado em produção — revisão

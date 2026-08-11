@@ -14,9 +14,21 @@ do repo do Shiro (`rshiro-newad/adframework`).
 Tema visual (2026-08-10): cores e tipografia do Manual de Marca da NewAd
 (`hub/.streamlit/config.toml` -- fundo claro, azul-marinho `#0C2443` como texto, roxo
 `#6742F4` como cor primaria, paleta de graficos roxo/ciano/marinho/rosa, Montserrat via
-`[[theme.fontFaces]]` nativo do Streamlit, sem CSS injetado). Checklist completo de
-recomendacoes de design por aba (Bento Grid, badges condicionais, etc.) ainda pendente --
-ver task Notion "Auditoria de UX/UI e Design do Hub".
+`[[theme.fontFaces]]` nativo do Streamlit, sem CSS injetado).
+
+Checklist de UX/UI (task Notion "Auditoria de UX/UI e Design do Hub",
+`3b99d0f6-219e-81bd-8454-cfa2096c897a`) -- feito **no repositorio** em 2026-08-11
+(commits `c0ceb02`/`e904535`, **deploy pendente**, ver aviso no topo de
+`docs/known_issues.md` -- secao "Aberto -- Hub / Deploy"):
+- Farol: comparacao de custo do mes vs. mes anterior fechado (delta no `st.metric`).
+- Visao Geral BQ: cards de camada com largura relativa -- CORE/GOLD 35% mais largos.
+- Status dos Jobs: divulgacao progressiva -- so jobs com problema aparecem por padrao,
+  saudaveis atras de um expander.
+- Botoes "Salvar regra"/"Aprovar" com `type="primary"` (roxo da marca); demais acoes
+  seguem estilo padrao, deliberadamente.
+
+Ainda pendente do checklist original: badges condicionais do Farol alem do custo,
+contorno de celula em Ajustes Historicos, Simulador de Impacto nao dividir tela.
 
 ## Farol permanente
 
@@ -29,7 +41,10 @@ duplicar logica:
 - **Propostas de Mudanca pendentes** -- `count_pending_proposals()`, contagem de
   `core.change_proposals WHERE status='pending'`.
 - **Custo do mes corrente** -- `load_cost_current_month()`, mesma query da aba Custos,
-  so muda a janela de data para o mes atual.
+  so muda a janela de data para o mes atual. Desde 2026-08-11 (commit `c0ceb02`, deploy
+  pendente), o `st.metric` mostra `delta` com a variacao % vs. `load_cost_previous_month()`
+  (mes calendario anterior fechado) -- caption deixa explicito que o mes corrente e
+  parcial, nao comparavel 1:1 com um mes ja fechado.
 
 Decisao explicita do Douglas: sem resumo de Notion no farol.
 
