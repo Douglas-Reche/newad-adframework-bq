@@ -249,24 +249,28 @@ colunas adicionais, `NULL` quando não há regra vigente ou o `formato` da linha
 `rule_params.strategies`. Fonte da regra: `core.client_business_rules` (SCD2,
 `effective_from`/`effective_to`, prioridade client_id específico > regra geral).
 
-**Desvio deliberado do ADR-0001, causa raiz confirmada 2026-08-10** — diferente das outras
-tabelas de regra (`dict_format`, `campaign_format_map`, `advertiser_platform_rules`, que usam
-as funções `core.resolve_*` centralizadas, ver `docs/adr/0001-*.md`), `fact_pacing` **não**
-chama `core.resolve_client_business_rule()` diretamente — reimplementa a mesma lógica inline
-via `rule_candidates`/`rule_resolved` (JOIN real + `ARRAY_AGG`). Motivo: a chamada direta
-lança `"Correlated subqueries that reference other tables are not supported unless they can
-be de-correlated"`. A hipótese inicial (cadeia de `UNION ALL`/`FULL OUTER JOIN` a montante)
-foi descartada — o erro reproduz mesmo lendo `stg.fact_pacing_base` puro, sem JOIN algum.
-Causa raiz real, isolada com `TEMP FUNCTION`s de teste: dentro de
-`core/ddl/resolve_client_business_rule.sql`, o `ARRAY_AGG(... ORDER BY CASE WHEN client_id =
-p_client_id THEN 0 ELSE 1 END ...)` referencia o **parâmetro correlacionado da função dentro
-do `ORDER BY`** — é isso, não o `UNION`/`JOIN`, que o BigQuery recusa decorrelacionar. Corrigir
-exigiria reescrever a função (ex: 2 chamadas separadas — override do cliente e regra geral —
-com `COALESCE`, cada uma com agregação simples) — não feito ainda, decisão de priorização
-pendente do Douglas. Ver cabeçalho de `gold/ddl/fact_pacing.sql` para o achado completo.
+**Desvio do ADR-0001 fechado — 2026-08-10 (commit `88c09d6`).** `fact_pacing` agora chama
+`core.resolve_client_business_rule()` diretamente, igual às outras 3 tabelas de regra
+(`dict_format`, `campaign_format_map`, `advertiser_platform_rules`, ver `docs/adr/0001-*.md`)
+— o workaround `rule_candidates`/`rule_resolved` (JOIN + `ARRAY_AGG` inline) foi removido.
+Causa raiz real do erro `"Correlated subqueries that reference other tables are not supported
+unless they can be de-correlated"`, confirmada isolando com `TEMP FUNCTION`s de teste depois
+de 2 hipóteses descartadas (1ª: `UNION ALL`/`FULL OUTER JOIN` a montante; 2ª: o `CASE WHEN
+client_id = p_client_id` dentro do `ORDER BY` do `ARRAY_AGG`): `ARRAY_AGG(...ORDER BY...
+LIMIT...)` nunca decorrelaciona numa SQL UDF chamada de forma correlacionada em BigQuery,
+independente do que o `ORDER BY` referencia — só agregação simples (`MIN`/`MAX`/`ANY_VALUE`,
+sem `ORDER BY`/`LIMIT`) decorrelaciona, e só uma por chamada (`COALESCE` de 2 subqueries
+simples também falha). `core/ddl/resolve_client_business_rule.sql` foi reescrita para usar um
+único `MAX()` sobre uma STRING codificada (1 dígito de especificidade + 8 dígitos de data
+AAAAMMDD + JSON serializado, prefixo de largura fixa) — `MAX()` escolhe a linha certa por
+ordenação lexicográfica, `SUBSTR`+`PARSE_JSON` reconstitui o payload. Mesma semântica
+preservada (override do cliente vence sobre regra geral; `effective_from` mais recente como
+desempate). Ver cabeçalho de `core/ddl/resolve_client_business_rule.sql` para o histórico
+completo das 3 hipóteses.
 
-Status: ✅ validado em 2026-08-08 (schema base). 🟡 `business_rule_*` e `stg.fact_pacing_base`
-testados só em `douglas-bq-staging` (commit `f50ec8a`, 2026-08-10) — nada aplicado em produção.
+Status: ✅ validado em 2026-08-08 (schema base). 🟡 `business_rule_*`, `stg.fact_pacing_base` e
+a chamada direta de `resolve_client_business_rule()` testados só em `douglas-bq-staging`
+(commits `f50ec8a`, `88c09d6`) — nada aplicado em produção.
 
 ### `vw_fact_delivery_reporting` — não coberta na versão anterior deste doc
 Grain: igual `fact_delivery` (`client_id + day + platform + formato`). **View de apresentação** que substitui, por override, os dias de `banco_cora_fe13d78a` anteriores a `2026-07-01` pelo valor de `core.historical_overrides_delivery` — mecanismo genérico de override histórico por cliente (ver `core/ddl/historical_overrides_delivery.sql`, `core/ddl/resolve_reporting_source.sql`, commit `98b8f50`). Fora do intervalo/cliente do override, é um passthrough puro de `fact_delivery`.

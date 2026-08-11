@@ -8,6 +8,41 @@
 
 ---
 
+## 2026-08-10 — Core: `resolve_client_business_rule()` reescrita — fecha desvio do ADR-0001
+
+**O que mudou** (commit `88c09d6`, testado só em `douglas-bq-staging`, nada aplicado em
+produção):
+- `core/ddl/resolve_client_business_rule.sql`: reescrita para não usar mais
+  `ARRAY_AGG(...ORDER BY...LIMIT...)`. Nova abordagem: um único `MAX()` (agregação simples,
+  decorrelaciona) sobre uma STRING codificada — 1 dígito de especificidade (override do
+  cliente vence sobre regra geral) + 8 dígitos de data `AAAAMMDD` (`effective_from`, desempate
+  por mais recente) + o `rule_params` serializado via `TO_JSON_STRING`, prefixo de largura
+  fixa (9 chars). `MAX()` escolhe a linha certa por ordenação lexicográfica; `SUBSTR(...,10)` +
+  `PARSE_JSON()` reconstitui o payload. Mesma semântica preservada (override do cliente
+  específico > regra geral; `effective_from` mais recente como desempate).
+- `gold/ddl/fact_pacing.sql`: removido o workaround `rule_candidates`/`rule_resolved`
+  (JOIN + `ARRAY_AGG` inline introduzido em sessões anteriores), substituído por chamada
+  direta de `core.resolve_client_business_rule()` — mesmo padrão das outras 3 tabelas de
+  regra (`resolve_dict_format`, `resolve_platform_rule`, ver ADR-0001).
+
+**Por quê, em uma frase:** a causa raiz do erro `"Correlated subqueries...not supported"`
+passou por 3 hipóteses ao longo do dia — as 2 primeiras (`UNION`/`JOIN` a montante; parâmetro
+correlacionado dentro do `CASE` do `ORDER BY`) foram descartadas com teste isolado; a real é
+que `ARRAY_AGG` com `ORDER BY`/`LIMIT` nunca decorrelaciona numa SQL UDF chamada de forma
+correlacionada em BigQuery, não importa o que o `ORDER BY` referencia.
+
+**Testado em staging:** chamada isolada da função sem erro; 8 cenários de
+vigência/prioridade/pausa/fronteira de data, todos batendo; caso real
+`banco_cora_fe13d78a`/Native/2026-01-12 confirmado (usando `rule_type` de teste sufixado,
+removido após validar — tabela `core.client_business_rules` voltou ao estado limpo, só as 4
+linhas pré-existentes desta MÃE).
+
+**Arquivos afetados:** `core/ddl/resolve_client_business_rule.sql`, `gold/ddl/fact_pacing.sql`.
+Ver `docs/known_issues.md` (G9, resolvido) e `docs/gold_layer_design.md` (seção
+`fact_pacing`) para o detalhe completo.
+
+---
+
 ## 2026-08-10 — Gold: materializa `stg.fact_pacing_base` (parcial — desvio do ADR-0001 continua)
 
 **O que mudou** (commit `f50ec8a`, testado só em `douglas-bq-staging`, nada aplicado em
