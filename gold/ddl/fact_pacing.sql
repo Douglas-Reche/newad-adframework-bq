@@ -34,100 +34,25 @@
 -- continuam mostrando sempre o valor real -- decisao registrada na sub-task
 -- anterior, ver docs/gold_layer_design.md).
 --
--- ============================================================================
--- ACHADO 2026-08-10 (task "Materializar base de fact_pacing na STG" --
--- resultado PARCIAL, nao o esperado -- ver relato completo da task no
--- Notion): materializar pacing_base em stg.fact_pacing_base (tabela fisica)
--- NAO foi suficiente para permitir a chamada DIRETA de
--- core.resolve_client_business_rule() abaixo. O erro "Correlated
--- subqueries that reference other tables are not supported unless they can
--- be de-correlated" CONTINUA acontecendo -- reproduzido com uma query
--- minima (SELECT client_id, day, resolve_client_business_rule(...) FROM
--- stg.fact_pacing_base LIMIT 5, SEM nenhuma CTE/UNION/JOIN alem da propria
--- tabela fisica), testado ao vivo contra douglas-bq-staging.
---
--- Root cause real (mais especifico do que o "DESVIO DELIBERADO" documentado
--- aqui ate 2026-08-10, que atribuia o erro ao UNION ALL/FULL OUTER JOIN a
--- montante -- essa hipotese NAO se sustentou: o erro reproduz mesmo sem
--- nenhum UNION/JOIN no caminho): dentro de
--- core/ddl/resolve_client_business_rule.sql, o ARRAY_AGG usa
--- `ORDER BY CASE WHEN client_id = p_client_id THEN 0 ELSE 1 END ASC` --
--- essa expressao de ORDER BY referencia o PARAMETRO CORRELACIONADO
--- (p_client_id) da funcao, nao so o WHERE. Confirmado isolando com 2
--- TEMP FUNCTIONs identicas em estrutura: uma variante com agregacao simples
--- (ANY_VALUE/MIN, sem referenciar o parametro correlacionado no ORDER BY)
--- funciona perfeitamente contra a mesma stg.fact_pacing_base; a variante
--- IDENTICA ao corpo real de resolve_client_business_rule (ARRAY_AGG com
--- ORDER BY CASE WHEN client_id = p_client_id ...) falha com o MESMO erro,
--- mesmo como TEMP FUNCTION sem nenhuma tabela gold/UNION/JOIN envolvida.
--- resolve_dict_format/resolve_platform_rule (as outras 2 resolve_*, que
--- funcionam direto em fact_io_plan.sql) NAO tem esse padrao -- usam
--- MIN()/ANY_VALUE() simples, sem referenciar o parametro correlacionado
--- dentro do ORDER BY de uma agregacao.
---
--- Por isso o workaround abaixo (rule_candidates/rule_resolved, JOIN real +
--- ARRAY_AGG) CONTINUA em uso -- nao foi removido, ao contrario do que a
--- task pretendia. A materializacao de stg.fact_pacing_base ainda TROUXE um
--- ganho real (a CTE local pacing_base virou uma leitura simples de tabela,
--- sem o FULL OUTER JOIN/io_agg inline nesta view -- mais simples e mais
--- barato de reprocessar), mas NAO resolveu o desvio do ADR-0001 -- ele
--- continua sendo um desvio deliberado, agora por um motivo mais preciso e
--- documentado. Corrigir de fato exigiria reescrever
--- core.resolve_client_business_rule() para nao referenciar o parametro
--- correlacionado dentro do ORDER BY (ex: 2 chamadas separadas -- uma so
--- para o override do cliente, outra so para a regra geral -- com COALESCE
--- entre elas, cada uma com agregacao simples) -- fora de escopo desta task,
--- reportado como proximo passo pro usuario decidir.
--- ============================================================================
+-- core.resolve_client_business_rule() e chamada DIRETO abaixo, sem desvio --
+-- 2026-08-10, task "Corrigir core.resolve_client_business_rule() -- remover
+-- desvio do ADR-0001". A causa raiz real (ARRAY_AGG(...ORDER BY...LIMIT...)
+-- nunca decorrelaciona em BigQuery dentro de uma SQL UDF chamada de forma
+-- correlacionada) foi corrigida reescrevendo a funcao pra usar uma unica
+-- agregacao simples (MAX de STRING codificada) -- ver
+-- core/ddl/resolve_client_business_rule.sql pro historico completo da
+-- investigacao (2 hipoteses anteriores descartadas) e o desenho da solucao.
 
 CREATE OR REPLACE VIEW `adframework.gold.fact_pacing` AS
 WITH pacing_base AS (
   SELECT *
   FROM `adframework.stg.fact_pacing_base`
 ),
--- rule_candidates/rule_resolved: reimplementa resolve_client_business_rule
--- como JOIN real + ARRAY_AGG (ver ACHADO 2026-08-10 acima -- a chamada
--- direta da funcao continua falhando com "Correlated subqueries..." mesmo
--- depois da materializacao, por um motivo diferente do que se pensava
--- originalmente). Mesma condicao de vigencia e mesma prioridade
--- (client_id especifico > geral, effective_from DESC como desempate) da
--- funcao original -- ver core/ddl/resolve_client_business_rule.sql.
-rule_candidates AS (
-  SELECT
-    pb.client_id,
-    pb.day,
-    r.rule_params,
-    CASE WHEN r.client_id = pb.client_id THEN 0 ELSE 1 END AS specificity,
-    r.effective_from
-  FROM (
-    SELECT DISTINCT client_id, day
-    FROM pacing_base
-    WHERE client_id IS NOT NULL AND day IS NOT NULL
-  ) pb
-  JOIN `adframework.core.client_business_rules` r
-    ON r.rule_type = 'impression_cap_pct'
-    AND (r.client_id = pb.client_id OR r.client_id IS NULL)
-    AND r.effective_from <= pb.day
-    AND (r.effective_to IS NULL OR pb.day < r.effective_to)
-),
-rule_resolved AS (
-  SELECT
-    client_id,
-    day,
-    ARRAY_AGG(
-      rule_params ORDER BY specificity ASC, effective_from DESC LIMIT 1
-    )[OFFSET(0)] AS resolved_rule_params
-  FROM rule_candidates
-  GROUP BY client_id, day
-),
 pacing_with_rule AS (
   SELECT
     pb.*,
-    rr.resolved_rule_params
+    core.resolve_client_business_rule(pb.client_id, 'impression_cap_pct', pb.day) AS resolved_rule_params
   FROM pacing_base pb
-  LEFT JOIN rule_resolved rr
-    ON pb.client_id = rr.client_id
-    AND pb.day = rr.day
 ),
 rule_expanded AS (
   SELECT
