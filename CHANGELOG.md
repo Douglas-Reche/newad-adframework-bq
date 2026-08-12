@@ -8,6 +8,38 @@
 
 ---
 
+## 2026-08-12 — Cora: mapeamento histórico real + planned_* via override + protocolo de análise conjunta (staging, fechado pra teste Power BI)
+
+**Contexto:** continuação direta da entrada de 2026-08-11 abaixo. Sessão fechou com o dado histórico real da Cora carregado e ativo em `douglas-bq-staging`, pronto pro Douglas testar no Power BI. Encerrando por limite semanal de tokens — próxima sessão só em ~3 dias, por isso este registro é deliberadamente mais completo que o normal.
+
+**Achado que motivou tudo:** a primeira investigação da planilha da Cora (sessão anterior) só olhou 5-6 das 17 colunas reais do upload (`upload_id=7b73b6f8-2456-44b5-8f2c-f28aa60675e7`, `client_id=banco_cora_fe13d78a`, 1078 linhas em `raw.historical_uploads`) — perdeu colunas `CPM`/`CPC` diretas (que resolvem `goal_type` sem inferência) e todo o lado `PROJETADO`/`PACING`. Isso motivou formalizar um **protocolo de análise conjunta de 3 etapas** (Etapa 1 estrutura completa → Etapa 2 de/para coluna a coluna com OK explícito do Douglas → Etapa 3 registro), documentado em `C:\Users\dougl\.claude\agents\historical-data-analyst.md` (seção "Colunas-alvo ideais" + protocolo formal) — regra: **toda coluna de origem E toda coluna de destino entram na análise, nenhuma fica de fora por parecer óbvia**.
+
+**Achados reais da planilha (Etapa 1), com número:**
+- 17 colunas totais: `DIA, ESTRATÉGIA, IMPRESSÕES(+PROJETADAS+PACING), CPM(+PROJETADO), CLIQUES(+PROJETADOS+PACING), CPC(+PROJETADO), CTR(+PROJETADO), INVESTIMENTO(+PROJETADO+PACING)`.
+- **Bug de truncamento do Excel**: 113/1078 linhas de `IMPRESSÕES` e 86/1078 de `IMPRESSÕES PROJETADAS` vêm com valor cortado (ex: `"16.88"` em vez de `"16.880"`). Quantificado: sem correção, subestima o total em **~10% (2,42M impressões)** no range usado. Correção `×1000` confirmada matematicamente certa (95/113 batem quase exato contra estimativa independente via `PACING`).
+- **`platform`/`goal_type` resolvidos com dado real, não inferência**: `core.dict_format` (regra comercial confirmada 2026-06-18) + `core.campaign_format_map` (campanhas reais da Cora) — Display/Retargeting/Video→`mediasmart`/CPM; Native→`mgid`/CPC (corrigindo suposição errada de uma investigação anterior, que tinha assumido `mediasmart`); Push→`siprocal`/CPC (resolvido pelo range de datas da planilha não cobrir a única campanha Push em `mgid`, de dezembro/2025).
+- **23 linhas com bug de fórmula na origem** (`CPM`/`CPC=R$0,00` com impressão/investimento reais e positivos) — decisão: mantém o lado PLANEJADO da planilha, substitui só o REALIZADO pelo dado real de `stg.fact_pacing_base` pra essas linhas específicas (evita criar buraco no pipeline, já que `core.resolve_reporting_source()` decide por dia inteiro do cliente, não por linha).
+- Corte de data: só até **2026-07-31** (decisão do Douglas — 48 linhas de agosto descartadas, dado incompleto).
+
+**Mudanças técnicas (2 fixes em `stg/ddl/fact_pacing_base_refresh.sql`, mesmo dia):**
+1. `investimento_realizado` (manhã) e depois `planned_impressions_daily`/`planned_clicks_daily`/`planned_spend_daily`/`unit_price` (tarde, decisão revertida do Douglas — "planejado sempre só IO Plan" não vale mais) passam a `COALESCE(override.<campo>, <valor original>)` — quando existe override preenchido pro dia, ele tem prioridade; senão, comportamento idêntico ao anterior.
+2. `load_historical_override.py`: `REQUIRED_COLUMNS` estava sem as 4 colunas `planned_*`/`unit_price` (existiam no schema desde 2026-08-10 mas nunca foram sincronizadas na validação — drift real achado ao implementar, não decisão nova).
+3. `scripts/deploy/historical_mappings/banco_cora_fe13d78a.py` — mapeamento real escrito e carregado (commit `3ff305b`).
+
+**Execução em `douglas-bq-staging` (nunca produção):**
+- `load_historical_override.py` (sem `--dry-run`): **1030 linhas** inseridas em `stg.historical_overrides_delivery` (Σimpressions=23.831.592, Σclicks=95.941, Σinvestimento=R$378.486,74, range 2026-01-07→07-31).
+- `core.client_reporting_source_config`: Douglas reativou `override_active=TRUE` pra Cora **via toggle já existente no Hub** (`hub/app.py` linha ~2440, `set_client_override_active` — não precisou construir nada novo, só não sabíamos que já existia).
+- `stg/ddl/fact_pacing_base_refresh.sql` reaplicado (`apply_ddl.py --env=test --project douglas-bq-staging`) — confirmado `is_override=TRUE` e valores corrigidos em `stg.fact_pacing_base` pra Cora (ex: `2026-01-09 Video`: `realized_impressions=16880`, batendo com a correção do bug de truncamento).
+
+**Pendências explícitas pra próxima sessão (~3 dias):**
+- **Botão de refresh de `fact_pacing_base` no Hub** — hoje é 100% manual (`apply_ddl.py` via terminal). Achado nesta sessão que isso nunca foi resolvido apesar de o Douglas achar que sim. Sem isso, toda vez que o override mudar, alguém precisa lembrar de rodar o refresh manualmente (como aconteceu hoje — o primeiro refresh rodou ANTES do toggle confirmar, sem efeito, precisou rodar de novo).
+- **Doc formal "Protocolo de Ingestão Histórica" por cliente** (`docs/historical_ingestion/<client_id>.md`, Camada 2) — desenhado e usado nesta sessão (Cora), mas o arquivo em si não foi escrito ainda por falta de budget. A narrativa completa está nesta entrada do CHANGELOG + na task Notion "Desenhar override histórico por cliente" — usar como fonte quando escrever o doc.
+- **Task Notion desta sessão não foi atualizada** com o fechamento de hoje (12/08) — só tinha entradas até 11/08. Task: "6. Materializar base de fact_pacing na STG" (`https://app.notion.com/p/3b89d0f6219e818eac51e4afe52d2404`) e "Desenhar override histórico por cliente" (`https://app.notion.com/p/3b29d0f6219e81258f02ee93deabb717`) — ambas precisam de entrada 2026-08-12 com o resumo desta seção.
+- **TecPar/Senar** (próximos clientes na fila do mesmo mecanismo) — protocolo de 3 etapas já formalizado, pronto pra reaproveitar, mas nenhum trabalho começou neles ainda.
+- **Promoção pra produção** segue bloqueada — nada do que foi feito hoje saiu de `douglas-bq-staging`, conforme guarda-corpo da MÃE "Regras de Negócio Configuráveis por Cliente".
+
+**Nota de ambiente:** `bq` CLI local (Windows) quebrado por conflito de alias Python (Microsoft Store) — contornado via `CLOUDSDK_PYTHON`/invocação direta do interpretador real em vários pontos desta sessão. Vale revisão de ambiente numa sessão futura se for recorrente.
+
 ## 2026-08-11 — stg.fact_pacing_base: override em investimento_realizado + cap de regra ignora dia de override (staging)
 
 **O que mudou** (working tree, nenhum commit ainda — pipeline BQ):
