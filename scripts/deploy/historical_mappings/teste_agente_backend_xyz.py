@@ -20,6 +20,10 @@ deliberadamente -- nao inventar valor):
   - goal_type, impressions, conversions: nao presentes na planilha de
     teste. NULL e o valor correto aqui (ausencia real de dado), nao 0 --
     0 impressoes seria uma afirmacao factual errada.
+  - planned_impressions_daily, planned_clicks_daily, planned_spend_daily,
+    unit_price: colunas adicionadas ao contrato em 2026-08-12 (ver
+    REQUIRED_COLUMNS em load_historical_override.py) para o lado
+    planejado -- este cliente de teste nao usa, sempre None.
 """
 
 from datetime import datetime
@@ -78,6 +82,10 @@ def normalize(raw_rows: list[dict]) -> list[dict]:
             "clicks": float(raw["Cliques"]) if raw.get("Cliques") not in (None, "") else None,
             "investimento": _parse_investimento_br(raw["Investimento (R$)"]),
             "conversions": None,
+            "planned_impressions_daily": None,
+            "planned_clicks_daily": None,
+            "planned_spend_daily": None,
+            "unit_price": None,
             "source_file": item["source_filename"],
             "notes": (
                 f"normalizado via historical_mappings/teste_agente_backend_xyz.py; "

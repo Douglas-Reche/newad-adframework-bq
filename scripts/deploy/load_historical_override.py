@@ -74,6 +74,18 @@ TABLE_ID = "stg.historical_overrides_delivery"
 # + ALTER que adicionou `conversions`).
 # Nao ha introspeccao automatica do schema do BQ aqui de proposito -- o
 # --dry-run precisa funcionar sem credencial/rede nenhuma.
+#
+# `planned_impressions_daily`/`planned_clicks_daily`/`planned_spend_daily`/
+# `unit_price` adicionados em 2026-08-12: a DDL (stg/ddl/historical_overrides_delivery.sql)
+# ja tinha essas 4 colunas desde 2026-08-10 (ALTER TABLE ADD COLUMN IF NOT
+# EXISTS, task "Materializar base de fact_pacing na STG"), mas esta lista
+# nunca foi atualizada para acompanhar -- achado real ao implementar o
+# mapeamento de banco_cora_fe13d78a, cujo `normalize()` precisa preencher o
+# lado planejado. Sem este fix, normalize_historical_upload.py rejeitaria
+# qualquer normalize() que preenchesse essas colunas como "coluna extra nao
+# esperada" (ver validate_normalized() la). Todas as 4 sao NULLABLE -- um
+# normalize() que nao usa o lado planejado (como
+# historical_mappings/teste_agente_backend_xyz.py) so preenche com None.
 REQUIRED_COLUMNS = [
     "client_id",
     "day",
@@ -84,6 +96,10 @@ REQUIRED_COLUMNS = [
     "clicks",
     "investimento",
     "conversions",
+    "planned_impressions_daily",
+    "planned_clicks_daily",
+    "planned_spend_daily",
+    "unit_price",
     "source_file",
     "notes",
 ]

@@ -56,6 +56,20 @@
 --      investimento_realizado passa a ser COALESCE(override.investimento,
 --      <formula CPC/CPM original>) -- override com investimento preenchido
 --      ganha prioridade; fora isso, comportamento identico ao anterior.
+--
+-- planned_* via override (2026-08-11, extensao da mudanca acima no mesmo
+-- dia -- decisao revista: o lado PLANEJADO tambem pode vir do override, nao
+-- so o realizado): planned_spend_daily, planned_impressions_daily,
+-- planned_clicks_daily e unit_price no SELECT final passam a ser
+-- COALESCE(ov.<campo>, j.<campo>) -- mesmo padrao ja usado pra
+-- investimento_realizado (override tem prioridade quando preenchido, senao
+-- mantem o que veio do IO Plan via io_agg/joined). As colunas
+-- planned_impressions_daily/planned_clicks_daily/planned_spend_daily/
+-- unit_price ja existiam em stg.historical_overrides_delivery (adicionadas
+-- 2026-08-10), hoje sempre NULL pra todo mundo -- COALESCE cai no valor do
+-- IO Plan ate a primeira carga real de override com esses campos
+-- preenchidos. LEFT JOIN em stg.historical_overrides_delivery e o mesmo ja
+-- usado acima (nao duplicado).
 
 CREATE OR REPLACE TABLE `adframework.stg.fact_pacing_base` AS
 WITH io_agg AS (
@@ -105,10 +119,10 @@ SELECT
   j.day,
   j.formato,
   j.platform,
-  j.planned_spend_daily,
-  j.planned_impressions_daily,
-  j.planned_clicks_daily,
-  j.unit_price,
+  COALESCE(ov.planned_spend_daily, j.planned_spend_daily) AS planned_spend_daily,
+  COALESCE(ov.planned_impressions_daily, j.planned_impressions_daily) AS planned_impressions_daily,
+  COALESCE(ov.planned_clicks_daily, j.planned_clicks_daily) AS planned_clicks_daily,
+  COALESCE(ov.unit_price, j.unit_price) AS unit_price,
   j.goal_type,
   j.realized_impressions,
   j.realized_clicks,
