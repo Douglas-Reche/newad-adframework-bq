@@ -926,6 +926,68 @@ def build_client_override_status(summary_df: pd.DataFrame, config_df: pd.DataFra
     return merged
 
 
+def refresh_fact_pacing_base() -> None:
+    """Reaplica o refresh de stg.fact_pacing_base direto via BQ client (sem
+    subprocess/apply_ddl.py -- o container do Hub so tem hub/, nao o resto do
+    repo). SQL inline deve ficar em sincronia com
+    stg/ddl/fact_pacing_base_refresh.sql (fonte de verdade); se aquele
+    arquivo mudar, atualizar aqui tambem -- 2026-08-12, pedido do Douglas pra
+    o toggle de override_active ja disparar o refresh, sem precisar rodar o
+    apply_ddl.py manualmente no terminal depois. Usa a mesma writer SA de
+    set_client_override_active."""
+    client = get_staging_writer_bq_client()
+    sql = f"""
+        CREATE OR REPLACE TABLE `{HISTORICAL_OVERRIDE_PROJECT_ID}.stg.fact_pacing_base` AS
+        WITH io_agg AS (
+          SELECT
+            client_id, report_date, formato, platform, goal_type,
+            IF(COUNT(DISTINCT unit_price) = 1, ANY_VALUE(unit_price), NULL) AS unit_price,
+            SUM(planned_spend_daily)       AS planned_spend_daily,
+            SUM(planned_impressions_daily) AS planned_impressions_daily,
+            SUM(planned_clicks_daily)      AS planned_clicks_daily
+          FROM `{HISTORICAL_OVERRIDE_PROJECT_ID}.gold.fact_io_plan`
+          GROUP BY client_id, report_date, formato, platform, goal_type
+        ),
+        joined AS (
+          SELECT
+            COALESCE(p.client_id, d.client_id) AS client_id,
+            COALESCE(p.report_date, d.day) AS day,
+            COALESCE(p.formato, d.formato) AS formato,
+            COALESCE(p.platform, d.platform) AS platform,
+            p.planned_spend_daily, p.planned_impressions_daily, p.planned_clicks_daily, p.unit_price,
+            COALESCE(p.goal_type, d.goal_type) AS goal_type,
+            d.impressions AS realized_impressions,
+            d.clicks AS realized_clicks,
+            d.conversions AS realized_conversions,
+            CASE COALESCE(p.goal_type, d.goal_type)
+              WHEN 'CPC' THEN d.clicks * p.unit_price
+              WHEN 'CPM' THEN SAFE_DIVIDE(d.impressions * p.unit_price, 1000)
+              ELSE NULL
+            END AS investimento_realizado_formula
+          FROM io_agg p
+          FULL OUTER JOIN `{HISTORICAL_OVERRIDE_PROJECT_ID}.gold.fact_delivery` d
+            ON p.client_id = d.client_id AND p.report_date = d.day
+            AND UPPER(p.formato) = UPPER(d.formato) AND p.platform = d.platform
+          WHERE COALESCE(p.client_id, d.client_id) IS NOT NULL
+            AND COALESCE(p.report_date, d.day) IS NOT NULL
+        )
+        SELECT
+          j.client_id, j.day, j.formato, j.platform,
+          COALESCE(ov.planned_spend_daily, j.planned_spend_daily) AS planned_spend_daily,
+          COALESCE(ov.planned_impressions_daily, j.planned_impressions_daily) AS planned_impressions_daily,
+          COALESCE(ov.planned_clicks_daily, j.planned_clicks_daily) AS planned_clicks_daily,
+          COALESCE(ov.unit_price, j.unit_price) AS unit_price,
+          j.goal_type, j.realized_impressions, j.realized_clicks, j.realized_conversions,
+          COALESCE(ov.investimento, j.investimento_realizado_formula) AS investimento_realizado,
+          `{HISTORICAL_OVERRIDE_PROJECT_ID}.core.resolve_reporting_source`(j.client_id, j.day, CURRENT_DATE()) = 'override' AS is_override
+        FROM joined j
+        LEFT JOIN `{HISTORICAL_OVERRIDE_PROJECT_ID}.stg.historical_overrides_delivery` ov
+          ON ov.client_id = j.client_id AND ov.day = j.day
+          AND UPPER(ov.formato) = UPPER(j.formato) AND UPPER(ov.platform) = UPPER(j.platform)
+    """
+    client.query(sql).result()
+
+
 def set_client_override_active(client_id: str, new_active: bool, reason: str) -> None:
     """Grava o novo estado do liga/desliga como uma linha SCD2 NOVA em
     core.client_reporting_source_config -- nunca UPDATE do valor em si: fecha
@@ -2457,6 +2519,9 @@ with tab_overrides:
                 with st.spinner("Escrevendo (writer SA impersonada)..."):
                     set_client_override_active(client_choice, new_active, reason)
                 st.success(f"`{client_choice}` -> override_active={new_active}.")
+                with st.spinner("Atualizando stg.fact_pacing_base (refresh automatico)..."):
+                    refresh_fact_pacing_base()
+                st.success("`stg.fact_pacing_base` atualizado -- fact_pacing/fact_delivery ja refletem.")
                 load_override_active_config.clear()
                 st.rerun()
             except NotFound:
