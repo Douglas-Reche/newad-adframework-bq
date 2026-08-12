@@ -129,6 +129,19 @@ gcloud projects add-iam-policy-binding "$STAGING_PROJECT_ID" \
   --member="serviceAccount:${SA_EMAIL}" \
   --role="roles/bigquery.dataViewer" >/dev/null
 
+# Writer SA tambem precisa de LEITURA em douglas-bq-staging (nao so escrita) --
+# achado real 2026-08-12: refresh_fact_pacing_base() em app.py (chamada pelo
+# toggle de override_active) le gold.fact_delivery/gold.fact_io_plan via
+# get_staging_writer_bq_client() antes de escrever stg.fact_pacing_base -- 403
+# Access Denied sem isto. Binding a nivel de DATASET (bq add-iam-policy-binding
+# "${STAGING_PROJECT_ID}:gold") bloqueado por allowlisting (mesmo padrao ja
+# documentado em docs/known_issues.md S6) -- projeto inteiro via
+# gcloud projects add-iam-policy-binding e o fallback que funciona (mesmo
+# escopo ja usado para a SA principal acima).
+gcloud projects add-iam-policy-binding "$STAGING_PROJECT_ID" \
+  --member="serviceAccount:${WRITER_SA_EMAIL}" \
+  --role="roles/bigquery.dataViewer" >/dev/null
+
 gcloud projects add-iam-policy-binding "$STAGING_PROJECT_ID" \
   --member="serviceAccount:${SA_EMAIL}" \
   --role="roles/bigquery.jobUser" >/dev/null
