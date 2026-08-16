@@ -37,3 +37,17 @@ OPTIONS (
 -- existir) ficam com notes NULL, tratado como "sem nota" na UI.
 ALTER TABLE `douglas-bq-staging.raw.historical_uploads_meta`
   ADD COLUMN IF NOT EXISTS notes STRING;
+
+-- promoted_at: NULL = upload ainda nao foi normalizado/promovido para
+-- stg.historical_overrides_delivery ("aguardando normalizacao"); preenchido =
+-- timestamp de quando load_historical_override.py --upload-id <este>
+-- gravou de verdade (nao --dry-run). Adicionado 2026-08-12, pedido do
+-- Douglas: hoje o toggle de override_active no Hub e por client_id, nao por
+-- upload_id -- se um cliente ja tem historico aprovado e alguem sobe um
+-- upload NOVO (ex: planilha atualizada) pra analisar, o Hub nao distinguia
+-- "upload novo ainda em analise" de "cliente ja tem dado promovido". Esta
+-- coluna resolve isso na tela de upload (ver hub/app.py). Escrito por
+-- scripts/deploy/load_historical_override.py apos INSERT bem-sucedido --
+-- nunca setado manualmente, nunca via UPDATE fora desse fluxo.
+ALTER TABLE `douglas-bq-staging.raw.historical_uploads_meta`
+  ADD COLUMN IF NOT EXISTS promoted_at TIMESTAMP;

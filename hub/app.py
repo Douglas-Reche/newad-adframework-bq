@@ -742,7 +742,7 @@ def load_historical_uploads_for_client(client_id: str) -> pd.DataFrame:
         query_parameters=[bigquery.ScalarQueryParameter("client_id", "STRING", client_id)]
     )
     query = f"""
-    SELECT upload_id, source_filename, row_count, uploaded_at, notes
+    SELECT upload_id, source_filename, row_count, uploaded_at, notes, promoted_at
     FROM `{RAW_UPLOADS_META_TABLE}`
     WHERE client_id = @client_id
     ORDER BY uploaded_at DESC
@@ -2319,10 +2319,14 @@ with tab_overrides:
             )
         else:
             uploads_for_client = uploads_for_client.copy()
+            uploads_for_client["_status_label"] = uploads_for_client["promoted_at"].apply(
+                lambda v: "promovido" if pd.notna(v) else "aguardando normalizacao"
+            )
             uploads_for_client["display"] = (
                 uploads_for_client["source_filename"] + " -- "
                 + uploads_for_client["uploaded_at"].astype(str)
-                + f" ({uploads_for_client['row_count']} linhas)"
+                + f" ({uploads_for_client['row_count']} linhas) -- "
+                + uploads_for_client["_status_label"]
             )
             compare_upload_display = st.selectbox(
                 "Upload", uploads_for_client["display"].tolist(), key="compare_upload_select"
@@ -2331,6 +2335,22 @@ with tab_overrides:
                 uploads_for_client["display"] == compare_upload_display
             ].iloc[0]
             compare_upload_id = compare_upload_row["upload_id"]
+            if pd.notna(compare_upload_row.get("promoted_at")):
+                st.success(
+                    f":material/check_circle: Promovido para `stg.historical_overrides_delivery` em "
+                    f"{compare_upload_row['promoted_at']}. Dado deste upload ja pode ser ativado/"
+                    "desativado na secao de liga-desliga abaixo.",
+                    icon=":material/check_circle:",
+                )
+            else:
+                st.warning(
+                    ":material/hourglass_empty: Aguardando normalizacao -- este upload ainda NAO foi "
+                    "promovido para `stg.historical_overrides_delivery`. O toggle de ativar/desativar "
+                    "override abaixo, se existir dado para este cliente, reflete um upload ANTERIOR ja "
+                    "aprovado -- nao este. Rode `historical_mappings/<client_id>.py` + "
+                    "`load_historical_override.py --upload-id` antes de considerar este upload pronto.",
+                    icon=":material/hourglass_empty:",
+                )
             if compare_upload_row.get("notes"):
                 st.caption(f":material/sticky_note_2: {compare_upload_row['notes']}")
 

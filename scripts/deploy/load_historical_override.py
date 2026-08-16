@@ -241,6 +241,14 @@ def main():
         action="store_true",
         help="So mostra o que seria inserido (contagem + preview), nao grava nada e nao precisa de credencial",
     )
+    parser.add_argument(
+        "--upload-id",
+        default=None,
+        help="upload_id de origem (raw.historical_uploads_meta) -- se informado, marca "
+        "promoted_at=CURRENT_TIMESTAMP() nesse upload apos INSERT bem-sucedido (nunca em "
+        "--dry-run). Opcional -- sem isso, o upload fica 'aguardando normalizacao' pra "
+        "sempre na tela do Hub mesmo apos promovido (so sinalizacao de UI, nao bloqueia nada).",
+    )
     args = parser.parse_args()
 
     if not args.input_file.exists():
@@ -285,6 +293,18 @@ def main():
         sys.exit(1)
 
     print(f"[load_historical_override] OK -- {len(rows)} linha(s) inseridas em {table_ref}.")
+
+    if args.upload_id:
+        meta_table = f"{args.project}.raw.historical_uploads_meta"
+        update_sql = (
+            f"UPDATE `{meta_table}` SET promoted_at = CURRENT_TIMESTAMP() "
+            "WHERE upload_id = @upload_id"
+        )
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[bigquery.ScalarQueryParameter("upload_id", "STRING", args.upload_id)]
+        )
+        bq_client.query(update_sql, job_config=job_config).result()
+        print(f"[load_historical_override] promoted_at marcado para upload_id={args.upload_id}.")
 
 
 if __name__ == "__main__":

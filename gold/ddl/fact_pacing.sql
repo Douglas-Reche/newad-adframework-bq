@@ -132,6 +132,13 @@ SELECT
   realized_clicks,
   realized_conversions,
   investimento_realizado,
+  -- is_override (2026-08-12, pedido do Douglas): expoe pro consumidor final
+  -- (Hub, Power BI) se esta linha e dado historico ajustado (override) ou
+  -- entrega real da plataforma -- ja existia internamente em
+  -- stg.fact_pacing_base (usado pra bloquear business_rule_* abaixo), so
+  -- nao saia como coluna visivel ate agora. Propaga via * desde pacing_base,
+  -- nao precisa de calculo novo aqui.
+  is_override,
   -- Colunas novas -- teto de regra de negocio ("impression_cap_pct"), NULL
   -- quando nao ha regra vigente pra este client_id+data, ou o formato desta
   -- linha nao esta em rule_params.strategies (ver comentario no topo).
