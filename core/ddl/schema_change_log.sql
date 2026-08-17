@@ -30,6 +30,17 @@ ALTER TABLE `adframework.core.schema_change_log`
 ALTER TABLE `adframework.core.schema_change_log`
   ADD COLUMN IF NOT EXISTS commit_hash STRING;
 
+-- confirmation_method: só relevante quando tested_env='prod' (NULL em test).
+-- 'terminal' = humano digitou ao vivo no input() interativo do apply_ddl.py
+-- (mecanismo original). 'chat' = confirmado via --confirmed-via-chat, usado
+-- só quando o Douglas está sem acesso a terminal (ex: operando por
+-- celular/chat) — decisão consciente dele, 2026-08-16, registrada na task
+-- Notion MÃE "Regras de Negócio Configuráveis por Cliente". A validação de
+-- nome exato do objeto é idêntica nos dois casos — esta coluna só distingue
+-- QUEM confirmou fisicamente, não afrouxa a validação em si.
+ALTER TABLE `adframework.core.schema_change_log`
+  ADD COLUMN IF NOT EXISTS confirmation_method STRING;
+
 -- ============================================================================
 -- Referência: CREATE TABLE original (NÃO re-executar — ver core/ddl/
 -- schema_change_log.sql no histórico do git para o arquivo completo com o

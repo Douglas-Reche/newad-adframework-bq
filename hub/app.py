@@ -54,7 +54,15 @@ WRITER_SA_EMAIL = os.environ.get(
 # (producao) -- essas duas tabelas nunca foram aplicadas em producao de proposito.
 # Mesma constante de projeto usada pela landing RAW (RAW_LANDING_PROJECT_ID,
 # definida mais abaixo) -- redeclarada aqui em cima porque e usada antes.
-HISTORICAL_OVERRIDE_PROJECT_ID = "douglas-bq-staging"
+#
+# 2026-08-16: parametrizado via env var pra suportar o segundo ambiente do Hub
+# (Cloud Run de producao, servico separado `douglas-data-hub-prod`, ver
+# hub/deploy.sh HUB_TARGET_ENV). Default continua "douglas-bq-staging" -- sem
+# a env var setada, o comportamento do servico de staging existente nao muda
+# em nada. O servico de producao roda com HISTORICAL_OVERRIDE_PROJECT_ID=adframework.
+HISTORICAL_OVERRIDE_PROJECT_ID = os.environ.get(
+    "HISTORICAL_OVERRIDE_PROJECT_ID", "douglas-bq-staging"
+)
 
 OVERRIDE_TABLE = f"{HISTORICAL_OVERRIDE_PROJECT_ID}.stg.historical_overrides_delivery"
 

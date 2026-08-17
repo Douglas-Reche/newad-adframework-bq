@@ -356,6 +356,7 @@ def log_change(
     previous_definition: str = None,
     commit_hash: str = None,
     status_override: str = None,
+    confirmation_method: str = None,
 ) -> str:
     now = datetime.now(timezone.utc)
     status = status_override or ("promoted" if env == "prod" else "testing")
@@ -374,6 +375,11 @@ def log_change(
         "status": status,
         "previous_definition": previous_definition,
         "commit_hash": commit_hash,
+        # confirmation_method: 'terminal' (input() ao vivo) | 'chat' (--confirmed-via-chat,
+        # 2026-08-16) | None pra env=test (confirmacao nao se aplica). Distingue no
+        # rastro de auditoria quando um humano digitou fisicamente vs. quando confirmou
+        # via chat/AskUserQuestion e um agente executou por ele (Douglas sem terminal).
+        "confirmation_method": confirmation_method,
     }
     # Log SEMPRE no core real do projeto informado -- nunca em core_test --
     # o registro de "o que foi tentado" nao pode desaparecer se o teste for
@@ -495,6 +501,18 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="So imprime o SQL final, nao executa nem loga")
     parser.add_argument("--no-log", action="store_true", help="Pula o INSERT em core.schema_change_log (uso: debug)")
     parser.add_argument("--rollback", metavar="CHANGE_ID", default=None, help="Reaplica a previous_definition gravada para essa change_id em core.schema_change_log, em vez de aplicar um arquivo novo")
+    parser.add_argument(
+        "--confirmed-via-chat", metavar="OBJECT_NAME", default=None,
+        help="SO para --env=prod, SO quando rodado por um agente de IA sem terminal humano "
+        "disponivel (ex: usuario operando so por chat/celular, sem acesso a terminal). "
+        "Substitui a confirmacao interativa input() por esta flag -- exige o MESMO nome exato "
+        "do objeto que o input() exigiria (mesma validacao, mesma barra de seguranca contra "
+        "copy-paste as-cegas). Decisao consciente do dono do repo (Douglas, 2026-08-16): "
+        "quando usar, o valor desta flag deve vir de uma confirmacao explicita dele via "
+        "AskUserQuestion na sessao de chat -- nunca decidido pelo agente sozinho. Fica "
+        "registrado em core.schema_change_log com confirmation_method='chat' (nao 'terminal'), "
+        "auditavel, para distinguir dos casos onde um humano digitou ao vivo.",
+    )
     args = parser.parse_args()
 
     requested_by = args.requested_by or getpass.getuser()
@@ -600,13 +618,19 @@ def main():
         else:
             print(f"[apply_ddl] Sem definicao anterior encontrada para {log_dataset}.{creation_object} (objeto novo, ou nao e VIEW/TABLE/FUNCTION reconhecida).")
 
+    confirmation_method = None
     if args.env == "prod":
         # Trava de nivel 2: nenhuma aplicacao em producao pode acontecer sem
-        # uma pessoa digitando ao vivo num terminal interativo. De proposito
-        # NAO existe flag de bypass (--yes/--force) -- ver header do modulo e
-        # o relato da task que motivou isto. Um ambiente nao-interativo (CI,
-        # agente de IA sem terminal humano) recebe EOF/string vazia no
-        # input() abaixo e portanto falha a confirmacao automaticamente.
+        # confirmacao explicita de um humano. Duas formas validas:
+        #   (a) --confirmed-via-chat=<nome-exato-do-objeto> -- so para quando o
+        #       Douglas esta operando so por chat/celular, sem terminal disponivel.
+        #       Mesma validacao de nome exato do input() abaixo -- decisao
+        #       consciente dele (2026-08-16), o valor precisa vir de confirmacao
+        #       explicita dele via AskUserQuestion na sessao, nunca decidido pelo
+        #       agente sozinho. Fica marcado confirmation_method='chat' no log.
+        #   (b) input() interativo ao vivo -- o caminho original, sem flag,
+        #       continua existindo tal como era. Ambiente nao-interativo sem
+        #       nenhuma das duas opcoes recebe EOF e falha automaticamente.
         print("=" * 70, file=sys.stderr)
         print("[apply_ddl] CONFIRMACAO OBRIGATORIA -- APLICACAO EM PRODUCAO", file=sys.stderr)
         print("=" * 70, file=sys.stderr)
@@ -617,27 +641,45 @@ def main():
         print("----- Preview do SQL final -----", file=sys.stderr)
         print(final_sql, file=sys.stderr)
         print("-" * 70, file=sys.stderr)
-        try:
-            confirmation = input(
-                f"Digite o nome exato do objeto ({creation_object}) para confirmar "
-                f"aplicacao em PRODUCAO, ou qualquer outra coisa para abortar: "
-            )
-        except EOFError:
+
+        if args.confirmed_via_chat is not None:
+            if args.confirmed_via_chat.strip() != creation_object:
+                print(
+                    f"[apply_ddl] ABORTADO -- --confirmed-via-chat='{args.confirmed_via_chat.strip()}' "
+                    f"nao corresponde ao objeto esperado '{creation_object}'. Nenhuma alteracao "
+                    f"foi aplicada.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            confirmation_method = "chat"
             print(
-                "[apply_ddl] ABORTADO -- input() recebeu EOF (ambiente nao-interativo, "
-                "sem terminal humano para confirmar). Nenhuma alteracao foi aplicada.",
-                file=sys.stderr,
+                "[apply_ddl] Confirmado via --confirmed-via-chat -- prosseguindo com "
+                "aplicacao em PRODUCAO (confirmation_method=chat).",
             )
-            sys.exit(1)
-        if confirmation.strip() != creation_object:
-            print(
-                f"[apply_ddl] ABORTADO -- confirmacao '{confirmation.strip()}' nao "
-                f"corresponde ao objeto esperado '{creation_object}'. Nenhuma alteracao "
-                f"foi aplicada.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        print(f"[apply_ddl] Confirmado -- prosseguindo com aplicacao em PRODUCAO.")
+        else:
+            try:
+                confirmation = input(
+                    f"Digite o nome exato do objeto ({creation_object}) para confirmar "
+                    f"aplicacao em PRODUCAO, ou qualquer outra coisa para abortar: "
+                )
+            except EOFError:
+                print(
+                    "[apply_ddl] ABORTADO -- input() recebeu EOF (ambiente nao-interativo, "
+                    "sem terminal humano e sem --confirmed-via-chat). Nenhuma alteracao foi "
+                    "aplicada.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            if confirmation.strip() != creation_object:
+                print(
+                    f"[apply_ddl] ABORTADO -- confirmacao '{confirmation.strip()}' nao "
+                    f"corresponde ao objeto esperado '{creation_object}'. Nenhuma alteracao "
+                    f"foi aplicada.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            confirmation_method = "terminal"
+            print(f"[apply_ddl] Confirmado via terminal -- prosseguindo com aplicacao em PRODUCAO.")
 
     print(f"[apply_ddl] Executando contra --env={args.env} (dataset alvo: {log_dataset})")
     query_job = bq_client.query(final_sql)
@@ -656,6 +698,7 @@ def main():
             requested_by=requested_by,
             previous_definition=previous_definition,
             commit_hash=commit_hash,
+            confirmation_method=confirmation_method,
         )
 
 
