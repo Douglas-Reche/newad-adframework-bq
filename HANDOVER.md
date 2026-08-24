@@ -49,7 +49,10 @@ agente documente do seu próprio jeito e os docs divergirem de estilo/estrutura.
 
 ## Onde cada agente atua
 
-Definições completas em `~/.claude/agents/*.md` (globais, não versionadas neste repo).
+Definições completas em `.claude/agents/*.md` (escopadas a este repo desde 2026-08-24 —
+antes moravam globais em `~/.claude/agents/`, movidas pra cá pra evitar colisão de nome
+com agentes de mesmo nome em outros projetos, ex: `docs` colidia com o `docs` do
+`zoukinvan-weekly-planner`).
 Resumo de fronteira:
 
 | Agente | Escopo | Nunca mexe em |
@@ -115,14 +118,14 @@ IAM/service-accounts entre os dois projetos GCP.
 | Promover uma mudança de staging pra produção | `docs/runbook_promocao_ambiente.md` |
 | Conector quebrado, job de ingestão não rodou, dado parado | `docs/runbook_incidente_operacional.md` |
 | Entender diferença entre `adframework` e `douglas-bq-staging` | `docs/environments.md` |
-| Auditar/atualizar documentação | `~/.claude/agents/docs.md` (protocolo do agente `docs`) |
+| Auditar/atualizar documentação | `.claude/agents/governance.md` (protocolo do agente `governance`) |
 
 ---
 
 ## Mapa de Documentação — o que ler e quando
 
 Ponteiro de navegação, não resumo — cada linha diz o que o doc é, quando ele é
-atualizado (regra já definida em `~/.claude/agents/docs.md`) e, principalmente, quando
+atualizado (regra já definida em `.claude/agents/governance.md`) e, principalmente, quando
 uma sessão nova (humana ou IA) deveria abri-lo **antes** de começar a mexer em algo,
 não só depois que o problema já apareceu.
 
@@ -149,7 +152,7 @@ não só depois que o problema já apareceu.
 | `docs/environments.md` | Matriz `adframework` (produção) vs. `douglas-bq-staging` (staging) — IAM/SAs por camada | Tier 3 — diferença de IAM/ambiente muda | Antes de rodar qualquer coisa contra staging ou produção pela primeira vez, ou ao debugar erro de permissão |
 | `docs/runbook_promocao_ambiente.md` | Runbook de promoção staging → produção via `apply_ddl.py` + rollback | Tier 3 — mecanismo de promoção muda | Antes de promover qualquer DDL de staging pra produção |
 | `docs/runbook_incidente_operacional.md` | Matriz sintoma → causa provável → ação pra falha de conector/ingestão | Tier 3 — novo incidente real resolvido | Primeiro doc a abrir quando um job de ingestão falhou ou dado parou de chegar |
-| `~/.claude/agents/docs.md` | Protocolo completo do agente `docs` (padrão de escrita, Notion, expurgo) | Fora do repo — mantido pelo próprio agente `docs` | Antes de pedir uma auditoria de documentação ou de decidir onde um registro novo deveria morar |
+| `.claude/agents/governance.md` | Protocolo completo do agente `governance` (padrão de escrita, Notion, expurgo) | Dentro do repo, escopado — mantido pelo próprio agente `governance` | Antes de pedir uma auditoria de documentação ou de decidir onde um registro novo deveria morar |
 
 ---
 

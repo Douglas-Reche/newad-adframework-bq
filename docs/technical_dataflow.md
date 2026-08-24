@@ -16,6 +16,13 @@
 > + leitura de `scripts/deploy/apply_ddl.py`, `.github/workflows/*.yml`,
 > `scripts/deploy/load_historical_raw.py`/`normalize_historical_upload.py`/
 > `load_historical_override.py`, `docs/io_plan_domain.md` e `docs/runbook_promocao_ambiente.md`.
+>
+> **Patch pontual em 2026-08-20** (não é reverificação completa contra `INFORMATION_SCHEMA`):
+> corrigido o status de `core.client_business_rules` (estava marcado "planejado", já estava
+> construído e validado desde 2026-08-09/10) e adicionado o sync automático de `raw`
+> (Cloud Function + Cloud Scheduler, criado 2026-08-17). O resto do diagrama segue como
+> verificado em 2026-08-09 — revalidar contra `INFORMATION_SCHEMA` antes de tratar qualquer
+> outro detalhe como garantido.
 
 ---
 
@@ -41,6 +48,7 @@ flowchart TB
         HISTLOAD["load_historical_raw.py\n(manual, CLI, sempre --project staging)"]
         HISTNORM["normalize_historical_upload.py\n+ historical_mappings/&lt;client_id&gt;.py\n(manual, CLI)"]
         HISTOVR["load_historical_override.py\n(manual, CLI, default --project=adframework)"]
+        RAWSYNC["raw-sync-staging\nCloud Function + Cloud Scheduler diário (06:00 -03:00)\n(criado 2026-08-17)"]
     end
 
     subgraph GH["GitHub — newad-adframework-bq"]
@@ -61,7 +69,7 @@ flowchart TB
         SSTG["stg.* (físico local)\n+ stg.historical_overrides_delivery\n(existe SÓ aqui)"]
         SCORE["core.* (físico local)\n+ client_reporting_source_config\n+ resolve_reporting_source()\n(existem SÓ aqui, staging_only)"]
         SGOLD["gold.* (físico local)"]
-        SPLANNED["core.client_business_rules\n🔜 PLANEJADO — não construído\n(task Notion 'Desenhar core.client_business_rules', Waiting)"]
+        SRULES["core.client_business_rules\n+ resolve_client_business_rule()\n✅ construído e validado (2026-08-09/10)\nSÓ staging — não promovido"]
     end
 
     subgraph CONSUME["Consumo"]
@@ -89,6 +97,9 @@ flowchart TB
     APPLYDDL -->|"--project=douglas-bq-staging"| STG_ENV
     GHA -->|"push em hub/** → deploy automático"| HUB
 
+    PRAW -->|"bq cp WRITE_TRUNCATE, 18 tabelas"| RAWSYNC
+    RAWSYNC --> SRAW
+
     PRAW --> PSTG --> PCORE --> PGOLD
     SRAW --> SSTG --> SCORE --> SGOLD
 
@@ -96,7 +107,7 @@ flowchart TB
     PGOLD --> PBI
     SGOLD -.->|"validação pré-promoção\n(ver runbook_promocao_ambiente.md)"| APPLYDDL
 
-    style SPLANNED stroke-dasharray: 5 5
+    style SRULES stroke-dasharray: 3 3
     style HISTLOAD stroke-dasharray: 3 3
     style HISTNORM stroke-dasharray: 3 3
     style HISTOVR stroke-dasharray: 3 3
@@ -118,10 +129,16 @@ flowchart TB
   (`stg.historical_overrides_delivery`) **não existe ainda em produção** (só em staging —
   confirmado ao vivo em 2026-08-09), o uso real hoje é sempre com
   `--project douglas-bq-staging`.
-- `core.client_business_rules` é **planejado, não construído** (task Notion "Desenhar
-  core.client_business_rules", `Status: Waiting`) — não existe em nenhum dos dois projetos
-  (confirmado ao vivo em 2026-08-09). Representado tracejado de propósito para não misturar
-  estado real com estado desejado.
+- `core.client_business_rules` + `resolve_client_business_rule()` foram **construídos e
+  validados ponta-a-ponta em 2026-08-09/10** — existem hoje só em `douglas-bq-staging`,
+  aguardando promoção formal (mesmo status do mecanismo de override histórico). Representado
+  tracejado por ser staging-only, não por ser planejado/inexistente (correção 2026-08-20,
+  este diagrama estava referenciando o estado do dia anterior à conclusão).
+- **Sync diário automático de `raw` (staging ← produção)** existe desde 2026-08-17: Cloud
+  Function `raw-sync-staging` + Cloud Scheduler (`raw-sync-staging-daily`, 06:00
+  America/Sao_Paulo) copiam as 18 tabelas via `bq cp`/`copy_table` (WRITE_TRUNCATE). Antes
+  disso, o sync era manual e ficou 11+ dias sem rodar sem que ninguém notasse — achado real
+  da sessão de 2026-08-17.
 - Staging não espelha produção 1:1: produção não tem `raw.historical_uploads`/
   `historical_uploads_meta`, `stg.historical_overrides_delivery`,
   `core.client_reporting_source_config` nem `core.resolve_reporting_source()` — essas 4
@@ -209,7 +226,7 @@ flowchart LR
         core_ioplan["core.io_plan_manual"]
         core_histprod["core.historical_overrides_delivery\n(PRODUÇÃO — hardcoded Cora, cutoff 2026-07-01)"]
         core_reportcfg["core.client_reporting_source_config\n+ resolve_reporting_source()\n(SÓ staging, generalizado)"]
-        core_planned["core.client_business_rules\n🔜 PLANEJADO"]
+        core_rules2["core.client_business_rules\n+ resolve_client_business_rule()\n✅ construído, validado — SÓ staging"]
     end
 
     subgraph GOLD["GOLD"]
@@ -273,7 +290,7 @@ flowchart LR
     core_histprod -.->|"UNION hardcoded (client_id + data de corte)"| g_vwreport
 
     core_reportcfg -.->|"planejado para generalizar vw_fact_delivery_reporting\n(hoje só ativo dentro do fact_delivery.sql de staging)"| core_histprod
-    core_planned -.-> core_dim
+    core_rules2 -.->|"aplicado em gold.fact_pacing via resolve_client_business_rule()\nSÓ staging hoje"| core_dim
 ```
 
 **Como ler as linhas tracejadas:** dependência condicional/planejada/parcial — não o
@@ -307,7 +324,8 @@ produção e staging (ponto mais importante deste diagrama):**
 | Override histórico — produção (hardcoded) | `gold/ddl/vw_fact_delivery_reporting.sql`, `core/ddl/historical_overrides_delivery.sql` |
 | Override histórico — staging (generalizado, não promovido) | `core/ddl/client_reporting_source_config.sql`, `core/ddl/resolve_reporting_source.sql`, `stg/ddl/historical_overrides_delivery.sql`, `gold/ddl/fact_delivery.sql` (4ª fonte do UNION, só ativa em staging) |
 | Upload de histórico (raw → normalizado → carregado) | `scripts/deploy/load_historical_raw.py` → `scripts/deploy/normalize_historical_upload.py` → `scripts/deploy/load_historical_override.py` |
-| `core.client_business_rules` (planejado) | Não implementado — task Notion "Desenhar core.client_business_rules" |
+| `core.client_business_rules` (construído, staging-only) | `core/ddl/client_business_rules.sql`, `core/ddl/resolve_client_business_rule.sql`, aplicado em `gold/ddl/fact_pacing.sql` |
+| Sync diário `raw` staging ← produção (construído 2026-08-17) | `scripts/deploy/raw_sync_scheduler/main.py` (Cloud Function), Cloud Scheduler `raw-sync-staging-daily` |
 
 ---
 

@@ -74,7 +74,7 @@ Especificamente:
   verdade do código; este doc é a leitura consolidada).
 - Mudança de guardrail de custo (cota, orçamento) → atualizar a linha correspondente.
 
-Dono da atualização: o agente `docs`, acionado pelo orquestrador conforme
+Dono da atualização: o agente `governance`, acionado pelo orquestrador conforme
 "Fluxo de documentação é sempre em 3 saltos" (`CLAUDE.md`).
 
 ---

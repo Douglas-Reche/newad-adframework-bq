@@ -140,7 +140,7 @@ ls audit/raw_layer/
 | Objetos listados como `shiro_admin_ui`/`legacy_disabled` em `core/OWNERSHIP.yaml` | Não são deste pipeline |
 | Projeto GCP `striped-bonfire-489318-t9` | Dashboard emergencial temporário |
 | Repositório `rshiro-newad/adframework` | Somente leitura a partir daqui |
-| `docs/*` (exceto via processo do agente `docs` — ver `CLAUDE.md`) | Documentação tem dono único |
+| `docs/*` (exceto via processo do agente `governance` — ver `CLAUDE.md`) | Documentação tem dono único |
 
 ---
 

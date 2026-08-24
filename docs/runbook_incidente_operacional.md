@@ -53,10 +53,10 @@ Ou via o hub (`hub/app.py`, aba de freshness) — é a superfície feita exatame
    resolvido acima — reler a entrada correspondente em `known_issues.md`/`CHANGELOG.md`
    antes de investigar do zero.
 2. Investigar seguindo o padrão de "causa raiz confirmada, não suposição" (ver
-   `~/.claude/agents/backend.md`) — ler o código real do conector/orchestrator, confirmar
+   `.claude/agents/backend.md`) — ler o código real do conector/orchestrator, confirmar
    contra `INFORMATION_SCHEMA`/Firestore ao vivo, nunca assumir.
 3. Depois de resolvido, adicionar a entrada nova em `docs/known_issues.md` (formato já
    estabelecido: `# | Problema | Impacto | Ação` + seção `✅ Resolvidos em <data>`) —
-   trabalho do agente `docs`, acionado pelo orquestrador.
+   trabalho do agente `governance`, acionado pelo orquestrador.
 4. Se o incidente revelar um padrão novo e recorrente, considerar adicionar uma linha
    nova a este runbook.

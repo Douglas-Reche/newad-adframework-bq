@@ -96,17 +96,17 @@ pergunta pontual isolada:
    relacionada, ela ganha prioridade — continue nela em vez de criar nova.
 1. **Definir escopo primeiro** — discutir com o usuário o que precisa ser feito, rodar as
    análises necessárias, antes de construir qualquer coisa.
-2. **Antes de começar a construção**, com o escopo já fechado, **chamar o agent `docs`**
+2. **Antes de começar a construção**, com o escopo já fechado, **chamar o agent `governance`**
    pra registrar o plano como task(s) no Notion — agrupadas, classificadas, com nomes
    compreensíveis pra quem não é técnico, já estruturadas como MÃE + sub-tasks quando
-   fizer sentido (ver "Convenção de criação de tasks" em `docs.md`). Isso acontece **antes**
+   fizer sentido (ver "Convenção de criação de tasks" em `governance.md`). Isso acontece **antes**
    da execução, não depois — é o que faz o Kanban/Timeline refletirem o planejado, não só
    o já feito.
 3. **Durante a execução**, a sessão principal mantém controle interno do que está sendo
    feito (todo list) — não é opcional, é o que possibilita o passo 4 sem depender de
    memória.
 4. **Ao final de um pacote de trabalho** (não precisa ser fim de sessão — pode ser um
-   marco natural no meio dela), **chamar o agent `docs` de novo** pra documentar tudo que
+   marco natural no meio dela), **chamar o agent `governance` de novo** pra documentar tudo que
    foi feito de fato: Camada 2 (docs técnicos) + Camada 1 (Notion, atualizando as tasks
    criadas no passo 2 com o resultado real — não criar tasks novas pra trabalho que já
    tinha task do passo 2, atualizar a existente).
@@ -181,10 +181,10 @@ assunto ou retomar depois de uma pausa.
 
 ### Cadência de documentação em MÃE longa
 
-Não espera todas as sub-tasks fecharem pra chamar o `docs` pela primeira vez. Chama a cada
+Não espera todas as sub-tasks fecharem pra chamar o `governance` pela primeira vez. Chama a cada
 **checkpoint natural** — um cluster de sub-tasks concluídas que já forma um resultado
 coerente e reportável (mesmo critério do "pré-registro" acima) — não um número fixo de
-sub-tasks, porque isso varia por natureza do trabalho. O `docs` registra "o que está
+sub-tasks, porque isso varia por natureza do trabalho. O `governance` registra "o que está
 pronto até agora + o que está em andamento" na task MÃE, e o ciclo se repete até a MÃE
 inteira fechar.
 
@@ -208,14 +208,14 @@ deste repo, Notion MCP).
 
 ## Protocolo de registro — duas camadas
 
-**Camada 1 — Notion (tasks), mantida pelo agent `docs`:** todo trabalho definido (plano
+**Camada 1 — Notion (tasks), mantida pelo agent `governance`:** todo trabalho definido (plano
 grande ou task pequena) vira uma task no Notion, com data de início/fim. As
 resoluções/decisões são atualizadas **dentro da task** conforme o trabalho avança — é
 aqui que mora o detalhe semântico: raciocínio, porquê, discussão, alternativas
 consideradas, nuances de decisão. Consulte essa camada pra reconstruir o histórico
 completo de uma decisão.
 
-**Camada 2 — GitHub/repositório, mantida pelo agent `docs`:** documentação técnica e
+**Camada 2 — GitHub/repositório, mantida pelo agent `governance`:** documentação técnica e
 estrutural — schema, arquitetura, comportamento do sistema. Deliberadamente **sem** o
 detalhe narrativo/semântico da discussão — isso fica só na Camada 1.
 
@@ -237,9 +237,9 @@ necessária pra operar o sistema sem arqueologia — é técnico → git (mesmo 
 - DDL, migrations, seeds/CSVs de referência, scripts SQL de auditoria, agentes Python
 - Documentação técnica de API e design de camada (schema, grain, comportamento)
 - `CHANGELOG.md` — obrigatório em toda sessão com decisão relevante
-- `docs/INDEX.md` — mantido pelo processo definido em `docs.md` (não editar à mão fora
+- `docs/INDEX.md` — mantido pelo processo definido em `governance.md` (não editar à mão fora
   desse processo; a meta é o índice ser derivado do estado real dos docs, não mantido
-  manualmente entrada por entrada — ver "docs mestres" em `docs.md`)
+  manualmente entrada por entrada — ver "docs mestres" em `governance.md`)
 
 **Formato CHANGELOG:**
 ```
@@ -267,7 +267,7 @@ Executar nesta ordem antes de encerrar:
 1. `CHANGELOG.md` — entry com data e resumo das decisões
 2. **Conferir** (não é o único ponto de atualização — ver protocolo de relato acima) que
    toda task Notion tocada na sessão está com a narrativa completa até o momento
-3. Docs técnicos (Camada 2) — atualizados via processo do `docs.md`, não à mão. Para
+3. Docs técnicos (Camada 2) — atualizados via processo do `governance.md`, não à mão. Para
    todo doc **novo** criado na sessão, confirmar que ele tem o cabeçalho de manutenção
    no topo (`> **Manutenção:** Tier <N> — <gatilho de atualização>`, logo abaixo do
    título) — não basta o conteúdo estar correto, o gatilho de quando revisitar aquele
@@ -286,7 +286,7 @@ Executar nesta ordem antes de encerrar:
 ### Sugerir encerramento proativamente, não só executar quando pedido
 
 Ao chegar num **marco natural de pacote de trabalho** (mesmo critério já usado pra
-chamar o `docs` — ver "Cadência de documentação em MÃE longa" acima) **e** a sessão já
+chamar o `governance` — ver "Cadência de documentação em MÃE longa" acima) **e** a sessão já
 estar longa (múltiplas compactações, vários dias de conversa, ou simplesmente um volume
 grande de trabalho fechado), rodar o checklist acima e **propor explicitamente ao
 usuário**: encerrar esta sessão agora e continuar numa nova, já que o registro em 2

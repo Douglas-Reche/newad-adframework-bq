@@ -2,7 +2,7 @@
 
 > **Migrado para o Notion em 2026-08-08.** O plano de execução completo (Frentes A/B/C,
 > mecanismo de manutenção Tier 1-3, checkers D1/D2, ordem de execução, decisões pendentes)
-> é narrativa/planejamento — Camada 1 (ver `docs.md` do agente `docs`, critério de
+> é narrativa/planejamento — Camada 1 (ver `governance.md` do agente `governance`, critério de
 > profundidade: "se sumisse, dá pra operar o sistema só com código+schema?"). Este arquivo
 > existe só como ponteiro técnico enxuto; não editar de volta pra plano completo.
 >

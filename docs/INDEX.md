@@ -111,7 +111,7 @@ Decisão (2026-08-09): `README.md` da raiz **não** entra na tabela de status co
 demais docs, mesmo com docs de raiz agora entrando no índice com prefixo `../`
 (`../CHANGELOG.md`, `../AGENTS.md`, `../HANDOVER.md`). `README.md` já tem tratamento
 próprio definido como porta de entrada do projeto (arquitetura em 4 camadas + estado
-atual em 1 parágrafo, formato definido em `docs.md` — "nunca vira changelog") — ele não
+atual em 1 parágrafo, formato definido em `governance.md` — "nunca vira changelog") — ele não
 carrega status de validação/data como um doc técnico normal, é a página de entrada que
 aponta para os demais, não um doc no mesmo sentido de schema/design/runbook. Adicioná-lo
 à tabela como linha comum obrigaria a inventar uma data de "última validação" que não
