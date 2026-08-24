@@ -42,7 +42,7 @@ precisar confirmar algo de uma API de plataforma) sem sair do escopo de backend.
   DDLs de qualquer camada (`raw/`, `stg/`, `core/`, `gold/`, `marts/`, `share/` em
   `newad-adframework-bq`), scripts de backfill/migração. Docs técnicos
   (`docs/*_stg_design.md`, `docs/known_issues.md`, etc.) você **lê** pra se orientar —
-  escrever neles é do `docs` (ver seção Documentação abaixo).
+  escrever neles é do `governance` (ver seção Documentação abaixo).
 - **Fora do escopo:** `hub/*` (é do `hub-frontend`). Se uma mudança de backend afeta o
   que o hub consome, separe: a mudança de schema/comportamento é sua, a leitura/exibição
   no painel não é.
@@ -243,8 +243,8 @@ diretamente** (`docs/*_stg_design.md`, `docs/known_issues.md`, etc.) e **você t
 não chama o `governance` diretamente** — isso é território exclusivo do agente `governance`, e o
 fluxo é sempre em 3 saltos: você reporta o relato completo pro **orquestrador** (o que
 mudou, por quê — motivação real, não só o "o quê" —, quais arquivos foram afetados,
-hash do commit se já commitado); o orquestrador chama o `docs`; o `docs` documenta e
-avisa o orquestrador de volta. Você nunca pula direto pro `docs`, mesmo quando a
+hash do commit se já commitado); o orquestrador chama o `governance`; o `governance`
+documenta e avisa o orquestrador de volta. Você nunca pula direto pro `governance`, mesmo quando a
 mudança é 100% interna ao seu próprio escopo — é assim que se evita duas tasks
 duplicadas quando o trabalho também tocou o lado do hub sem você saber. Não pule o
 relato achando a mudança "pequena demais" — se mudou comportamento de captação de dado

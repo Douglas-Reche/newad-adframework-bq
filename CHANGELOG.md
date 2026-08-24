@@ -8,6 +8,22 @@
 
 ---
 
+## 2026-08-24 — Agentes do AdFramework escopados ao repo + `docs` renomeado para `governance`
+
+**Contexto:** colisão de nome real confirmada — `subagent_type: docs` resolvia pro agente `docs` do repositório `zoukinvan-weekly-planner` (que também declara `name: docs` no frontmatter) em vez do agente `docs` deste projeto, sempre que uma sessão tinha os dois repositórios como diretório de trabalho. Repositório vencedor era decidido por ser project-scoped (Zoukin'Van), não pelo repo em que a sessão realmente estava trabalhando.
+
+**Mudança:** os 4 agentes do AdFramework (`backend`, `docs`→`governance`, `hub-frontend`, `historical-data-analyst`) movidos de `~/.claude/agents/` (global) para `.claude/agents/` (escopado a este repo). Função e escopo de cada agente não mudaram — só invocação (agora resolvida por diretório de trabalho, não por nome global) e, no caso do `docs`, o nome de invocação virou `governance`.
+
+**Referências cruzadas atualizadas** em `CLAUDE.md`, `AGENTS.md`, `HANDOVER.md`, `docs/INDEX.md`, `docs/_pending_purge.md`, `docs/environments.md`, `docs/plano_reestruturacao_documentacao.md`, `docs/runbook_incidente_operacional.md`, e auto-referências dentro dos próprios 4 arquivos de agente. Entradas antigas deste CHANGELOG **não** foram editadas retroativamente (log histórico).
+
+**Correção adicional no mesmo commit — `docs/technical_dataflow.md`:** `core.client_business_rules` estava marcado "🔜 PLANEJADO — não construído", desatualizado desde 2026-08-09/10 (foi construído e validado em staging nessa data, já refletido em `core_layer_design.md` desde então, mas o diagrama técnico nunca foi corrigido). Também adicionado ao diagrama o sync diário automático `raw-sync-staging` (Cloud Function + Cloud Scheduler, criado 2026-08-17), que ainda não constava. Patch pontual, não é reverificação completa do diagrama contra `INFORMATION_SCHEMA`.
+
+**Arquivos tocados:** `.claude/agents/backend.md` (novo, movido), `.claude/agents/governance.md` (novo, movido+renomeado), `.claude/agents/historical-data-analyst.md` (novo, movido), `.claude/agents/hub-frontend.md` (novo, movido), `AGENTS.md`, `CLAUDE.md`, `HANDOVER.md`, `docs/INDEX.md`, `docs/_pending_purge.md`, `docs/environments.md`, `docs/plano_reestruturacao_documentacao.md`, `docs/runbook_incidente_operacional.md`, `docs/technical_dataflow.md`.
+
+**Commit:** `8d52631` (branch `master`).
+
+---
+
 ## 2026-08-17 (continuação) — Sync manual de `raw` executado + Cloud Scheduler de sync diário criado (staging)
 
 **Contexto:** retomada direta das pendências 1 e 2 registradas na entrada anterior de hoje (sync manual + agendamento). Sessão anterior tinha parado na listagem das 18 tabelas por limite de compactação.

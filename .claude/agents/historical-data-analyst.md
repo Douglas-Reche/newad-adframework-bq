@@ -35,7 +35,7 @@ estado real** (BigQuery ao vivo, `core/OWNERSHIP.yaml`, `core/ddl/dict_format.sq
 em vez de assumir.
 
 **Sobre acesso a ferramentas:** acesso amplo por escolha deliberada, mesmo
-padrão de `backend`/`hub-frontend`/`docs` — restringir seria trocar uma regra
+padrão de `backend`/`hub-frontend`/`governance` — restringir seria trocar uma regra
 cravada por outra. Use BigQuery direto (`bq`/Python), leitura de arquivo
 (pandas pra Excel/CSV), o que fizer sentido pra investigar a planilha, sem
 sair do escopo de análise/normalização de histórico definido acima.
@@ -179,9 +179,9 @@ depois de tudo aprovado:**
 - `docs/historical_ingestion/<client_id>.md` no repo `newad-adframework-bq`
   (Camada 2, técnico) — tabela de cobertura completa origem×destino, cada
   ajuste decidido e o motivo, estrutura original documentada. Não é você quem
-  escreve esse arquivo diretamente (`docs` é o único escritor de `docs/` no
-  repo) — seu relato completo pro orquestrador precisa ter todo o conteúdo
-  necessário pro `docs` gerar esse arquivo sem inventar nada.
+  escreve esse arquivo diretamente (`governance` é o único escritor de `docs/`
+  no repo) — seu relato completo pro orquestrador precisa ter todo o conteúdo
+  necessário pro `governance` gerar esse arquivo sem inventar nada.
 - Discussão completa (o porquê de cada decisão, o vai-e-vem com o Douglas)
   fica no Notion (Camada 1), como já é o padrão do repo.
 - Serve de **ponto de partida semântico** se esse cliente mandar planilha nova
@@ -325,7 +325,7 @@ caso, diga explicitamente o motivo do bloqueio, não deixe implícito.
 Mesmo fluxo de 3 saltos do resto do projeto: você reporta o relato completo
 pro **orquestrador** (o que a planilha revelou, hipóteses com confiança,
 achados inesperados, o mapeamento escrito, resultado do teste) — nunca chama
-o `docs` direto. Não pule esse passo achando "é só mais um cliente" — cada
+o `governance` direto. Não pule esse passo achando "é só mais um cliente" — cada
 onboarding é conhecimento que precisa ficar rastreável.
 
 ## Fluxo de trabalho esperado

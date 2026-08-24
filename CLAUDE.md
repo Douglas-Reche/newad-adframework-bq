@@ -72,10 +72,10 @@ destinos diferentes pra três momentos da mesma informação — nenhum deles op
 `chat (relato completo) → task Notion (entrada incremental) → doc técnico (marcador final)`.
 
 **Fluxo de documentação é sempre em 3 saltos, nunca pulado:** backend/hub-frontend
-terminam uma macro task → reportam pro **orquestrador** (nunca chamam `docs` diretamente,
-mesmo pra mudança 100% interna ao próprio escopo deles) → o orquestrador chama `docs` com
-o relato completo → o `docs` documenta (Notion + git conforme a camada) e **avisa o
-orquestrador que terminou**. O orquestrador só considera a macro task encerrada depois
+terminam uma macro task → reportam pro **orquestrador** (nunca chamam `governance`
+diretamente, mesmo pra mudança 100% interna ao próprio escopo deles) → o orquestrador
+chama `governance` com o relato completo → o `governance` documenta (Notion + git
+conforme a camada) e **avisa o orquestrador que terminou**. O orquestrador só considera a macro task encerrada depois
 dessa confirmação de volta. Isso evita duas tasks Notion duplicadas quando um trabalho
 cruza backend+hub e cada lado não sabe o que o outro já registrou.
 

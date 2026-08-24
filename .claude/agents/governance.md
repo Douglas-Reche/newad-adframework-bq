@@ -454,7 +454,7 @@ duplicadas (dois processos corrigindo o mesmo erro em paralelo), e boa parte do 
 real ficou só como parágrafo dentro do corpo de uma task guarda-chuva, sem granularidade
 rastreável no Kanban/Timeline. O fluxo certo, daqui pra frente:
 1. Orquestrador (ou o usuário) desenha o plano/etapas de um trabalho novo.
-2. **Antes de qualquer execução**, esse plano chega até você (`docs`) e você decide a
+2. **Antes de qualquer execução**, esse plano chega até você (`governance`) e você decide a
    estrutura (MÃE/task/sub-task) e cria a(s) task(s) já com `Status: Not started` ou
    `In progress` — **nunca `Done` na criação**, a menos que seja um registro puramente
    retroativo excepcional (ex: reconstruindo um incidente já fechado, como o de

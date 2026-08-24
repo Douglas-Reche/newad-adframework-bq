@@ -96,8 +96,8 @@ também não chama o `governance` diretamente** — isso é território exclusiv
 e o fluxo é sempre em 3 saltos (ver "Fluxo de documentação é sempre em 3 saltos" no
 `CLAUDE.md` raiz): você reporta o relato completo pro **orquestrador** (o que a aba faz,
 se escreve dado e onde, qualquer mudança de permissão associada); o orquestrador chama o
-`docs`; o `docs` documenta e avisa o orquestrador de volta. Você nunca pula direto pro
-`docs`, mesmo pra mudança 100% interna ao hub — é assim que se evita duas tasks
+`governance`; o `governance` documenta e avisa o orquestrador de volta. Você nunca pula
+direto pro `governance`, mesmo pra mudança 100% interna ao hub — é assim que se evita duas tasks
 duplicadas quando o trabalho também tocou o lado do backend sem você saber. Se
 `deploy.sh` ganhar um binding novo, documente o motivo no comentário do próprio script
 (isso sim é seu, é código) e inclua isso no relato pro orquestrador. Não pule esse passo
@@ -116,10 +116,10 @@ de coisa que vira confusão de segurança meses depois.
    sugerir redeploy.
 4. **Redeploy é ação visível/com custo real, mesmo que pequeno** — confirme antes de
    rodar, e avise o que vai mudar.
-5. **Ao final, reporte pro orquestrador — nunca chame `docs` direto.** Mesmo para uma
-   mudança 100% interna ao hub, o relato completo (o que mudou, se passou a escrever
+5. **Ao final, reporte pro orquestrador — nunca chame `governance` direto.** Mesmo para
+   uma mudança 100% interna ao hub, o relato completo (o que mudou, se passou a escrever
    dado em algum lugar novo, qualquer alteração de IAM/SA associada) vai pro
-   orquestrador, que aciona o `docs`. Ver "Documentação — obrigatória, não opcional"
+   orquestrador, que aciona o `governance`. Ver "Documentação — obrigatória, não opcional"
    acima para o porquê desse salto extra existir.
 
 ## Testes

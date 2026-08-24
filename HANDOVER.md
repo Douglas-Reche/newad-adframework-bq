@@ -40,10 +40,10 @@ entender/operar o sistema só com código+schema?" Se sim → só Notion. Se nã
 git. Ver `CLAUDE.md`, seção "Protocolo de registro — duas camadas", para o critério
 completo.
 
-**Quem escreve onde:** um único agente (`docs`, ver abaixo) é o dono de toda escrita em
-`docs/*` e do Notio. Backend e hub-frontend nunca escrevem documentação diretamente —
-sempre reportam pro orquestrador, que aciona o `docs`. Isso existe pra evitar que cada
-agente documente do seu próprio jeito e os docs divergirem de estilo/estrutura.
+**Quem escreve onde:** um único agente (`governance`, ver abaixo) é o dono de toda escrita
+em `docs/*` e do Notion. Backend e hub-frontend nunca escrevem documentação diretamente —
+sempre reportam pro orquestrador, que aciona o `governance`. Isso existe pra evitar que
+cada agente documente do seu próprio jeito e os docs divergirem de estilo/estrutura.
 
 ---
 
@@ -52,20 +52,21 @@ agente documente do seu próprio jeito e os docs divergirem de estilo/estrutura.
 Definições completas em `.claude/agents/*.md` (escopadas a este repo desde 2026-08-24 —
 antes moravam globais em `~/.claude/agents/`, movidas pra cá pra evitar colisão de nome
 com agentes de mesmo nome em outros projetos, ex: `docs` colidia com o `docs` do
-`zoukinvan-weekly-planner`).
+`zoukinvan-weekly-planner` — por isso o agente `docs` deste repo também foi renomeado
+para `governance` no mesmo movimento).
 Resumo de fronteira:
 
 | Agente | Escopo | Nunca mexe em |
 |---|---|---|
 | `backend` | Conectores de plataforma, orquestração ETL (`adframework_python`, repo Shiro), DDLs de qualquer camada BQ (`raw/stg/core/gold/marts/share` aqui) | `hub/` (front-end), documentação (`docs/*`) |
 | `hub-frontend` | Painel Streamlit `hub/` — abas, deploy (`hub/deploy.sh`), IAM das SAs do hub | `adframework_python`, qualquer DDL de pipeline, `docs/*` |
-| `docs` | Única escrita em `docs/*`, `hub/README.md`, Notion (tasks + segundo cérebro de decisão) | Código — nunca implementa, só documenta o que já foi implementado |
+| `governance` | Única escrita em `docs/*`, `hub/README.md`, Notion (tasks + segundo cérebro de decisão) | Código — nunca implementa, só documenta o que já foi implementado |
 | `historical-data-analyst` | Investigação de planilha histórica crua por cliente (`douglas-bq-staging.raw.historical_uploads` → `scripts/deploy/historical_mappings/<client_id>.py`) | Ingestão automática (`backend`), UI do hub (`hub-frontend`), produção |
 
 Fluxo de documentação é sempre em 3 saltos: `backend`/`hub-frontend` terminam um pacote →
-reportam pro orquestrador → orquestrador aciona `docs` → `docs` documenta e confirma de
-volta. Nenhum agente pula direto pro `docs`. Detalhe completo: `CLAUDE.md`, seção "Fluxo de
-documentação é sempre em 3 saltos, nunca pulado".
+reportam pro orquestrador → orquestrador aciona `governance` → `governance` documenta e
+confirma de volta. Nenhum agente pula direto pro `governance`. Detalhe completo:
+`CLAUDE.md`, seção "Fluxo de documentação é sempre em 3 saltos, nunca pulado".
 
 ---
 
