@@ -8,6 +8,48 @@
 
 ---
 
+## 2026-08-31 — Mecanismo de override histórico + regras de negócio promovido pra produção (Partes A+B) + automação de refresh em staging + bug estrutural de freshness do Hub
+
+**Contexto:** retomada da MÃE "Regras de Negócio Configuráveis por Cliente — Cap 20% Impressões (Native/Push)". Checkpoint de 2026-08-17 tinha deixado a Prioridade 3 (promoção pra produção) pronta mas bloqueada, aguardando autorização/terminal. Douglas confirmou explicitamente via `AskUserQuestion` (dupla confirmação, regra absoluta do repo) antes do primeiro comando real contra `adframework`.
+
+**Achado inicial da sessão — `stg.fact_pacing_base` 15 dias desatualizada em staging:** refresh nunca teve agendamento automático (só `apply_ddl.py --env=test` manual). Corrigido criando Cloud Function `fact-pacing-base-refresh-staging` + Cloud Scheduler `fact-pacing-base-refresh-staging-daily` (06:20 America/Sao_Paulo, 20min após `raw-sync-staging-daily`) — cópia deliberada do padrão já usado em produção (`scripts/deploy/fact_pacing_base_scheduler/`), com `PROJECT_ID` próprio (nunca consolidar os dois sem parametrizar — hardcode + projeto errado escreveria na tabela errada silenciosamente). Testado via `gcloud scheduler jobs run` real, confirmado rodando como `fact-pacing-base-refresh-sa` (não invocação manual). Commit `0fe6a3b` (branch `master`).
+
+**Isso revelou um bug estrutural do Hub:** as telas de status/freshness (Farol Operacional, Navegador de Tabelas, Status de Jobs) eram hardcoded em `PROJECT_ID=adframework` — `stg.fact_pacing_base` de staging ficava invisível pro Hub, por isso os 15 dias passaram despercebidos. Virou task nova e separada (confirmado com o Douglas — não é sub-task desta MÃE): "Hub — Corrigir Status de Jobs e Cobertura de Freshness (Staging + Produção)" (Notion). Delegado ao agente `hub-frontend`: estende o padrão dual staging/produção (`HISTORICAL_OVERRIDE_PROJECT_ID`) pras 3 telas; Status de Jobs passa a consultar a API real do Cloud Scheduler (sucesso/falha/horário) em vez de inferir só pela freshness indireta da tabela. Commit `ffe4a2f` (`hub/app.py`, `hub/jobs_config.yaml`, `hub/deploy.sh`, `hub/requirements.txt`), testado localmente e deployado em staging pelo orquestrador — revisão `douglas-data-hub-00019-htx`, confirmado 100% do tráfego.
+
+**Promoção pra produção — Parte A (9 objetos, todos aplicados e verificados em `adframework`), seguindo `docs/PRODUCTION_RUNBOOK_override_2026-08-16.md`:**
+1. `core.resolve_client_business_rule()` — criada.
+2. `core.client_business_rules` — criada, **vazia (`n=0` confirmado)** — guarda-corpo respeitado, cap 20% continua inerte.
+3. `core.resolve_reporting_source()` — criada.
+4. `core.client_reporting_source_config` — criada, 1 linha real (Cora, `override_active=true`).
+5. `stg.historical_overrides_delivery` — 1030 linhas migradas de staging, soma conferida idêntica (impressions=23.831.592, clicks=95.941, investimento=R$378.486,74).
+6. `stg.fact_pacing_base` — refresh rodado; linha de teste da Cora verificada (`is_override=true`, `realized_impressions=16880`), corrigindo o bug de truncamento do Excel já documentado (entrada 2026-08-12).
+7. `gold.fact_delivery` — aplicada, 4ª fonte do UNION ativa.
+8. `gold.fact_pacing` — aplicada, `business_rule_*` tudo NULL (inerte) e `is_override` correto.
+9. `gold.vw_fact_delivery_reporting` — simplificada (`SELECT * FROM gold.fact_delivery`), `n=1034` linhas retornadas pra Cora Jan-Jul/2026.
+
+**Achado durante a execução — ordem do runbook estava errada em 3 pontos:** A1 antes de A2, A3 antes de A4/A5 — as funções referenciam tabelas só criadas em passos posteriores do documento escrito. Execução seguiu a ordem de dependência real (A2→A1, A4→A5→A3→A6...A9), não a ordem escrita. Runbook será arquivado (ver abaixo), então o fix fica registrado só aqui, não reaplicado no arquivo.
+
+**Achado extra corrigido durante a Parte A:** `core.schema_change_log` em produção tinha o mesmo drift de schema já visto em staging em 2026-08-17 (faltavam `confirmation_method`, `previous_definition`, `commit_hash`) — causava avisos não-bloqueantes de falha de log de auditoria em cada passo. Corrigido reaplicando `core/ddl/schema_change_log.sql --env=prod` ao final; a própria correção já ficou registrada com sucesso no log (`change_id=899f90ea-647b-4227-bc4e-959e7de9b81a`).
+
+**Parte B — automação de refresh em produção, testada ponta a ponta:**
+- Cloud Function `fact-pacing-base-refresh` + SA `fact-pacing-base-refresh-sa@adframework` (`dataEditor`, `dataViewer`, `jobUser`) + SA invoker `fact-pacing-refresh-invoker@adframework` + Cloud Scheduler `fact-pacing-base-refresh-daily`.
+- **Bug do runbook corrigido — fuso horário:** o runbook original assumia o ETL de produção "05:00 UTC" e agendava o refresh em UTC (`--time-zone=UTC`). O job real (`adframework-etl-daily`) roda `0 5 * * * America/Sao_Paulo` (fuso local, não UTC). Execução seguiu o horário real: `--schedule="45 5 * * *" --time-zone="America/Sao_Paulo"` (05:45 São Paulo, 45min após o ETL começar). Seguir o runbook ao pé da letra teria agendado o refresh ~3h antes do ETL sequer começar.
+- APIs nunca habilitadas em `adframework` (`cloudfunctions`, `cloudbuild`, `run`, `artifactregistry`, `cloudscheduler`) — habilitadas.
+- Bloqueio de IAM: `iam.serviceaccounts.actAs` negado ao Douglas mesmo sendo `roles/owner` no projeto — resolvido concedendo `roles/iam.serviceAccountUser` explicitamente pra ele nessa SA específica. Sem causa raiz clara de por que Owner não bastou — registrado como achado de ambiente pra próxima ocorrência semelhante.
+- Testado via `gcloud scheduler jobs run` real — confirmado rodando como `fact-pacing-base-refresh-sa` via BigQuery job history, `row_count=8860` (bate com staging).
+
+**Documentação relacionada atualizada nesta sessão:** `docs/technical_dataflow.md` — patch pontual (não é reverificação completa contra `INFORMATION_SCHEMA`) corrigindo as marcações "SÓ staging — não promovido" do mecanismo de override histórico/regras de negócio (Diagramas 1 e 2), que ficaram desatualizadas por esta promoção.
+
+**Arquivos tocados:** `scripts/deploy/fact_pacing_base_scheduler/` (staging: novo deploy próprio, `PROJECT_ID` parametrizado), `hub/app.py`, `hub/jobs_config.yaml`, `hub/deploy.sh`, `hub/requirements.txt`, `docs/technical_dataflow.md`. Objetos BigQuery aplicados diretamente via `apply_ddl.py --env=prod` (não versionados como diff de arquivo — os `.sql` em `core/ddl`, `stg/ddl`, `gold/ddl` já existiam de staging).
+
+**Commits:** `0fe6a3b` (automação staging), `ffe4a2f` (fix Hub). Objetos de produção aplicados via `apply_ddl.py`, rastreados em `core.schema_change_log` (não geram commit de arquivo `.sql` novo — DDLs já existiam).
+
+**Runbook `docs/PRODUCTION_RUNBOOK_override_2026-08-16.md`:** todos os passos (Parte A + Parte B) executados e confirmados — flagueado pra expurgo semanal (`docs/_pending_purge.md`), conforme seu próprio cabeçalho ("Tier 1 temporário — apagar/arquivar depois de executado").
+
+**Status da MÃE:** segue `In progress` — Task 3 (mecanismo genérico na Gold) e sub-task 6 (materialização STG) agora tecnicamente completas *e* promovidas; falta ainda a sub-task 5 (teste formal do mecanismo de regras de negócio — schema/pipeline/ativação-pausa/performance), que segue `Not started`. Guarda-corpo de topo continua válido: a regra de negócio real (cap 20%) segue inerte, em ambos os ambientes.
+
+---
+
 ## 2026-08-24 — Agentes do AdFramework escopados ao repo + `docs` renomeado para `governance`
 
 **Contexto:** colisão de nome real confirmada — `subagent_type: docs` resolvia pro agente `docs` do repositório `zoukinvan-weekly-planner` (que também declara `name: docs` no frontmatter) em vez do agente `docs` deste projeto, sempre que uma sessão tinha os dois repositórios como diretório de trabalho. Repositório vencedor era decidido por ser project-scoped (Zoukin'Van), não pelo repo em que a sessão realmente estava trabalhando.

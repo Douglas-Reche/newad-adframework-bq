@@ -1,6 +1,17 @@
+---
+status: pending_purge
+flagged_at: 2026-08-31
+migrated_to: CHANGELOG.md (entrada 2026-08-31) + docs/technical_dataflow.md (patch pontual)
+---
+
 # Runbook de Promoção — Mecanismo de Override Histórico → Produção
 
 > **Manutenção:** Tier 1 (temporário) — apagar/arquivar depois que os passos abaixo forem executados e confirmados. Não é doc de referência permanente, é um runbook de execução única.
+>
+> **2026-08-31 — Executado e confirmado, Parte A + Parte B inteiras.** Flagueado pra expurgo
+> semanal (ver `docs/_pending_purge.md`) — não deletar direto, aguardar revisão em lote e
+> confirmação do Douglas. Fatos técnicos relevantes (achado de ordem errada A1/A2/A3/A4/A5,
+> achado de fuso horário do refresh, achados de IAM) já migrados pro `CHANGELOG.md`.
 
 Preparado em 2026-08-16, pra rodar quando o Douglas tiver acesso a terminal (VS Code, provavelmente). Cobre: (A) promoção do encanamento de override + regras de negócio inertes pra `adframework` (produção), (B) agendamento automático do refresh de `stg.fact_pacing_base`, (C) fallback manual.
 

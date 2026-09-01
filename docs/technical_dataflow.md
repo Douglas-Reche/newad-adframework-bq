@@ -23,6 +23,21 @@
 > (Cloud Function + Cloud Scheduler, criado 2026-08-17). O resto do diagrama segue como
 > verificado em 2026-08-09 — revalidar contra `INFORMATION_SCHEMA` antes de tratar qualquer
 > outro detalhe como garantido.
+>
+> **Patch pontual em 2026-08-31** (idem, não é reverificação completa): o "encanamento" do
+> mecanismo de override histórico + regras de negócio (9 objetos — `core.resolve_client_business_rule()`,
+> `core.client_business_rules`, `core.resolve_reporting_source()`, `core.client_reporting_source_config`,
+> `stg.historical_overrides_delivery`, `stg.fact_pacing_base` + refresh automático,
+> `gold.fact_delivery`, `gold.fact_pacing`, `gold.vw_fact_delivery_reporting`) foi **promovido
+> para produção** (`adframework`) — deixa de ser staging-only. `core.client_business_rules`
+> continua **vazia** em ambos os ambientes (guarda-corpo — a regra de negócio real do cap 20%
+> não foi ativada, só o mecanismo). Automação de refresh diário de `stg.fact_pacing_base`
+> também existe agora nos dois ambientes (staging: `fact-pacing-base-refresh-staging` +
+> `fact-pacing-base-refresh-staging-daily`, 06:20 America/Sao_Paulo; produção:
+> `fact-pacing-base-refresh` + `fact-pacing-base-refresh-daily`, 05:45 America/Sao_Paulo).
+> Ver `CHANGELOG.md`, entrada `2026-08-31`. Marcações abaixo de "SÓ staging — não promovido"
+> relativas a este mecanismo estão desatualizadas por este patch; o resto do diagrama segue
+> como verificado em 2026-08-09/2026-08-20.
 
 ---
 
@@ -69,7 +84,7 @@ flowchart TB
         SSTG["stg.* (físico local)\n+ stg.historical_overrides_delivery\n(existe SÓ aqui)"]
         SCORE["core.* (físico local)\n+ client_reporting_source_config\n+ resolve_reporting_source()\n(existem SÓ aqui, staging_only)"]
         SGOLD["gold.* (físico local)"]
-        SRULES["core.client_business_rules\n+ resolve_client_business_rule()\n✅ construído e validado (2026-08-09/10)\nSÓ staging — não promovido"]
+        SRULES["core.client_business_rules\n+ resolve_client_business_rule()\n✅ construído e validado (2026-08-09/10)\n✅ promovido pra produção 2026-08-31 (vazio/inerte)"]
     end
 
     subgraph CONSUME["Consumo"]
@@ -226,7 +241,7 @@ flowchart LR
         core_ioplan["core.io_plan_manual"]
         core_histprod["core.historical_overrides_delivery\n(PRODUÇÃO — hardcoded Cora, cutoff 2026-07-01)"]
         core_reportcfg["core.client_reporting_source_config\n+ resolve_reporting_source()\n(SÓ staging, generalizado)"]
-        core_rules2["core.client_business_rules\n+ resolve_client_business_rule()\n✅ construído, validado — SÓ staging"]
+        core_rules2["core.client_business_rules\n+ resolve_client_business_rule()\n✅ construído, validado — promovido pra produção 2026-08-31 (vazio/inerte)"]
     end
 
     subgraph GOLD["GOLD"]
