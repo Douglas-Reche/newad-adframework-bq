@@ -1,5 +1,19 @@
-# Mapa dos jobs de ingestão diária (ETL rodando no Cloud Run do Shiro: adframework-etl)
-# Este hub NAO dispara nada aqui -- so cruza o status Firestore/manual com o freshness real da tabela BQ.
+# Mapa dos jobs de ingestão/refresh do pipeline.
+# `project`: projeto GCP onde a TABELA alvo vive (default implícito: adframework/produção,
+#   se omitido). Ver hub/app.py ENVIRONMENTS.
+# `scheduler_job` + `scheduler_location`: se preenchidos, o hub também consulta o status
+#   REAL da última execução via Cloud Scheduler API (sucesso/falha, horário exato) — não
+#   só a heurística indireta de "a tabela parece fresca". Deixar em branco quando o job
+#   não é um Cloud Scheduler job próprio (ex: jobs do orchestrator do Shiro, disparados
+#   via Firestore doc_id, não Cloud Scheduler direto).
+#
+# Jobs de produção (adframework-etl, Cloud Run do Shiro): este hub NAO dispara nada aqui
+# -- so cruza o status Firestore/manual com o freshness real da tabela BQ.
+# Jobs de staging (raw-sync-staging-daily, fact-pacing-base-refresh-staging-daily):
+# Cloud Functions + Cloud Scheduler próprios do Douglas em douglas-bq-staging, região
+# southamerica-east1 -- ver scripts/deploy/raw_sync_scheduler/ e
+# scripts/deploy/fact_pacing_base_scheduler_staging/.
+#
 # Atualizar manualmente quando o mapa de jobs mudar (ver memoria project_etl_daily_jobs).
 
 jobs:
@@ -7,53 +21,82 @@ jobs:
     label: "MediaSmart - Delivery diario"
     table: raw.ms_delivery
     schedule: diario
+    project: adframework
 
   - doc_id: mediasmart_delivery_by_geo
     label: "MediaSmart - Delivery por geo"
     table: raw.ms_delivery_by_geo
     schedule: diario
+    project: adframework
 
   - doc_id: mediasmart_delivery_by_device
     label: "MediaSmart - Delivery por device"
     table: raw.ms_delivery_by_device
     schedule: diario
+    project: adframework
 
   - doc_id: mediasmart_delivery_by_hour
     label: "MediaSmart - Delivery por hora"
     table: raw.ms_delivery_by_hour
     schedule: diario
+    project: adframework
 
   - doc_id: mgid_daily_daily
     label: "MGID - Delivery diario"
     table: raw.mg_delivery
     schedule: diario
+    project: adframework
 
   - doc_id: mgid_stats_by_geo
     label: "MGID - Delivery por geo"
     table: raw.mg_delivery_by_geo
     schedule: diario
+    project: adframework
 
   - doc_id: mgid_stats_by_device
     label: "MGID - Delivery por device"
     table: raw.mg_delivery_by_device
     schedule: diario
+    project: adframework
 
   - doc_id: mgid_stats_by_hour
     label: "MGID - Delivery por hora"
     table: raw.mg_delivery_by_hour
     schedule: diario
+    project: adframework
 
   - doc_id: siprocal_daily_external
     label: "Siprocal - Delivery (WRITE_TRUNCATE)"
     table: raw.sp_delivery
     schedule: diario
+    project: adframework
 
   - doc_id: mgid_firstlevel_campaigns
     label: "MGID - Campanhas (periodico)"
     table: raw.mg_campaigns
     schedule: periodico
+    project: adframework
 
   - doc_id: mgid_firstlevel_creatives
     label: "MGID - Criativos/teasers (periodico)"
     table: raw.mg_teasers
     schedule: periodico
+    project: adframework
+
+  # ── Staging (douglas-bq-staging) -- jobs próprios do Douglas, criados 2026-08-17/31 ──
+
+  - doc_id: raw_sync_staging_daily
+    label: "Staging - Sync raw (producao -> staging, 18 tabelas via bq cp)"
+    table: raw.mg_delivery
+    schedule: diario
+    project: douglas-bq-staging
+    scheduler_job: raw-sync-staging-daily
+    scheduler_location: southamerica-east1
+
+  - doc_id: fact_pacing_base_refresh_staging_daily
+    label: "Staging - Refresh stg.fact_pacing_base (fact_io_plan + fact_delivery)"
+    table: stg.fact_pacing_base
+    schedule: diario
+    project: douglas-bq-staging
+    scheduler_job: fact-pacing-base-refresh-staging-daily
+    scheduler_location: southamerica-east1

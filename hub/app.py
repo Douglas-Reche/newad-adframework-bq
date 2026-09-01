@@ -164,6 +164,23 @@ LAYERS = [
 ]
 DATASETS = [layer["id"] for layer in LAYERS]
 
+# Ambientes que o Farol/Navegador/Status dos Jobs sabem escanear -- SEMPRE os
+# dois, lado a lado, independente de HISTORICAL_OVERRIDE_PROJECT_ID (aquela
+# variavel controla so ONDE o fluxo de Override/Regras de Negocio escreve
+# neste deploy especifico; esta lista aqui e sobre visibilidade de leitura,
+# nao muda por deploy). Adicionado 2026-08-31 -- causa raiz do incidente
+# `stg.fact_pacing_base` (staging) ficar 15 dias atrasada sem o hub acusar:
+# load_table_metadata() so escaneava PROJECT_ID (adframework/producao),
+# nunca douglas-bq-staging, entao qualquer tabela que so existisse ali era
+# invisivel pro Farol/Navegador por completo. A SA principal (read-only) ja
+# tem bigquery.dataViewer+jobUser em douglas-bq-staging desde 2026-08-06 (ver
+# hub/deploy.sh, bloco de staging) -- nenhum IAM novo necessario pra isto.
+STAGING_PROJECT_ID = "douglas-bq-staging"
+ENVIRONMENTS = [
+    {"id": "producao", "label": "Producao", "project_id": PROJECT_ID},
+    {"id": "staging", "label": "Staging", "project_id": STAGING_PROJECT_ID},
+]
+
 HUB_DIR = Path(__file__).parent
 
 # status -> (label, cor do st.badge, icone material)
@@ -236,12 +253,29 @@ def get_bq_client() -> bigquery.Client:
 
 
 @st.cache_data(ttl=300)
-def load_table_metadata() -> pd.DataFrame:
-    """Metadado nativo via __TABLES__ -- nao processa dados, nao cobra bytes."""
+def load_table_metadata(project_id: str = PROJECT_ID) -> pd.DataFrame:
+    """Metadado nativo via __TABLES__ -- nao processa dados, nao cobra bytes.
+    project_id permite escanear qualquer ambiente de ENVIRONMENTS (producao
+    OU staging) -- a SA principal (read-only) ja tem dataViewer+jobUser nos
+    dois projetos, ver comentario de ENVIRONMENTS acima. Datasets que nao
+    existem no projeto pedido (ex: staging hoje nao tem marts/share/
+    raw_siprocal) sao pulados individualmente em vez de quebrar a query
+    inteira -- mesmo raciocinio defensivo ja usado em load_bq_storage_via_api."""
     client = get_bq_client()
+    existing_datasets = []
+    for ds in DATASETS:
+        try:
+            client.get_dataset(f"{project_id}.{ds}")
+            existing_datasets.append(ds)
+        except NotFound:
+            continue
+    if not existing_datasets:
+        return pd.DataFrame(
+            columns=["dataset", "tabela", "tipo", "linhas", "tamanho_mb", "ultima_modificacao", "freshness"]
+        )
     # __TABLES__ ja tem sua propria coluna dataset_id -- nao redeclarar, so unir.
     unions = "\n  UNION ALL\n  ".join(
-        f"SELECT * FROM `{PROJECT_ID}.{ds}.__TABLES__`" for ds in DATASETS
+        f"SELECT * FROM `{project_id}.{ds}.__TABLES__`" for ds in existing_datasets
     )
     query = f"""
     SELECT
@@ -453,6 +487,52 @@ def worst_status(statuses: list[str]) -> str:
 def load_yaml(filename: str) -> dict:
     with open(HUB_DIR / filename, encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+@st.cache_resource
+def get_scheduler_client():
+    from google.cloud import scheduler_v1
+    return scheduler_v1.CloudSchedulerClient()
+
+
+@st.cache_data(ttl=120)
+def load_scheduler_job_status(project_id: str, location: str, job_id: str) -> dict:
+    """Status REAL da ultima execucao de um Cloud Scheduler job -- sucesso/falha e
+    quando, nao so 'a tabela alvo parece fresca' (heuristica indireta que e o que
+    a aba Status dos Jobs usava ate 2026-08-31; ver causa raiz documentada em
+    ENVIRONMENTS acima). Precisa de roles/cloudscheduler.viewer (leitura pura) pra
+    SA principal no projeto -- se o binding ainda nao tiver sido aplicado (ver
+    hub/deploy.sh), cai aqui num erro claro em vez de quebrar a aba inteira,
+    mesmo padrao de tratamento de permissao ausente usado no resto do hub."""
+    from google.api_core.exceptions import PermissionDenied
+    from google.cloud import scheduler_v1
+
+    try:
+        client = get_scheduler_client()
+        name = f"projects/{project_id}/locations/{location}/jobs/{job_id}"
+        job = client.get_job(name=name)
+        status_code = job.status.code if job.status else 0
+        last_attempt = job.last_attempt_time
+        return {
+            "found": True,
+            "state": scheduler_v1.Job.State(job.state).name,
+            "last_attempt_time": last_attempt,
+            "ok": status_code == 0,
+            "error_message": job.status.message if status_code else None,
+        }
+    except PermissionDenied:
+        return {
+            "found": False,
+            "error": "sem_permissao",
+            "detail": (
+                f"SA principal sem roles/cloudscheduler.viewer em `{project_id}` -- "
+                "binding pendente, ver hub/deploy.sh (precisa confirmacao do Douglas antes de rodar)."
+            ),
+        }
+    except NotFound:
+        return {"found": False, "error": "job_nao_encontrado", "detail": f"Job `{job_id}` nao existe em `{project_id}/{location}`."}
+    except Exception as exc:
+        return {"found": False, "error": "erro", "detail": str(exc)}
 
 
 @st.cache_resource
@@ -1596,8 +1676,17 @@ st.caption(
 # ─────────────────────────────────────────────────────────────────────────
 with st.expander(":material/visibility_off: Farol operacional (saude, propostas, custo)", expanded=False):
     with st.spinner("Carregando farol..."):
-        _farol_meta = load_table_metadata()
-        _pipeline_status = worst_status(_farol_meta["freshness"].tolist()) if not _farol_meta.empty else "sem_dado"
+        # Checa OS DOIS ambientes -- ate 2026-08-31 o farol so olhava producao
+        # (PROJECT_ID), entao um problema so-em-staging (caso real:
+        # stg.fact_pacing_base 15 dias atrasada) nunca acendia aqui. Ver
+        # comentario de ENVIRONMENTS em cima.
+        _farol_status_by_env = {}
+        for _env in ENVIRONMENTS:
+            _env_meta = load_table_metadata(_env["project_id"])
+            _farol_status_by_env[_env["label"]] = (
+                worst_status(_env_meta["freshness"].tolist()) if not _env_meta.empty else "sem_dado"
+            )
+        _pipeline_status = worst_status(list(_farol_status_by_env.values()))
         _pending_count = count_pending_proposals()
         _month_gross, _month_net = load_cost_current_month()
         _prev_month_gross, _prev_month_net = load_cost_previous_month()
@@ -1606,8 +1695,12 @@ with st.expander(":material/visibility_off: Farol operacional (saude, propostas,
     with farol1:
         with st.container(border=True):
             st.markdown("**Saude do pipeline**")
-            status_badge(_pipeline_status)
-            st.caption("pior status entre todas as camadas -- detalhe na aba Visao Geral BQ")
+            for _env_label, _env_status in _farol_status_by_env.items():
+                _col_label, _col_badge = st.columns([1.2, 1])
+                _col_label.caption(_env_label)
+                with _col_badge:
+                    status_badge(_env_status)
+            st.caption("pior status por camada em cada ambiente -- detalhe na aba Visao Geral BQ")
     with farol2:
         with st.container(border=True):
             st.markdown("**Propostas de mudanca pendentes**")
@@ -1646,11 +1739,19 @@ tab_freshness, tab_jobs, tab_powerbi, tab_costs, tab_browser, tab_query, tab_pro
 # Aba 1 -- Visao Geral BQ: cards por camada, na ordem do pipeline
 # ─────────────────────────────────────────────────────────────────────────
 with tab_freshness:
+    _env_choice = st.radio(
+        "Ambiente", [e["label"] for e in ENVIRONMENTS], horizontal=True, key="freshness_env",
+    )
+    _env_project = next(e["project_id"] for e in ENVIRONMENTS if e["label"] == _env_choice)
+    st.caption(f"Projeto GCP: `{_env_project}`")
+
     with st.spinner("Consultando __TABLES__ (metadado, sem custo de bytes)..."):
-        df = load_table_metadata()
+        df = load_table_metadata(_env_project)
 
     st.subheader("Camadas do pipeline")
     st.caption("RAW -> STG -> CORE -> MARTS -> SHARE -> GOLD. Cada card resume uma camada; clique para ver o detalhe.")
+    if df.empty:
+        st.info(f"Nenhum dataset das camadas do pipeline encontrado em `{_env_project}`.")
 
     # Larguras relativas -- CORE e GOLD ganham mais peso visual (mais proximas do
     # cliente final na jornada do dado), resto das camadas fica no padrao (1.0).
@@ -1700,37 +1801,72 @@ with tab_freshness:
 # Aba 2 -- Status dos Jobs: cards por job de ingestao
 # ─────────────────────────────────────────────────────────────────────────
 with tab_jobs:
-    st.subheader("Jobs de ingestao diaria")
-    st.caption("Mapa mantido manualmente em `jobs_config.yaml`. Cruza com o freshness real da tabela associada.")
+    st.subheader("Jobs de ingestao/refresh")
+    st.caption(
+        "Mapa mantido manualmente em `jobs_config.yaml` (producao + staging, lado a lado). "
+        "Cruza freshness real da tabela associada com, quando disponivel, a execucao REAL "
+        "do Cloud Scheduler (sucesso/falha da ultima tentativa, nao so heuristica indireta)."
+    )
     jobs_cfg = load_yaml("jobs_config.yaml")["jobs"]
-    meta = load_table_metadata()
+    # Carrega metadado uma vez por projeto distinto usado nos jobs (evita repetir
+    # a mesma query __TABLES__ para cada job do mesmo ambiente).
+    _job_projects = sorted({job.get("project", PROJECT_ID) for job in jobs_cfg})
+    meta_by_project = {proj: load_table_metadata(proj) for proj in _job_projects}
+
+    def _render_scheduler_status(job):
+        """Se o job tiver scheduler_job configurado, mostra a execucao REAL da
+        ultima tentativa (sucesso/falha + horario) via Cloud Scheduler API --
+        None quando o job nao e um Cloud Scheduler proprio (ex: jobs do
+        orchestrator do Shiro, disparados via Firestore)."""
+        if not job.get("scheduler_job"):
+            return
+        sched = load_scheduler_job_status(
+            job.get("project", PROJECT_ID), job.get("scheduler_location", "southamerica-east1"), job["scheduler_job"],
+        )
+        if not sched["found"]:
+            st.caption(f":material/error: Cloud Scheduler: {sched['detail']}")
+            return
+        when = sched["last_attempt_time"].strftime("%d/%m/%Y %H:%M") if sched["last_attempt_time"] else "nunca rodou"
+        if sched["ok"]:
+            st.caption(f":material/check_circle: Cloud Scheduler ({sched['state']}): ultima execucao OK em {when}")
+        else:
+            st.caption(f":material/error: Cloud Scheduler ({sched['state']}): ULTIMA EXECUCAO FALHOU em {when} -- {sched['error_message']}")
 
     def _render_job_card(job, status, last_mod):
         with st.container(border=True):
             c1, c2, c3, c4 = st.columns([3, 1.5, 2, 1.5])
             with c1:
                 st.markdown(f"**{job['label']}**")
-                st.caption(f"`{job['table']}`")
+                st.caption(f"`{job.get('project', PROJECT_ID)}.{job['table']}`")
             with c2:
                 st.write(job["schedule"])
             with c3:
                 st.write(last_mod.strftime("%d/%m/%Y %H:%M") if pd.notna(last_mod) else "sem dado ainda")
             with c4:
                 status_badge(status)
+            _render_scheduler_status(job)
 
     # Divulgacao progressiva: por padrao so mostra jobs com problema real
-    # (severidade >= 1, ver STATUS_SEVERITY) -- jobs saudaveis ficam atras de um
-    # expander, reduzindo carga cognitiva pra checagem rapida do dia a dia.
+    # (severidade >= 1, ver STATUS_SEVERITY, OU falha real no Cloud Scheduler) --
+    # jobs saudaveis ficam atras de um expander, reduzindo carga cognitiva pra
+    # checagem rapida do dia a dia.
     problem_jobs, healthy_jobs = [], []
     for job in jobs_cfg:
+        project = job.get("project", PROJECT_ID)
         dataset, table = job["table"].split(".")
-        match = meta[(meta["dataset"] == dataset) & (meta["tabela"] == table)]
+        meta = meta_by_project.get(project, pd.DataFrame())
+        match = meta[(meta["dataset"] == dataset) & (meta["tabela"] == table)] if not meta.empty else meta
         if match.empty:
             status, last_mod = "tabela_nao_encontrada", None
         else:
             status, last_mod = match["freshness"].iloc[0], match["ultima_modificacao"].iloc[0]
+        has_scheduler_failure = False
+        if job.get("scheduler_job"):
+            sched = load_scheduler_job_status(project, job.get("scheduler_location", "southamerica-east1"), job["scheduler_job"])
+            has_scheduler_failure = sched["found"] and not sched["ok"]
         entry = (job, status, last_mod)
-        (problem_jobs if STATUS_SEVERITY.get(status, 0) >= 1 else healthy_jobs).append(entry)
+        is_problem = STATUS_SEVERITY.get(status, 0) >= 1 or has_scheduler_failure
+        (problem_jobs if is_problem else healthy_jobs).append(entry)
 
     if not problem_jobs:
         st.success(f"Todos os {len(healthy_jobs)} jobs saudaveis.", icon=":material/check_circle:")
@@ -1918,17 +2054,22 @@ with tab_costs:
 # ─────────────────────────────────────────────────────────────────────────
 with tab_browser:
     st.subheader("Navegador de Tabelas")
-    st.caption("Schema e preview de qualquer tabela/view das camadas do pipeline. Read-only.")
+    st.caption("Schema e preview de qualquer tabela/view das camadas do pipeline, em producao OU staging. Read-only.")
 
-    meta_df = load_table_metadata()
+    _browser_env_choice = st.radio(
+        "Ambiente", [e["label"] for e in ENVIRONMENTS], horizontal=True, key="browser_env",
+    )
+    _browser_project = next(e["project_id"] for e in ENVIRONMENTS if e["label"] == _browser_env_choice)
+
+    meta_df = load_table_metadata(_browser_project)
     ds_choice = st.selectbox("Dataset", DATASETS, key="browser_dataset")
     tables_in_ds = sorted(meta_df.loc[meta_df["dataset"] == ds_choice, "tabela"].tolist())
     if not tables_in_ds:
-        st.info("Nenhuma tabela encontrada nesse dataset.")
+        st.info(f"Nenhuma tabela encontrada em `{_browser_project}.{ds_choice}`.")
     else:
         table_choice = st.selectbox("Tabela", tables_in_ds, key="browser_table")
         client = get_bq_client()
-        table_ref = client.get_table(f"{PROJECT_ID}.{ds_choice}.{table_choice}")
+        table_ref = client.get_table(f"{_browser_project}.{ds_choice}.{table_choice}")
 
         row_meta = meta_df[(meta_df["dataset"] == ds_choice) & (meta_df["tabela"] == table_choice)].iloc[0]
         c1, c2, c3 = st.columns(3)
@@ -1953,7 +2094,7 @@ with tab_browser:
 
         st.markdown("**Preview (50 linhas)**")
         if st.button("Carregar preview", key="browser_preview_btn"):
-            preview_sql = f"SELECT * FROM `{PROJECT_ID}.{ds_choice}.{table_choice}` LIMIT 50"
+            preview_sql = f"SELECT * FROM `{_browser_project}.{ds_choice}.{table_choice}` LIMIT 50"
             with st.spinner("Consultando..."):
                 preview_df = client.query(preview_sql).to_dataframe()
             st.dataframe(preview_df, use_container_width=True, hide_index=True)

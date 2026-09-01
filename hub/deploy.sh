@@ -185,6 +185,22 @@ if [[ "$HUB_TARGET_ENV" == "staging" ]]; then
   gcloud projects add-iam-policy-binding "$STAGING_PROJECT_ID" \
     --member="serviceAccount:${SA_EMAIL}" \
     --role="roles/bigquery.jobUser" >/dev/null
+
+  # SA PRINCIPAL (read-only) tambem precisa de leitura no Cloud Scheduler em
+  # douglas-bq-staging -- achado real 2026-08-31 (task "Hub -- Corrigir Status de
+  # Jobs e Cobertura de Freshness"): a aba Status dos Jobs so conseguia inferir se
+  # um job rodou de forma indireta (freshness da tabela alvo), nunca a execucao
+  # REAL do Cloud Scheduler (sucesso/falha/horario exato da ultima tentativa).
+  # roles/cloudscheduler.viewer e leitura pura (GET/LIST de jobs) -- nao viola a
+  # invariante "SA principal = 100% read-only". Escopo so douglas-bq-staging, onde
+  # os 2 jobs reais existem hoje (raw-sync-staging-daily,
+  # fact-pacing-base-refresh-staging-daily); a versao de producao do refresh de
+  # fact_pacing_base ainda nao foi deployada (Prioridade 3, bloqueada ate
+  # autorizacao explicita do Douglas) -- nao ha job em `adframework` pra checar
+  # ainda, entao nao ha binding equivalente no bloco de producao abaixo.
+  gcloud projects add-iam-policy-binding "$STAGING_PROJECT_ID" \
+    --member="serviceAccount:${SA_EMAIL}" \
+    --role="roles/cloudscheduler.viewer" >/dev/null
 else
   # Modo producao -- HISTORICAL_OVERRIDE_PROJECT_ID == $PROJECT_ID (adframework),
   # entao os bindings de override vao pro PROPRIO $PROJECT_ID, nunca pro projeto
