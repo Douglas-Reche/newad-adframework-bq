@@ -13,14 +13,31 @@
 #
 # Uso (producao -- servico Cloud Run NOVO e separado, ver plano de promocao
 # registrado na task Notion MAE "Regras de Negocio Configuraveis por Cliente",
-# entrada 2026-08-16):
+# entrada 2026-08-16, e task "Hub -- Deploy de Producao (douglas-data-hub-prod),
+# Fase 1 Read-Only", 2026-09-04):
 #   HUB_TARGET_ENV=production HUB_PASSWORD="sua-senha-aqui" ./deploy.sh
 #
+# Fase 1 (producao) e DELIBERADAMENTE read-only -- Gerenciamento de Clientes e
+# qualquer escrita (Propostas de Mudanca, Ajustes de Dados Historicos, Regras
+# de Negocio) nunca foram validados ponta-a-ponta nem em staging. Por isso, em
+# modo producao este script NAO cria/usa a writer SA (douglas-data-hub-writer-sa)
+# nem concede nenhum binding de escrita -- ver SETUP_WRITER_SA abaixo. O
+# servico de producao roda so com a SA principal (SA_EMAIL), 100% leitura, que
+# ja existe e ja tem acesso aos dois projetos (adframework + douglas-bq-staging)
+# desde os deploys de staging anteriores -- nenhum IAM novo de leitura e
+# necessario. O gate real de "producao nao escreve" e em duas camadas: (a) a UI
+# do hub esconde as abas de escrita quando HUB_TARGET_ENV=production (ver
+# HUB_READ_ONLY em hub/app.py) e (b) a IAM real: sem a writer SA/bindings, uma
+# tentativa de escrita falharia de qualquer forma mesmo se a UI fosse
+# contornada. Escrita em producao fica para uma Fase 2 futura, so apos o
+# Douglas autorizar e o fluxo ser validado em staging.
+#
 # Os dois ambientes rodam no MESMO projeto GCP de Cloud Run (adframework) e
-# reusam as MESMAS service accounts -- a diferenca e (a) o nome do servico
-# Cloud Run e (b) qual projeto BigQuery a aba de Override/Regras de Negocio
-# le/escreve (HISTORICAL_OVERRIDE_PROJECT_ID, ver hub/app.py). Staging nao
-# sincroniza continuamente com producao: uma feature so vai pro Hub de
+# reusam a MESMA service account de leitura -- a diferenca e (a) o nome do
+# servico Cloud Run, (b) qual projeto BigQuery a aba de Override/Regras de
+# Negocio le/escreve quando essas abas estao habilitadas (staging apenas, ver
+# HISTORICAL_OVERRIDE_PROJECT_ID) e (c) se a writer SA e provisionada. Staging
+# nao sincroniza continuamente com producao: uma feature so vai pro Hub de
 # producao quando promovida deliberadamente (redeploy manual em modo
 # production apos o Douglas confirmar).
 set -euo pipefail
@@ -39,12 +56,21 @@ case "$HUB_TARGET_ENV" in
   staging)
     SERVICE_NAME="douglas-data-hub"
     HISTORICAL_OVERRIDE_PROJECT_ID="douglas-bq-staging"
+    # Staging continua com as abas de escrita habilitadas (comportamento
+    # inalterado) -- e onde o fluxo e validado antes de cogitar producao.
+    SETUP_WRITER_SA="true"
     ;;
   production|prod)
     SERVICE_NAME="douglas-data-hub-prod"
-    # Em producao, os dados de override/regras de negocio vivem no MESMO
-    # projeto BQ do resto do Hub (adframework) -- nunca em douglas-bq-staging.
+    # Fase 2 autorizada pelo Douglas em 2026-09-07 (AskUserQuestion, escolha
+    # explicita "Escrita completa em prod tambem", pulando a validacao formal
+    # que a Fase 1 previa). Dados de override/regras de negocio/formatos vivem
+    # no MESMO projeto BQ do resto do Hub (adframework) -- nunca em
+    # douglas-bq-staging.
     HISTORICAL_OVERRIDE_PROJECT_ID="$PROJECT_ID"
+    # Fase 2 -- escrita habilitada. Provisiona a writer SA e os bindings de
+    # escrita para o servico de producao, mesmo padrao ja usado em staging.
+    SETUP_WRITER_SA="true"
     ;;
   *)
     echo "HUB_TARGET_ENV invalido: '${HUB_TARGET_ENV}' (use 'staging' ou 'production')"
@@ -52,7 +78,7 @@ case "$HUB_TARGET_ENV" in
     ;;
 esac
 
-echo "Ambiente alvo: ${HUB_TARGET_ENV} (servico: ${SERVICE_NAME}, override project: ${HISTORICAL_OVERRIDE_PROJECT_ID})"
+echo "Ambiente alvo: ${HUB_TARGET_ENV} (servico: ${SERVICE_NAME}, override project: ${HISTORICAL_OVERRIDE_PROJECT_ID}, writer SA provisionada: ${SETUP_WRITER_SA})"
 
 # Writer SA -- usada pelas abas "Overrides Historicos (Cora)" e "Propostas de
 # Mudanca", via impersonation (sem chave JSON). Escopo de escrita restrito
@@ -89,6 +115,13 @@ if ! gcloud iam service-accounts describe "$SA_EMAIL" --project "$PROJECT_ID" >/
 fi
 
 # 1b) Writer SA dedicada -- dataEditor SO no dataset `core` (nunca projeto inteiro).
+# Todo o bloco 1b (criacao da SA + bindings de escrita) so roda quando
+# SETUP_WRITER_SA=true (staging hoje). Em producao (Fase 1, read-only) este
+# bloco inteiro e pulado -- a writer SA nao e criada nem ganha nenhum binding
+# a partir de um deploy de producao, e a SA principal nao ganha permissao de
+# impersonar nada. Ver nota de Fase 1 read-only no topo do arquivo.
+if [[ "$SETUP_WRITER_SA" == "true" ]]; then
+
 # Roda pela primeira vez apenas.
 if ! gcloud iam service-accounts describe "$WRITER_SA_EMAIL" --project "$PROJECT_ID" >/dev/null 2>&1; then
   gcloud iam service-accounts create "$WRITER_SA_NAME" \
@@ -221,6 +254,22 @@ else
     --member="serviceAccount:${WRITER_SA_EMAIL}" \
     --role="roles/bigquery.dataViewer" \
     "${PROJECT_ID}:gold" >/dev/null 2>&1 || echo "  (binding prod gold ja aplicado ou bloqueado por allowlisting -- ver docs/known_issues.md S6, nao bloqueia deploy)"
+
+  # GAP CONHECIDO, NAO APLICADO (2026-09-06, Saude do IO Plan -- status de
+  # tratamento por achado, core.io_plan_finding_status): a writer SA tem
+  # dataEditor no dataset `core` de $PROJECT_ID (bloco de Propostas de Mudanca
+  # acima), mas NENHUM roles/bigquery.jobUser em $PROJECT_ID -- jobUser e
+  # sempre escopo de PROJETO (nao da pra escopar por dataset), entao rodar um
+  # MERGE/UPDATE (save_io_plan_finding_status em hub/app.py, via
+  # get_writer_bq_client_for_project) contra producao falha com 403 ate esse
+  # binding existir. Confirmado ao vivo via `gcloud projects get-iam-policy
+  # adframework` -- zero bindings de projeto pra esta SA. Em staging isso ja
+  # funciona (jobUser concedido no bloco acima). NAO adicionar a linha de
+  # binding aqui sem confirmar com o Douglas antes -- decisao de IAM em
+  # producao, mesmo padrao do resto deste arquivo. Se/quando autorizado:
+  #   gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  #     --member="serviceAccount:${WRITER_SA_EMAIL}" \
+  #     --role="roles/bigquery.jobUser"
 fi
 
 # SA principal (read-only) ganha permissao de IMPERSONAR a writer SA -- nenhuma
@@ -230,7 +279,22 @@ gcloud iam service-accounts add-iam-policy-binding "$WRITER_SA_EMAIL" \
   --member="serviceAccount:${SA_EMAIL}" \
   --role="roles/iam.serviceAccountTokenCreator" >/dev/null
 
+fi  # fim do bloco SETUP_WRITER_SA
+
 # 2) Build + deploy
+#
+# HUB_TARGET_ENV vai pro proprio Cloud Run (novo -- antes so controlava este
+# script localmente) para que hub/app.py saiba desligar as abas de escrita
+# (HUB_READ_ONLY) quando o servico e o de producao. Quando SETUP_WRITER_SA=false
+# (Fase 1 producao), WRITER_SA_EMAIL/HISTORICAL_OVERRIDE_PROJECT_ID nem sao
+# passadas -- essas abas ja saem desligadas pela UI e, mesmo que nao saissem,
+# nao ha writer SA/bindings para elas usarem (ver bloco 1b acima).
+if [[ "$SETUP_WRITER_SA" == "true" ]]; then
+  ENV_VARS="HUB_PASSWORD=${HUB_PASSWORD},HUB_TARGET_ENV=${HUB_TARGET_ENV},WRITER_SA_EMAIL=${WRITER_SA_EMAIL},HISTORICAL_OVERRIDE_PROJECT_ID=${HISTORICAL_OVERRIDE_PROJECT_ID},IO_PLAN_ADMIN_SYNC_TOKEN=${IO_PLAN_ADMIN_SYNC_TOKEN}"
+else
+  ENV_VARS="HUB_PASSWORD=${HUB_PASSWORD},HUB_TARGET_ENV=${HUB_TARGET_ENV}"
+fi
+
 gcloud run deploy "$SERVICE_NAME" \
   --project "$PROJECT_ID" \
   --region "$REGION" \
@@ -240,7 +304,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --min-instances=0 \
   --max-instances=1 \
   --memory=512Mi \
-  --set-env-vars="HUB_PASSWORD=${HUB_PASSWORD},WRITER_SA_EMAIL=${WRITER_SA_EMAIL},HISTORICAL_OVERRIDE_PROJECT_ID=${HISTORICAL_OVERRIDE_PROJECT_ID}"
+  --set-env-vars="$ENV_VARS"
 
 echo "Pronto. URL do servico:"
 gcloud run services describe "$SERVICE_NAME" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)'

@@ -7,3 +7,4 @@ pandas>=2.2
 db-dtypes>=1.2
 openpyxl>=3.1
 gspread>=6.0
+requests>=2.31
