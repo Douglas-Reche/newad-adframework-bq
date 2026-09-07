@@ -8,6 +8,31 @@
 
 ---
 
+## 2026-09-07 — Sessão overnight: DAXX + dupla contagem + 3 telas novas no Hub + Hub de produção Fase 2 + bug crítico TARGET N + strategy_format_map
+
+**DAXX — sync de IO Plan corrigido (parcial):** `DAXX` era pasta guarda-chuva com 7 sub-clientes no Drive (Caloi, Casa do Construtor, Dr Consulta, Efibank, Fox Lux, Mastercard-CRM Bonus, Senior Sistemas), tratada como cliente único em `CLIENT_MAP` — `sync_drive.py` rodava todo dia sem trazer dado de nenhum deles, silenciosamente, porque `find_plano_files()` só procurava pasta de ano direto dentro do cliente. Corrigido com `PARENT_FOLDER_CLIENTS`. Só Casa do Construtor (`casa_construtor_adf15c2c`) confirmado e sincronizado; os outros 6 seguem pendentes de confirmação de `client_id` (2 ambíguos, 1 não cadastrado, 3 sem `parent_client_id` linkado em `dim_client`). Notion: task atualizada, `Status → Waiting`.
+
+**Bug crítico — dupla contagem de impressões:** `sync_drive.py` somava `impressions_cpm + impressions_est` em vez de priorizar uma via `COALESCE`. Achado investigando setembro da Cora (2.378.990 → 1.919.615 impressões após o fix). Corrigido e testado, aplicado direto (sem task própria no Notion).
+
+**Bug crítico — perda silenciosa de dado em múltiplos blocos "TARGET N":** `sync_drive.py` lia até a primeira linha `TOTAL` e parava (`break`), nunca via um segundo bloco `TARGET N` na mesma aba — Casa do Construtor perdia ~1.989.832 impressões e ~R$49.999,71/mês (Target 2 inteiro). Fix opt-in por marcador explícito, testado contra 45 arquivos reais / 13 clientes + Casa do Construtor, 0 divergências fora do caso real. `target_group` preservado como dimensão nova em `raw.io_plan_drive_snapshot`/`stg.io_plan`. Aplicado em produção: `ALTER TABLE` (raw, preserva histórico), `apply_ddl.py` (stg view), rebuild do serviço Cloud Run `io-plan-admin`, backfill da Casa do Construtor confirmado (7.229.495 impressões, R$150.002,41 — bate com staging). Notion: task nova criada, `Status → Done`.
+
+**Arquitetura nova — `core.strategy_format_map` + `core.resolve_strategy_format()`:** substitui o `CASE WHEN LOWER(strategy_name) LIKE '%palavra-chave%'` hardcoded em `stg/ddl/io_plan.sql` que resolvia silenciosamente para `formato=NULL` quando nenhuma palavra-chave batia (achado real: "Áudio Ads" da Casa do Construtor invisível). Nova resolução versionada (SCD2, mesmo padrão de `core.dict_format`/`core.advertiser_platform_rules`), com fila de "estratégias não classificadas" visível no Hub para classificação manual. Aplicado em staging e produção, testado — 0 divergências em 218 linhas. Rodando em produção, encontrou 2 pendências reais: "Áudio Ads" e "Linkedin".
+
+**Hub — 3 telas novas/atualizadas, todas deployadas em staging + produção:**
+- **Tela de Saúde/Incongruências do IO Plan Mensal** — drill-down por estratégia (arquivos-fonte, `impressions_cpm`/`impressions_est` lado a lado), status persistente por achado (Pendente/Resolvido/Esperado) via `core.io_plan_finding_status`. Motivada por 2 casos reais na Cora (flight de agosto duplicado do Drive; campo "Período" de setembro preenchido errado).
+- **Tela de Gerenciamento de Formatos/Regras** — CRUD de `core.dict_format` + `core.strategy_format_map` + fila de estratégias não classificadas (ver acima).
+- 3 abas obsoletas removidas: "Power BI em Construção", "Custos", "Query Runner".
+
+**Hub de produção (`douglas-data-hub-prod`) — Fase 2 direto, não Fase 1:** escopo original previa só leitura (Farol/Navegador/Status de Jobs); Douglas autorizou explicitamente via `AskUserQuestion` pular direto para escrita completa em produção. Serviço nasceu hoje já com INSERT/UPDATE real habilitado contra `adframework`, não apenas modo leitura.
+
+**Ingestão de Áudio — Casa do Construtor:** segue bloqueada por decisão de plataforma (MiQ/Adsmovil), sem mudança nesta sessão nesse ponto específico — mas a taxonomia de formato já está pronta para receber "Áudio" assim que a decisão vier, e a investigação/construção da ingestão real começou em paralelo (agente `backend`/`historical-data-analyst`).
+
+**Notion:** todas as tasks correspondentes atualizadas com fetch de confirmação pós-escrita; task nova do bug TARGET N criada (page criada inicialmente fora da database por engano — parent `page_id` em vez de `data_source_id` — corrigido via `move-pages` + `update_properties`, confirmado com fetch).
+
+**Arquivos tocados:** `scripts/io_plan/sync_drive.py` (DAXX, dupla contagem, TARGET N), `raw/ddl` (`ALTER TABLE io_plan_drive_snapshot`), `stg/ddl/io_plan.sql` (reescrita para `core.resolve_strategy_format()`), `core/ddl` (`strategy_format_map`, `resolve_strategy_format`), `hub/app.py` (3 telas + remoção de 3 abas obsoletas).
+
+---
+
 ## 2026-08-31 — Mecanismo de override histórico + regras de negócio promovido pra produção (Partes A+B) + automação de refresh em staging + bug estrutural de freshness do Hub
 
 **Contexto:** retomada da MÃE "Regras de Negócio Configuráveis por Cliente — Cap 20% Impressões (Native/Push)". Checkpoint de 2026-08-17 tinha deixado a Prioridade 3 (promoção pra produção) pronta mas bloqueada, aguardando autorização/terminal. Douglas confirmou explicitamente via `AskUserQuestion` (dupla confirmação, regra absoluta do repo) antes do primeiro comando real contra `adframework`.

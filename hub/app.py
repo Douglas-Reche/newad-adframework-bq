@@ -919,6 +919,161 @@ def load_strategy_format_map(project_id: str) -> pd.DataFrame:
     return client.query(query).to_dataframe()
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# 4a secao da aba Formatos/Regras -- core.advertiser_platform_rules (remapeia
+# platform_from='unknown' -> platform_to real, por formato, opcionalmente por
+# cliente). Pedido do orquestrador 2026-09-07, MESMO DIA em que o backend
+# estendeu client_id pra aceitar NULL (regra GLOBAL, vale pra todo cliente sem
+# override especifico) -- ver core/ddl/advertiser_platform_rules.sql,
+# core/ddl/resolve_platform_rule.sql, core/migration/11_advertiser_platform_rules_
+# allow_global.sql. Mesmo padrao SCD2 das outras 2 secoes (dict_format,
+# strategy_format_map) -- nunca UPDATE do valor, so fechar effective_to + INSERT.
+#
+# ATENCAO -- GAP DE PROMOCAO CONFIRMADO AO VIVO (2026-09-07): a migracao pra
+# NULLABLE + o resolve_platform_rule() novo (com prioridade especifico >
+# geral) SO foram aplicados em douglas-bq-staging ate agora -- `adframework`
+# (producao) ainda tem client_id STRING REQUIRED e a versao ANTIGA da funcao
+# (sem suporte a NULL). Rodar INSERT com client_id=NULL em producao quebraria
+# com erro de NOT NULL constraint. Por isso check_advertiser_rules_supports_global()
+# checa o modo real da coluna ANTES de oferecer a opcao "Global" na UI --
+# nunca assumido fixo, sempre perguntado ao BigQuery ao vivo (schema pode ser
+# promovido pra producao a qualquer momento sem eu saber com antecedencia).
+ADVERTISER_PLATFORM_RULES_TABLE = "core.advertiser_platform_rules"
+
+
+@st.cache_data(ttl=300)
+def check_advertiser_rules_supports_global(project_id: str) -> bool:
+    """True se client_id em core.advertiser_platform_rules ja aceita NULL
+    (migracao 11_advertiser_platform_rules_allow_global.sql aplicada) neste
+    projeto especifico -- checado ao vivo via metadado de schema (nao um
+    valor fixo), porque staging e producao podem estar em estagios diferentes
+    da migracao (confirmado ao vivo 2026-09-07: staging sim, producao ainda
+    nao). So leitura de metadado, SA principal."""
+    client = get_bq_client()
+    table = client.get_table(f"{project_id}.{ADVERTISER_PLATFORM_RULES_TABLE}")
+    field = next((f for f in table.schema if f.name == "client_id"), None)
+    return field is not None and field.mode == "NULLABLE"
+
+
+@st.cache_data(ttl=60)
+def load_advertiser_platform_rules(project_id: str) -> pd.DataFrame:
+    """Todas as linhas (historico incluido) de core.advertiser_platform_rules
+    + nome do cliente (LEFT JOIN dim_client -- client_id NULL/regra global
+    fica com client_name NULL de proposito, a UI trata isso como 'TODOS OS
+    CLIENTES', nao como cliente nao encontrado). So leitura, SA principal."""
+    client = get_bq_client()
+    query = f"""
+    SELECT
+      r.client_id, c.name AS client_name, r.platform_from, r.formato, r.platform_to,
+      r.confirmed_at, r.confirmed_by, r.notes, r.effective_from, r.effective_to
+    FROM `{project_id}.{ADVERTISER_PLATFORM_RULES_TABLE}` r
+    LEFT JOIN `{project_id}.core.dim_client` c ON c.client_id = r.client_id
+    ORDER BY r.platform_from, r.formato, r.effective_from DESC
+    """
+    return client.query(query).to_dataframe()
+
+
+def _platform_rule_active_count(project_id: str, client_id: str | None, platform_from: str, formato: str) -> int:
+    """Guarda-corpo antes de INSERT -- checa se ja existe versao vigente pra
+    essa chave natural (client_id, platform_from, formato). Comparacao de
+    client_id e NULL-safe (client_id pode ser NULL = regra global) --
+    `col = @param` nunca e verdadeiro quando ambos os lados sao NULL em SQL
+    padrao, por isso o OR explicito. So leitura, SA principal."""
+    client = get_bq_client()
+    query = f"""
+    SELECT COUNT(*) AS n FROM `{project_id}.{ADVERTISER_PLATFORM_RULES_TABLE}`
+    WHERE platform_from = @platform_from AND formato = @formato
+      AND (client_id = @client_id OR (client_id IS NULL AND @client_id IS NULL))
+      AND effective_to IS NULL
+    """
+    job_config = bigquery.QueryJobConfig(query_parameters=[
+        bigquery.ScalarQueryParameter("client_id", "STRING", client_id),
+        bigquery.ScalarQueryParameter("platform_from", "STRING", platform_from),
+        bigquery.ScalarQueryParameter("formato", "STRING", formato),
+    ])
+    return int(client.query(query, job_config=job_config).to_dataframe()["n"].iloc[0])
+
+
+def close_advertiser_platform_rule(project_id: str, client_id: str | None, platform_from: str, formato: str) -> dict:
+    """Fecha (effective_to = CURRENT_DATE()) a linha vigente que casa com a
+    chave natural (client_id NULL-safe, ver _platform_rule_active_count).
+    Escreve com a writer SA impersonada, mesmo projeto selecionado na tela.
+    Nunca lanca excecao pra UI -- retorna dict com 'ok' explicito."""
+    try:
+        client = get_writer_bq_client_for_project(project_id)
+        sql = f"""
+        UPDATE `{project_id}.{ADVERTISER_PLATFORM_RULES_TABLE}`
+        SET effective_to = CURRENT_DATE()
+        WHERE platform_from = @platform_from AND formato = @formato
+          AND (client_id = @client_id OR (client_id IS NULL AND @client_id IS NULL))
+          AND effective_to IS NULL
+        """
+        job_config = bigquery.QueryJobConfig(query_parameters=[
+            bigquery.ScalarQueryParameter("client_id", "STRING", client_id),
+            bigquery.ScalarQueryParameter("platform_from", "STRING", platform_from),
+            bigquery.ScalarQueryParameter("formato", "STRING", formato),
+        ])
+        client.query(sql, job_config=job_config).result()
+        return {"ok": True, "detail": "Vigencia encerrada."}
+    except Exception as exc:
+        detail = f"Erro ao encerrar vigencia: {exc}"
+        if "403" in str(exc) or "Forbidden" in str(exc):
+            detail += f" -- possivel falta de roles/bigquery.jobUser para `{WRITER_SA_EMAIL}` em `{project_id}`."
+        return {"ok": False, "detail": detail}
+
+
+def add_advertiser_platform_rule(
+    project_id: str, client_id: str | None, platform_from: str, formato: str,
+    platform_to: str, confirmed_by: str, notes: str,
+) -> dict:
+    """INSERT de uma nova versao vigente, seguindo o procedimento SCD2
+    documentado em core/ddl/advertiser_platform_rules.sql: fecha qualquer
+    versao vigente da MESMA chave natural (no-op se nao houver nenhuma) +
+    insere a linha nova (confirmed_at/effective_from=CURRENT_DATE(),
+    effective_to=NULL). `formato` sempre normalizado pra UPPER aqui --
+    core.resolve_platform_rule() compara com UPPER(p_formato), e os dados
+    existentes ja seguem essa convencao (ex: 'PUSH', 'ÁUDIO'). Escreve com a
+    writer SA impersonada. Nunca lanca excecao pra UI."""
+    try:
+        formato_upper = formato.strip().upper()
+        client = get_writer_bq_client_for_project(project_id)
+        if _platform_rule_active_count(project_id, client_id, platform_from, formato_upper):
+            close_result = close_advertiser_platform_rule(project_id, client_id, platform_from, formato_upper)
+            if not close_result["ok"]:
+                return close_result
+        sql = f"""
+        INSERT INTO `{project_id}.{ADVERTISER_PLATFORM_RULES_TABLE}`
+          (client_id, platform_from, formato, platform_to, confirmed_at, confirmed_by, notes, effective_from, effective_to)
+        VALUES (@client_id, @platform_from, @formato, @platform_to, CURRENT_DATE(), @confirmed_by, @notes, CURRENT_DATE(), NULL)
+        """
+        job_config = bigquery.QueryJobConfig(query_parameters=[
+            bigquery.ScalarQueryParameter("client_id", "STRING", client_id),
+            bigquery.ScalarQueryParameter("platform_from", "STRING", platform_from),
+            bigquery.ScalarQueryParameter("formato", "STRING", formato_upper),
+            bigquery.ScalarQueryParameter("platform_to", "STRING", platform_to),
+            bigquery.ScalarQueryParameter("confirmed_by", "STRING", confirmed_by),
+            bigquery.ScalarQueryParameter("notes", "STRING", notes),
+        ])
+        client.query(sql, job_config=job_config).result()
+        return {"ok": True, "detail": "Regra criada."}
+    except Exception as exc:
+        detail = f"Erro ao criar regra: {exc}"
+        if "403" in str(exc) or "Forbidden" in str(exc):
+            detail += f" -- possivel falta de roles/bigquery.jobUser para `{WRITER_SA_EMAIL}` em `{project_id}`."
+        return {"ok": False, "detail": detail}
+
+
+@st.cache_data(ttl=300)
+def load_dim_client_options(project_id: str) -> pd.DataFrame:
+    """client_id+name de core.dim_client, escopado ao `project_id` selecionado
+    na tela (staging e producao podem ter conjuntos de clientes diferentes --
+    diferente de load_client_options(), fixa em PROJECT_ID/producao, usada em
+    outras abas que nao tem seletor dual). So leitura, SA principal."""
+    client = get_bq_client()
+    query = f"SELECT client_id, name FROM `{project_id}.core.dim_client` WHERE status = 'active' ORDER BY name"
+    return client.query(query).to_dataframe()
+
+
 @st.cache_data(ttl=60)
 def load_unclassified_strategies(project_id: str) -> pd.DataFrame:
     """strategy_name distintos de stg.io_plan que resolvem formato=NULL hoje --
@@ -1342,19 +1497,28 @@ def call_io_plan_admin_sync(client_slug: str | None, timeout: int = 180) -> dict
 
 
 def call_fact_pacing_refresh(timeout: int = 180) -> dict:
-    """Invoca o Cloud Run `fact-pacing-base-refresh` (producao) via ID token --
-    GAP DE IAM CONHECIDO (ver comentario de FACT_PACING_REFRESH_INVOKER_SA
-    acima): nenhuma SA do Hub tem roles/run.invoker nele hoje, entao esta
-    chamada e ESPERADA que falhe com 403 ate o Douglas decidir e aplicar o
-    binding. Implementado mesmo assim (impersonando a writer SA do Hub, unico
-    candidato razoavel -- nunca a principal, que fica estritamente read-only
-    por design) para o dia em que o binding existir a chamada ja funcionar
-    sem mudanca de codigo -- so falta o IAM, nao a integracao."""
+    """Invoca o Cloud Run `fact-pacing-base-refresh` (producao) via ID token,
+    impersonando a writer SA do Hub (nunca a principal, que fica estritamente
+    read-only por design). O binding roles/run.invoker ja foi concedido a
+    `{WRITER_SA_EMAIL}` em 2026-09-07 (gap de IAM antigo, resolvido) -- o 403
+    tratado abaixo fica so como fallback defensivo caso o binding seja
+    revogado no futuro, nao e mais o caminho esperado.
+
+    BUG REAL corrigido em 2026-09-07: IDTokenCredentials nao aceita
+    `target_principal` diretamente (esse kwarg e de impersonated_credentials
+    .Credentials, nao de IDTokenCredentials) -- precisa do passo intermediario
+    de criar as credenciais impersonadas primeiro, mesmo padrao ja usado em
+    get_writer_bq_client() acima, e SO ENTAO pedir o ID token sobre elas."""
     try:
         source_credentials, _ = google.auth.default()
+        target_credentials = impersonated_credentials.Credentials(
+            source_credentials=source_credentials,
+            target_principal=WRITER_SA_EMAIL,
+            target_scopes=["https://www.googleapis.com/auth/cloud-platform"],
+            lifetime=300,
+        )
         id_creds = impersonated_credentials.IDTokenCredentials(
-            source_credentials, target_principal=WRITER_SA_EMAIL,
-            target_audience=FACT_PACING_REFRESH_URL, include_email=True,
+            target_credentials, target_audience=FACT_PACING_REFRESH_URL, include_email=True,
         )
         id_creds.refresh(google.auth.transport.requests.Request())
         resp = requests.post(
@@ -3254,6 +3418,106 @@ with tab_formats:
                         st.success(_result["detail"])
                         load_strategy_format_map.clear()
                         load_unclassified_strategies.clear()
+                        st.rerun()
+                    else:
+                        st.error(_result["detail"])
+
+    st.divider()
+
+    # ── Secao 4: CRUD core.advertiser_platform_rules (regra GLOBAL ou por
+    # cliente) ───────────────────────────────────────────────────────────────
+    st.markdown("#### :material/hub: Regras de Plataforma por Anunciante (`core.advertiser_platform_rules`)")
+    st.caption(
+        "Remapeia `platform_from` (ex: 'unknown') -> `platform_to` real, por formato -- "
+        "opcionalmente restrito a um cliente. Regra GLOBAL (sem cliente) vale pra todos; "
+        "uma regra especifica de cliente sempre vence sobre a global pro mesmo periodo."
+    )
+
+    _fmt_supports_global = check_advertiser_rules_supports_global(_fmt_project)
+    if not _fmt_supports_global:
+        st.info(
+            ":material/info: Este projeto (`" + _fmt_project + "`) ainda nao teve a migracao de regra "
+            "GLOBAL aplicada (`client_id` continua obrigatorio) -- so da pra criar regra por cliente "
+            "especifico aqui. Confirmado ao vivo via schema, nao e um valor fixo -- assim que a migracao "
+            "for promovida pra este projeto, a opcao \"Global\" aparece sozinha, sem precisar mexer no codigo."
+        )
+
+    with st.spinner("Consultando core.advertiser_platform_rules..."):
+        _platform_rules_df = load_advertiser_platform_rules(_fmt_project)
+    _platform_rules_df = _platform_rules_df.copy()
+    _platform_rules_df["escopo"] = _platform_rules_df.apply(
+        lambda r: "TODOS OS CLIENTES" if pd.isna(r["client_id"]) else (r["client_name"] or r["client_id"]), axis=1,
+    )
+    _platform_rules_active = _platform_rules_df[_platform_rules_df["effective_to"].isna()].sort_values(["platform_from", "formato"])
+
+    st.dataframe(
+        _platform_rules_active[["escopo", "platform_from", "formato", "platform_to", "confirmed_by", "effective_from", "notes"]],
+        use_container_width=True, hide_index=True,
+        column_config={
+            "escopo": "Escopo", "platform_from": "Platform (de)", "formato": "Formato",
+            "platform_to": "Platform (para)", "confirmed_by": "Confirmado por",
+            "effective_from": "Vigente desde", "notes": "Notas",
+        },
+    )
+    with st.expander(f"Ver historico completo ({len(_platform_rules_df)} linha(s), incluindo encerradas)"):
+        st.dataframe(
+            _platform_rules_df[["escopo", "platform_from", "formato", "platform_to", "confirmed_by", "effective_from", "effective_to", "notes"]],
+            use_container_width=True, hide_index=True,
+        )
+
+    if not HUB_READ_ONLY:
+        with st.expander(":material/add_circle: Adicionar nova regra"):
+            _scope_options = ["Cliente especifico"] + (["Global (todos os clientes)"] if _fmt_supports_global else [])
+            _scope_choice = st.radio("Escopo", _scope_options, key="platform_rule_new_scope", horizontal=True)
+            _new_rule_client_id = None
+            if _scope_choice == "Cliente especifico":
+                _dim_client_df = load_dim_client_options(_fmt_project)
+                if _dim_client_df.empty:
+                    st.warning("Nenhum cliente ativo encontrado em `core.dim_client` neste projeto.")
+                else:
+                    _client_labels = [f"{r.name} ({r.client_id})" for r in _dim_client_df.itertuples()]
+                    _client_choice = st.selectbox("Cliente", _client_labels, key="platform_rule_new_client")
+                    _new_rule_client_id = _dim_client_df.iloc[_client_labels.index(_client_choice)]["client_id"]
+
+            pc1, pc2, pc3 = st.columns(3)
+            _new_platform_from = pc1.text_input("Platform (de)", value="unknown", key="platform_rule_new_from")
+            _new_rule_formato = pc2.text_input("Formato", key="platform_rule_new_formato", placeholder="ex: PUSH")
+            _new_platform_to = pc3.text_input("Platform (para)", key="platform_rule_new_to", placeholder="ex: siprocal")
+            _new_rule_confirmed_by = st.text_input("Confirmado por (obrigatorio)", key="platform_rule_new_confirmed_by", placeholder="ex: douglas")
+            _new_rule_notes = st.text_area("Notas / evidencia", key="platform_rule_new_notes")
+
+            _rule_ready = (
+                _new_platform_from.strip() and _new_rule_formato.strip() and _new_platform_to.strip()
+                and _new_rule_confirmed_by.strip()
+                and (_scope_choice == "Global (todos os clientes)" or _new_rule_client_id is not None)
+            )
+            if st.button("Adicionar regra", key="platform_rule_add_btn", disabled=not _rule_ready):
+                _result = add_advertiser_platform_rule(
+                    _fmt_project, _new_rule_client_id, _new_platform_from.strip(), _new_rule_formato.strip(),
+                    _new_platform_to.strip(), _new_rule_confirmed_by.strip(), _new_rule_notes,
+                )
+                if _result["ok"]:
+                    st.success(_result["detail"])
+                    load_advertiser_platform_rules.clear()
+                    st.rerun()
+                else:
+                    st.error(_result["detail"])
+
+        if not _platform_rules_active.empty:
+            with st.expander(":material/block: Encerrar vigencia de uma regra"):
+                _platform_rule_labels = [
+                    f"{r.escopo} -- {r.platform_from}/{r.formato} -> {r.platform_to}" for r in _platform_rules_active.itertuples()
+                ]
+                _platform_rule_choice = st.selectbox("Regra vigente", _platform_rule_labels, key="platform_rule_close_select")
+                _platform_rule_row = _platform_rules_active.iloc[_platform_rule_labels.index(_platform_rule_choice)]
+                if st.button("Encerrar vigencia (nao apaga historico)", key="platform_rule_close_btn"):
+                    _close_client_id = None if pd.isna(_platform_rule_row["client_id"]) else _platform_rule_row["client_id"]
+                    _result = close_advertiser_platform_rule(
+                        _fmt_project, _close_client_id, _platform_rule_row["platform_from"], _platform_rule_row["formato"],
+                    )
+                    if _result["ok"]:
+                        st.success(_result["detail"])
+                        load_advertiser_platform_rules.clear()
                         st.rerun()
                     else:
                         st.error(_result["detail"])
