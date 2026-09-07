@@ -134,4 +134,15 @@ LEFT JOIN `adframework.stg.historical_overrides_delivery` ov
   ON ov.client_id = j.client_id
   AND ov.day = j.day
   AND UPPER(ov.formato) = UPPER(j.formato)
-  AND UPPER(ov.platform) = UPPER(j.platform);
+  AND UPPER(ov.platform) = UPPER(j.platform)
+  -- ov.target_group IS NULL (2026-09-07, redesenho Casa do Construtor/Audio):
+  -- a chave do JOIN acima (client_id+day+formato+platform) nao inclui
+  -- target_group -- sem este filtro, um client_id+day com 3 linhas de
+  -- override (blended + TARGET 01 + TARGET 02, mesma chave de JOIN) faria
+  -- este LEFT JOIN "explodir" 1 linha de `joined` em 3 linhas de saida
+  -- (fan-out), inflando fact_pacing_base. So a linha TOTAL/blended
+  -- (target_group IS NULL) alimenta esta materializacao -- o detalhe por
+  -- target fica de fora de proposito (auditoria/consulta separada). Ver
+  -- raciocinio completo em stg/ddl/historical_overrides_delivery.sql
+  -- (secao "DECISAO DE GRAIN").
+  AND ov.target_group IS NULL;

@@ -86,6 +86,14 @@ TABLE_ID = "stg.historical_overrides_delivery"
 # esperada" (ver validate_normalized() la). Todas as 4 sao NULLABLE -- um
 # normalize() que nao usa o lado planejado (como
 # historical_mappings/teste_agente_backend_xyz.py) so preenche com None.
+#
+# `target_group` adicionado em 2026-09-07 (redesenho Casa do Construtor/
+# Audio -- ver stg/ddl/historical_overrides_delivery.sql para o raciocinio
+# completo de grain/producao). NULLABLE -- NULL para o caso comum (nenhum
+# split por target). Preenchido (ex: 'TARGET 01') so identifica de qual
+# bloco a linha veio; NAO entra na chave de producao (gold.fact_delivery e
+# stg.fact_pacing_base_refresh.sql agora filtram target_group IS NULL
+# explicitamente ao ler esta tabela -- ver esses arquivos).
 REQUIRED_COLUMNS = [
     "client_id",
     "day",
@@ -100,6 +108,7 @@ REQUIRED_COLUMNS = [
     "planned_clicks_daily",
     "planned_spend_daily",
     "unit_price",
+    "target_group",
     "source_file",
     "notes",
 ]
@@ -153,16 +162,23 @@ def validate_rows(df: pd.DataFrame) -> list:
     except Exception as e:
         problems.append(f"Coluna 'day' tem valor(es) que nao parseiam como data: {e}")
 
-    dupe_key = df.duplicated(subset=["client_id", "day", "platform", "formato"], keep=False)
+    # target_group entra na chave de dedup (2026-09-07, redesenho Casa do
+    # Construtor/Audio) -- sem isso, um arquivo com blended+TARGET 01+TARGET 02
+    # no mesmo dia (mesma client_id/day/platform/formato, target_group
+    # diferente) seria rejeitado como duplicata falsa. NaN em target_group
+    # (caso comum, sem split) e tratado como um valor igual a outro NaN pelo
+    # duplicated() do pandas -- comportamento correto aqui (linhas sem split
+    # ainda devem ser pegas como duplicata de verdade se repetirem).
+    dupe_key = df.duplicated(subset=["client_id", "day", "platform", "formato", "target_group"], keep=False)
     if dupe_key.any():
         n = int(dupe_key.sum())
         problems.append(
-            f"{n} linha(s) com a mesma chave (client_id, day, platform, formato) "
-            f"repetida dentro do proprio arquivo -- historical_overrides_delivery "
-            f"e append-only, um arquivo com chave duplicada internamente quase "
-            f"certamente indica erro de normalizacao upstream, nao correcao "
-            f"intencional (correcao intencional = nova linha com dado novo, nao "
-            f"duplicata identica)."
+            f"{n} linha(s) com a mesma chave (client_id, day, platform, formato, "
+            f"target_group) repetida dentro do proprio arquivo -- "
+            f"historical_overrides_delivery e append-only, um arquivo com chave "
+            f"duplicada internamente quase certamente indica erro de normalizacao "
+            f"upstream, nao correcao intencional (correcao intencional = nova "
+            f"linha com dado novo, nao duplicata identica)."
         )
 
     # platform contra lista fechada (2026-08-11, achado ao blindar o JOIN
@@ -225,6 +241,51 @@ def build_rows(df: pd.DataFrame, loaded_by: str) -> list:
     return rows
 
 
+def fetch_existing_keys(bq_client: bigquery.Client, project: str, client_ids: list) -> set:
+    """Le as chaves (client_id, day, platform, formato, target_group) ja
+    presentes em stg.historical_overrides_delivery para os client_id(s) do
+    arquivo de entrada -- usado por --skip-existing (2026-09-07, redesenho
+    Casa do Construtor/Audio: ingestao recorrente precisa ser idempotente).
+    Retorna um set de tuplas (day como string ISO, platform/formato/
+    target_group normalizados exatamente como saem do BQ -- None permanece
+    None, nunca vira string 'None')."""
+    if not client_ids:
+        return set()
+    query = f"""
+        SELECT DISTINCT client_id, day, platform, formato, target_group
+        FROM `{project}.{TABLE_ID}`
+        WHERE client_id IN UNNEST(@client_ids)
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[bigquery.ArrayQueryParameter("client_ids", "STRING", client_ids)]
+    )
+    rows = bq_client.query(query, job_config=job_config).result()
+    return {
+        (r.client_id, r.day.isoformat(), r.platform, r.formato, r.target_group)
+        for r in rows
+    }
+
+
+def filter_already_loaded(rows: list, existing_keys: set) -> tuple:
+    """Separa `rows` (ja no formato de build_rows(), com 'day' como string
+    ISO) em (novas, ja_carregadas) comparando contra existing_keys. Usado por
+    --skip-existing para reprocessamento idempotente: linhas cuja chave
+    (client_id, day, platform, formato, target_group) ja existe em
+    stg.historical_overrides_delivery sao puladas (nao reinseridas), em vez
+    de duplicar -- mesmo se o valor numerico da linha nova for diferente do
+    ja carregado (uma correcao de valor exige decisao humana explicita, nao
+    overwrite automatico de uma tabela append-only -- ver
+    stg/ddl/historical_overrides_delivery.sql)."""
+    novas, ja_carregadas = [], []
+    for row in rows:
+        key = (row["client_id"], row["day"], row["platform"], row["formato"], row["target_group"])
+        if key in existing_keys:
+            ja_carregadas.append(row)
+        else:
+            novas.append(row)
+    return novas, ja_carregadas
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -248,6 +309,18 @@ def main():
         "promoted_at=CURRENT_TIMESTAMP() nesse upload apos INSERT bem-sucedido (nunca em "
         "--dry-run). Opcional -- sem isso, o upload fica 'aguardando normalizacao' pra "
         "sempre na tela do Hub mesmo apos promovido (so sinalizacao de UI, nao bloqueia nada).",
+    )
+    parser.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="Reprocessamento idempotente (2026-09-07, redesenho Casa do Construtor/Audio): "
+        "antes de inserir, consulta stg.historical_overrides_delivery pelas chaves "
+        "(client_id, day, platform, formato, target_group) ja carregadas para o(s) "
+        "client_id presentes no arquivo, e insere so as linhas com chave NOVA -- linhas "
+        "cuja chave ja existe sao puladas (nunca sobrescritas, tabela e append-only). "
+        "Precisa de credencial mesmo em --dry-run (faz 1 SELECT contra o projeto). Sem "
+        "esta flag, o comportamento e o de sempre: insere tudo, sem checar o que ja existe "
+        "(uso ideal para a primeira carga de um cliente novo).",
     )
     args = parser.parse_args()
 
@@ -277,15 +350,40 @@ def main():
         f"[load_historical_override] {len(rows)} linha(s) prontas para "
         f"{args.project}.{TABLE_ID} (loaded_by={loaded_by})"
     )
-    print("----- preview (ate 5 linhas) -----")
+
+    bq_client = None
+    if args.skip_existing:
+        # Precisa de credencial mesmo em --dry-run -- e o unico jeito de
+        # simular de verdade o que --skip-existing faria (sem consultar o BQ
+        # nao ha como saber quais chaves ja existem).
+        bq_client = bigquery.Client(project=args.project)
+        client_ids = sorted(set(df["client_id"].dropna().unique()))
+        existing_keys = fetch_existing_keys(bq_client, args.project, client_ids)
+        rows, ja_carregadas = filter_already_loaded(rows, existing_keys)
+        print(
+            f"[load_historical_override] --skip-existing: {len(ja_carregadas)} linha(s) "
+            f"com chave (client_id, day, platform, formato, target_group) ja existente "
+            f"em {args.project}.{TABLE_ID} -- puladas (nao reinseridas). "
+            f"{len(rows)} linha(s) com chave nova prontas para insercao."
+        )
+        if ja_carregadas:
+            print("----- chaves puladas (ate 5) -----")
+            for row in ja_carregadas[:5]:
+                print({k: row[k] for k in ("client_id", "day", "platform", "formato", "target_group")})
+
+    print("----- preview (ate 5 linhas a inserir) -----")
     for row in rows[:5]:
         print(row)
+
+    if not rows:
+        print("[load_historical_override] 0 linha(s) nova(s) para inserir -- nada a fazer.")
+        return
 
     if args.dry_run:
         print("[load_historical_override] --dry-run: nada foi gravado.")
         return
 
-    bq_client = bigquery.Client(project=args.project)
+    bq_client = bq_client or bigquery.Client(project=args.project)
     table_ref = f"{args.project}.{TABLE_ID}"
     errors = bq_client.insert_rows_json(table_ref, rows)
     if errors:

@@ -57,6 +57,15 @@ WITH unioned AS (
          impressions, clicks, conversions
   FROM `adframework.stg.historical_overrides_delivery`
   WHERE `adframework.core.resolve_reporting_source`(client_id, day, CURRENT_DATE()) = 'override'
+    -- target_group IS NULL (2026-09-07, redesenho Casa do Construtor/Audio):
+    -- so a linha TOTAL (blended) alimenta producao. Linhas com target_group
+    -- preenchido sao um RATEIO proporcional do blended (TARGET01+TARGET02 =
+    -- TOTAL, nao medicao independente) -- se entrassem aqui junto com a
+    -- linha blended, o SUM() abaixo dobraria o impressions/clicks/conversions
+    -- reportado (blended + target1+target2, que ja somam de volta ao
+    -- blended). Ver raciocinio completo em
+    -- stg/ddl/historical_overrides_delivery.sql (secao "DECISAO DE GRAIN").
+    AND target_group IS NULL
 ),
 normalized AS (
   SELECT

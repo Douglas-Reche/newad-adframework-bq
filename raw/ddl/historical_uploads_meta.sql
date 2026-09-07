@@ -51,3 +51,21 @@ ALTER TABLE `douglas-bq-staging.raw.historical_uploads_meta`
 -- nunca setado manualmente, nunca via UPDATE fora desse fluxo.
 ALTER TABLE `douglas-bq-staging.raw.historical_uploads_meta`
   ADD COLUMN IF NOT EXISTS promoted_at TIMESTAMP;
+
+-- drive_file_id / drive_modified_time: adicionadas 2026-09-07 (redesenho
+-- Casa do Construtor/Audio, 2a mudanca de arquitetura -- carga que era
+-- unica vira recorrente). NULL para todo upload manual (via
+-- load_historical_raw.py com um arquivo local, o fluxo original e ainda o
+-- default) -- so preenchidas quando o upload vem de
+-- scripts/deploy/sync_historical_drive.py (novo script, baixa direto do
+-- Google Drive). Mesmo campo/conceito ja usado por scripts/io_plan/
+-- sync_drive.py (get_last_sync compara MAX(snapshot_at) contra
+-- drive_modified_time do arquivo) -- aqui adaptado para o fluxo de
+-- historical_uploads: antes de baixar/reprocessar um arquivo, o sync
+-- consulta MAX(drive_modified_time) deste client_id+drive_file_id e so
+-- prossegue se o modifiedTime atual do Drive for mais novo (ou se nao
+-- houver nenhum upload anterior) -- idempotente, evita re-baixar/
+-- reprocessar um arquivo que nao mudou.
+ALTER TABLE `douglas-bq-staging.raw.historical_uploads_meta`
+  ADD COLUMN IF NOT EXISTS drive_file_id STRING,
+  ADD COLUMN IF NOT EXISTS drive_modified_time TIMESTAMP;

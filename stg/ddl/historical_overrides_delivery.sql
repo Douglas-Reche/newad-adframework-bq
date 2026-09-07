@@ -55,6 +55,42 @@
 -- teria que vir das novas colunas planned_spend_daily/unit_price + a mesma
 -- formula CPC/CPM ja usada em stg/ddl/fact_pacing_base_refresh.sql -- nao
 -- desta coluna solta.
+--
+-- Coluna `target_group` adicionada em 2026-09-07 (redesenho de ingestao
+-- Casa do Construtor/Audio, 1a das 2 mudancas de arquitetura confirmadas com
+-- o Douglas -- preservar split por TARGET no realizado, comparavel ao
+-- planejado por target do IO Plan). Mesmo nome/conceito ja usado em
+-- raw.io_plan_drive_snapshot.target_group (ver esse arquivo): STRING
+-- nullable, NULL para o caso comum (nenhum split), preenchido (ex:
+-- 'TARGET 01', 'TARGET 02') quando a fonte tem blocos por target lado a
+-- lado com o total blended.
+--
+-- DECISAO DE GRAIN (nao trivial, documentada aqui por afetar consumidores
+-- compartilhados entre TODOS os clientes): `target_group` NAO entra na
+-- chave usada pelos consumidores de producao
+-- (gold/ddl/fact_delivery.sql, stg/ddl/fact_pacing_base_refresh.sql) --
+-- ambos passam a filtrar `target_group IS NULL` explicitamente ao ler
+-- esta tabela. Motivo: os valores por TARGET em clientes como Casa do
+-- Construtor sao um RATEIO proporcional do blended (TARGET01+TARGET02 =
+-- TOTAL, confirmado numericamente na investigacao original) -- NUNCA uma
+-- medicao independente. Se as linhas de target entrassem no
+-- SUM()/JOIN de producao junto com a linha blended, o resultado dobraria
+-- (blended + (target1+target2, que ja somam de volta ao blended)). As
+-- linhas com target_group preenchido existem SO para auditoria/consulta
+-- manual (comparar realizado por target contra o planejado por target do
+-- IO Plan, que tem valores REAIS e diferentes por target -- R$25k/50k
+-- impressoes Target 1, R$10k/20k Target 2) -- nunca para alimentar
+-- fact_delivery/fact_pacing_base diretamente. Se um cliente futuro
+-- precisar que o detalhe por target ALIMENTE producao de verdade (ex:
+-- medicao independente real, nao rateio), isso exige revisitar esta
+-- decisao explicitamente, nao assumir que basta remover o filtro.
+--
+-- Consequencia em load_historical_override.py: a chave de deduplicacao
+-- DENTRO do proprio arquivo (validate_rows(), antes so
+-- client_id+day+platform+formato) passou a incluir target_group -- sem
+-- isso, um arquivo com blended+target1+target2 no mesmo dia seria
+-- rejeitado como "duplicata" (mesma client_id/day/platform/formato, 3x)
+-- mesmo sendo 3 linhas legitimamente diferentes.
 
 -- Ordem importa: CREATE TABLE IF NOT EXISTS primeiro (ambiente novo, tabela
 -- ainda nao existe -- ja nasce com o schema completo, incluindo as colunas
@@ -80,7 +116,8 @@ CREATE TABLE IF NOT EXISTS `adframework.stg.historical_overrides_delivery`
   planned_impressions_daily FLOAT64,
   planned_clicks_daily      FLOAT64,
   planned_spend_daily       NUMERIC,
-  unit_price                NUMERIC
+  unit_price                NUMERIC,
+  target_group              STRING
 )
 OPTIONS (
   description = 'Historico manual de entrega (dado normalizado) por client_id+dia, usado por core.resolve_reporting_source()/gold.fact_delivery quando o dado real da plataforma nao pode ser reportado. Movida de core para stg em 2026-08-06 -- dado normalizado pertence a STG, nao a CORE. Colunas planned_* /unit_price (2026-08-10) cobrem override opcional do lado planejado, alinhado ao schema de stg.fact_pacing_base -- NULL na maioria dos casos.'
@@ -95,4 +132,5 @@ ALTER TABLE `adframework.stg.historical_overrides_delivery`
   ADD COLUMN IF NOT EXISTS planned_impressions_daily FLOAT64,
   ADD COLUMN IF NOT EXISTS planned_clicks_daily      FLOAT64,
   ADD COLUMN IF NOT EXISTS planned_spend_daily        NUMERIC,
-  ADD COLUMN IF NOT EXISTS unit_price                 NUMERIC;
+  ADD COLUMN IF NOT EXISTS unit_price                 NUMERIC,
+  ADD COLUMN IF NOT EXISTS target_group               STRING;
