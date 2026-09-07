@@ -36,6 +36,16 @@ CREATE OR REPLACE TABLE `adframework.raw.io_plan_drive_snapshot`
   flight_end       DATE,                -- data fim parseada
 
   -- ── Linha de estratégia (1 row por linha do xlsx) ───────────────────────
+  -- target_group: quando a aba tem múltiplos blocos "TARGET N" empilhados
+  -- (achado real 2026-09-06/07, Casa do Construtor -- ver sync_drive.py,
+  -- TARGET_BLOCK_RE/_find_next_block), captura de qual bloco a linha veio
+  -- (ex: 'TARGET 1', 'TARGET 2'). NULL quando o arquivo não tem essa
+  -- estrutura (a maioria dos clientes hoje). Preservado aqui e em
+  -- stg.io_plan para permitir filtrar por target no futuro (mesma
+  -- separação que os dados de Áudio via MIQ também usam) -- core.io_plan_manual
+  -- e gold.fact_io_plan continuam agregando o total combinado (todos os
+  -- targets somados), sem mudança nesta rodada.
+  target_group     STRING,
   strategy_name    STRING,              -- ex: 'Mídia Programática Display', 'Vídeo Ads'
   platform         STRING,              -- mediasmart | mgid | siprocal | unknown
   device           STRING,              -- ex: 'Desktop e Mobile', 'Mobile'

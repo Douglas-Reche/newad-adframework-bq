@@ -56,12 +56,20 @@ PERSONAL_NAME_TOKENS = {"RAFA", "GESSIANE"}
 # nessa pasta são do Amigo Cuiabá. tecpar_edfcc744 não tem planos próprios no Drive.
 # DÚVIDA ABERTA: LABTOLAB PARDINI — pode ser pardini_60395024, lab2lab_efb1cb34 ou ambos.
 # PENDENTE: PHISALIA — cliente ainda não cadastrado em dim_client.
+#
+# DAXX removido daqui em 2026-09-06: não é um cliente-pasta-direta, é uma pasta
+# guarda-chuva com 7 sub-clientes dentro (CALOI, CASA DO CONSTRUTOR, DR CONSULTA,
+# EFIBANK, FOX LUX, MASTERCARD-CRM BONUS, SENIOR SISTEMAS) — ver PARENT_FOLDER_CLIENTS
+# abaixo. O client_id "dax_agency_00000001" nunca deveria ter sido usado para sync de
+# planos; é só o agrupador comercial. find_plano_files() espera pasta de ano (\d{4})
+# direto dentro da pasta do cliente, e DAXX tinha uma camada extra — por isso o sync
+# rodava todo dia sem erro e sem trazer nenhum arquivo, silenciosamente, pra nenhum
+# dos 7 sub-clientes.
 CLIENT_MAP = {
     "7K":             "bet7k_b777ab9c",
     "APERAM":         "aperam_14d1f27e",
     "CATÁLISE":       "catalise_0b7d18d6",
     "CORA":           "banco_cora_fe13d78a",
-    "DAXX":           "dax_agency_00000001",
     "DOOING":         "dooing_994db77e",
     "EINSTEIN":       "einstein_6b33a588",
     "LUCKBET":        "luckbet_bea15ebc",
@@ -71,6 +79,40 @@ CLIENT_MAP = {
     "PATIO MEDEIROS": "patio_medeiros_874a0358",
     "STOCCO":         "stocco_b712c66e",
     "TEC PAR":        "amigo_db1c2f0c",
+}
+
+# Clientes cuja pasta no Drive tem uma camada extra de sub-pasta antes de
+# YEAR/MONTH/PLANO/ — hoje só DAXX, uma agência guarda-chuva. Mapeamento:
+# nome da pasta-pai no Drive → {nome exato da sub-pasta no Drive: client_id}.
+# Navegado ANTES de cair em find_plano_files() (que continua esperando pasta de
+# ano direto dentro da pasta resolvida — sem mudança nesse contrato).
+#
+# Status por sub-cliente (auditoria 2026-09-06 cruzando core.dim_client):
+#   CASA DO CONSTRUTOR   → casa_construtor_adf15c2c   (confirmado, parent_client_id=dax_agency_00000001)
+#   DR CONSULTA          → AMBÍGUO — dim_client tem 2 candidatos sob dax_agency_00000001:
+#                          dr_consulta_215378ef ("Dr. Consulta") e dr_consulta_rj_11040bf9
+#                          ("Dr. Consulta RJ"). Não confirmado qual pasta do Drive corresponde
+#                          a qual — checar se existe sub-pasta "DR CONSULTA RJ" separada
+#                          dentro de DAXX antes de mapear.
+#   CALOI, EFIBANK,      → existem em dim_client (caloi_8ac28140, efi_bank_ee79e91b,
+#   FOX LUX              fox_lux_55ed8992) mas SEM parent_client_id apontando pra
+#                          dax_agency_00000001 (diferente de Casa do Construtor/Dr Consulta,
+#                          que já têm o link). Client_id provavelmente correto, mas a falta
+#                          do link é uma inconsistência a corrigir em dim_client antes de
+#                          confiar 100%.
+#   MASTERCARD-CRM BONUS → AMBÍGUO — só existe "Mastercard" (mastercard_ab2a13bc) em
+#                          dim_client, sem parent_client_id e sem menção a "CRM Bonus" no
+#                          nome. Pode ser o mesmo cliente ou um sub-produto ainda não
+#                          cadastrado — não assumir.
+#   SENIOR SISTEMAS      → NÃO ENCONTRADO em dim_client sob nenhuma variação de nome
+#                          (Senior, Sênior, Sistemas). Cliente não cadastrado ainda.
+#
+# Só CASA DO CONSTRUTOR entra no mapa agora — os outros 6 ficam de fora até o
+# client_id de cada um ser confirmado (nunca inventar).
+PARENT_FOLDER_CLIENTS = {
+    "DAXX": {
+        "CASA DO CONSTRUTOR": "casa_construtor_adf15c2c",
+    },
 }
 
 # Strategy name keywords → platform (checked via substring, case-insensitive, no accents)
@@ -277,6 +319,36 @@ def _gcell(row, col_map: dict, key: str):
     return row[col - 1].value
 
 
+# Linha isolada tipo "TARGET 1" / "TARGET 2" que marca o início de um bloco de
+# estratégias empilhado na mesma aba (ver header do módulo -- achado real
+# 2026-09-06/07, Casa do Construtor). Fullmatch deliberado: uma linha como
+# "TOTAL MENSAL PLANO TARGET 1 + TARGET 2" (o total combinado dos blocos) NÃO
+# deve casar aqui -- ela contém "TOTAL" e texto extra, então nunca é
+# confundida com o marcador de um bloco novo.
+TARGET_BLOCK_RE = re.compile(r"^TARGET\s*\d+$")
+
+
+def _find_next_block(ws, start_row: int, max_row: int):
+    """
+    A partir de start_row, procura o próximo header de colunas (linha com
+    >=2 chaves reconhecidas por _map_headers) até max_row (inclusive).
+    Ao longo do caminho, registra a última linha isolada "TARGET N" vista
+    antes desse header -- vira o target_group do bloco que começa nele.
+    Retorna (header_row_num, col_map, target_group) ou (None, None, None)
+    se nenhum header for encontrado na janela.
+    """
+    target_group = None
+    for row in ws.iter_rows(min_row=start_row, max_row=max_row):
+        row_text = " ".join(str(c.value).strip() if c.value else "" for c in row if c.value).upper()
+        if TARGET_BLOCK_RE.fullmatch(row_text):
+            target_group = row_text
+            continue
+        candidate_map = _map_headers(row)
+        if len(candidate_map) >= 2:
+            return row[0].row, candidate_map, target_group
+    return None, None, target_group
+
+
 def parse_xlsx(file_bytes: bytes, client_id: str, source_file: str,
                drive_path: str, snapshot_ts: datetime,
                default_year: int = 2026) -> list[dict]:
@@ -337,40 +409,65 @@ def parse_xlsx(file_bytes: bytes, client_id: str, source_file: str,
             if flight_start is None and target_month:
                 flight_start, flight_end = _dates_from_drive_path(drive_path)
 
-        # Find header row: first row where we can map ≥2 keys
-        header_row = None
-        col_map = {}
-        for row in ws.iter_rows(min_row=1, max_row=25):
-            candidate_map = _map_headers(row)
-            if len(candidate_map) >= 2:
-                header_row = row[0].row
-                col_map = candidate_map
-                break
+        # Bloco 1: procura o primeiro header exatamente como antes (janela de
+        # 25 linhas a partir do topo) -- preserva 100% o comportamento antigo
+        # pra qualquer arquivo sem "TARGET N" (a esmagadora maioria dos
+        # clientes hoje). Só entra em modo multi-bloco se essa primeira
+        # varredura efetivamente encontrar uma linha "TARGET N" antes do
+        # header -- nunca por suposição.
+        header_row, col_map, target_group = _find_next_block(ws, 1, 25)
 
         if not header_row or not col_map:
             continue
+
+        multi_block_mode = target_group is not None
 
         # spend_type: detectado pelo unit_price das linhas CPM
         # (arquivos com nome de pessoa são filtrados antes de chegar aqui)
         spend_type_hint = None
 
         unit_prices_cpm = []
-        strategy_rows_raw = []
-        for row in ws.iter_rows(min_row=header_row + 1):
-            row_text = " ".join(str(c.value) if c.value else "" for c in row).upper()
-            if not any(c.value for c in row):
-                continue
-            if "TOTAL" in row_text:
+        strategy_rows_raw = []  # tuplas (row, col_map, target_group)
+
+        while header_row is not None:
+            block_closed_at = None
+            for row in ws.iter_rows(min_row=header_row + 1, max_row=ws.max_row):
+                row_text = " ".join(str(c.value) if c.value else "" for c in row).upper()
+                if not any(c.value for c in row):
+                    continue
+                if "TOTAL" in row_text:
+                    block_closed_at = row[0].row
+                    break
+                strat_val = _gcell(row, col_map, "strategy")
+                if not strat_val or str(strat_val).strip() in ("", "ESTRATÉGIAS", "ESTRATEGIAS", "OBJETIVO"):
+                    continue
+                strategy_rows_raw.append((row, col_map, target_group))
+                # Use only CPM lines for spend_type detection (CPC rates inflate the max)
+                imp_cpm = _gcell(row, col_map, "impressions_cpm")
+                up = _parse_brl(_gcell(row, col_map, "unit_price"))
+                if imp_cpm is not None and up and up > 0:
+                    unit_prices_cpm.append(up)
+
+            if not multi_block_mode:
+                # Comportamento legado exato: um único bloco, para na
+                # primeira linha "TOTAL" (ou no fim da aba).
                 break
-            strat_val = _gcell(row, col_map, "strategy")
-            if not strat_val or str(strat_val).strip() in ("", "ESTRATÉGIAS", "ESTRATEGIAS", "OBJETIVO"):
-                continue
-            strategy_rows_raw.append(row)
-            # Use only CPM lines for spend_type detection (CPC rates inflate the max)
-            imp_cpm = _gcell(row, col_map, "impressions_cpm")
-            up = _parse_brl(_gcell(row, col_map, "unit_price"))
-            if imp_cpm is not None and up and up > 0:
-                unit_prices_cpm.append(up)
+
+            if block_closed_at is None:
+                # Chegou ao fim da aba sem achar "TOTAL" que feche o bloco
+                # atual -- não há mais o que processar.
+                break
+
+            # Modo multi-bloco: procura o próximo bloco só se a próxima
+            # linha de header vier precedida de outra marca "TARGET N"
+            # explícita. Sem essa marca, para -- não arrisca confundir uma
+            # tabela solta/nota de rodapé com um bloco de estratégia novo.
+            next_header, next_col_map, next_target_group = _find_next_block(
+                ws, block_closed_at + 1, min(block_closed_at + 60, ws.max_row)
+            )
+            if next_header is None or next_target_group is None:
+                break
+            header_row, col_map, target_group = next_header, next_col_map, next_target_group
 
         if spend_type_hint is not None:
             spend_type = spend_type_hint
@@ -380,8 +477,8 @@ def parse_xlsx(file_bytes: bytes, client_id: str, source_file: str,
             spend_type = "gross"
 
         # Build output rows
-        for row in strategy_rows_raw:
-            strat_name = str(_gcell(row, col_map, "strategy")).strip()
+        for row, row_col_map, row_target_group in strategy_rows_raw:
+            strat_name = str(_gcell(row, row_col_map, "strategy")).strip()
             rows_out.append({
                 "client_id": client_id,
                 "drive_folder": drive_path,
@@ -391,19 +488,20 @@ def parse_xlsx(file_bytes: bytes, client_id: str, source_file: str,
                 "flight_label": flight_label,
                 "flight_start": flight_start.isoformat() if flight_start else None,
                 "flight_end": flight_end.isoformat() if flight_end else None,
+                "target_group": row_target_group,
                 "strategy_name": strat_name,
                 "platform": detect_platform(strat_name),
-                "device": str(_gcell(row, col_map, "device") or "").strip() or None,
-                "format": str(_gcell(row, col_map, "format") or "").strip() or None,
-                "buy_model": str(_gcell(row, col_map, "buy_model") or "").strip() or None,
-                "unit_price": _parse_brl(_gcell(row, col_map, "unit_price")),
-                "impressions_cpm": _parse_int(_gcell(row, col_map, "impressions_cpm")),
-                "impressions_est": _parse_int(_gcell(row, col_map, "impressions_est")),
-                "video_views": _parse_int(_gcell(row, col_map, "video_views")),
-                "monthly_spend": _parse_brl(_gcell(row, col_map, "monthly_spend")),
-                "ctr_approx": _parse_brl(_gcell(row, col_map, "ctr")),
-                "clicks": _parse_int(_gcell(row, col_map, "clicks")),
-                "reach": _parse_int(_gcell(row, col_map, "reach")),
+                "device": str(_gcell(row, row_col_map, "device") or "").strip() or None,
+                "format": str(_gcell(row, row_col_map, "format") or "").strip() or None,
+                "buy_model": str(_gcell(row, row_col_map, "buy_model") or "").strip() or None,
+                "unit_price": _parse_brl(_gcell(row, row_col_map, "unit_price")),
+                "impressions_cpm": _parse_int(_gcell(row, row_col_map, "impressions_cpm")),
+                "impressions_est": _parse_int(_gcell(row, row_col_map, "impressions_est")),
+                "video_views": _parse_int(_gcell(row, row_col_map, "video_views")),
+                "monthly_spend": _parse_brl(_gcell(row, row_col_map, "monthly_spend")),
+                "ctr_approx": _parse_brl(_gcell(row, row_col_map, "ctr")),
+                "clicks": _parse_int(_gcell(row, row_col_map, "clicks")),
+                "reach": _parse_int(_gcell(row, row_col_map, "reach")),
             })
 
     return rows_out
@@ -414,7 +512,7 @@ def parse_xlsx(file_bytes: bytes, client_id: str, source_file: str,
 def get_last_sync(bq: bigquery.Client, source_file: str, drive_folder: str) -> Optional[datetime]:
     result = list(bq.query(
         "SELECT MAX(snapshot_at) AS ts"
-        " FROM `adframework.raw.io_plan_drive_snapshot`"
+        f" FROM `{BQ_PROJECT}.raw.io_plan_drive_snapshot`"
         " WHERE source_file = @f AND drive_folder = @d",
         job_config=bigquery.QueryJobConfig(
             query_parameters=[
@@ -446,14 +544,14 @@ def rebuild_core_for_client(bq: bigquery.Client, client_id: str):
     log.info(f"    Rebuilding core.io_plan_manual for {client_id}...")
 
     bq.query(
-        "DELETE FROM `adframework.core.io_plan_manual` WHERE client_id = @c AND plan_version = 'DRIVE-SYNC'",
+        f"DELETE FROM `{BQ_PROJECT}.core.io_plan_manual` WHERE client_id = @c AND plan_version = 'DRIVE-SYNC'",
         job_config=bigquery.QueryJobConfig(
             query_parameters=[bigquery.ScalarQueryParameter("c", "STRING", client_id)]
         ),
     ).result()
 
-    insert_sql = """
-        INSERT INTO `adframework.core.io_plan_manual`
+    insert_sql = f"""
+        INSERT INTO `{BQ_PROJECT}.core.io_plan_manual`
             (client_id, flight_start, flight_end,
              planned_impressions, planned_clicks,
              planned_spend_gross, planned_spend_net,
@@ -462,7 +560,7 @@ def rebuild_core_for_client(bq: bigquery.Client, client_id: str):
         WITH latest_snap AS (
             -- Latest snapshot_at per source_file (de-duplicate repeated syncs)
             SELECT source_file, MAX(snapshot_at) AS snap
-            FROM `adframework.raw.io_plan_drive_snapshot`
+            FROM `{BQ_PROJECT}.raw.io_plan_drive_snapshot`
             WHERE client_id = @c
               AND strategy_name NOT IN ('TOTAL', 'total')
               AND flight_start IS NOT NULL
@@ -476,7 +574,7 @@ def rebuild_core_for_client(bq: bigquery.Client, client_id: str):
                 r.flight_start, r.flight_end,
                 r.strategy_name, r.impressions_cpm, r.impressions_est,
                 r.video_views, r.monthly_spend, r.clicks
-            FROM `adframework.raw.io_plan_drive_snapshot` r
+            FROM `{BQ_PROJECT}.raw.io_plan_drive_snapshot` r
             JOIN latest_snap ls ON r.source_file = ls.source_file
                 AND r.snapshot_at = ls.snap
             WHERE r.client_id = @c
@@ -487,7 +585,14 @@ def rebuild_core_for_client(bq: bigquery.Client, client_id: str):
         by_flight_type AS (
             SELECT
                 client_id, flight_start, flight_end, spend_type,
-                SUM(COALESCE(impressions_cpm, 0) + COALESCE(impressions_est, 0)) AS total_imp,
+                -- Prioridade por linha: "Impressoes Mensais" (CPM) e sempre a fonte
+                -- preferida; "Impressoes Mensais Estimativa" so entra quando a primeira
+                -- vem vazia. NUNCA somar as duas -- alguns formatos (ex: Video Ads) tem
+                -- as duas colunas preenchidas ao mesmo tempo na planilha, e somar duplica
+                -- o planejado (achado real 2026-09-06, Cora Setembro: Video Ads com
+                -- impressions_cpm=656250 E impressions_est=459375 preenchidos juntos,
+                -- SUM inflava o total em +459375 sobre o correto).
+                SUM(COALESCE(impressions_cpm, impressions_est, 0)) AS total_imp,
                 SUM(COALESCE(clicks, 0))          AS total_clicks,
                 SUM(COALESCE(monthly_spend, 0))   AS total_spend,
                 STRING_AGG(DISTINCT source_file ORDER BY source_file) AS sources
@@ -615,8 +720,7 @@ def download_file(drive_svc, file_id: str) -> bytes:
 # ─── SYNC ORCHESTRATION ───────────────────────────────────────────────────────
 
 def sync_client(drive_svc, bq_client: bigquery.Client,
-                client_name: str, folder_id: str, force: bool) -> dict:
-    client_id = CLIENT_MAP[client_name]
+                client_name: str, client_id: str, folder_id: str, force: bool) -> dict:
     log.info(f"  [{client_name}] scanning Drive...")
     files = find_plano_files(drive_svc, folder_id)
     log.info(f"  [{client_name}] found {len(files)} .xlsx files across all PLANO folders")
@@ -707,7 +811,53 @@ def _get_credentials():
     return creds
 
 
-def run_sync(client_filter: Optional[str] = None, force: bool = False) -> list[dict]:
+def _build_sync_targets() -> list[dict]:
+    """
+    Flatten CLIENT_MAP (pasta direta) + PARENT_FOLDER_CLIENTS (pasta-pai + sub-pasta)
+    into a single list of sync targets: {"label", "client_id", "parent", "sub"}.
+    "parent" is None for clientes de pasta direta — label é o nome da pasta a
+    resolver direto na raiz do Drive. Para clientes com sub-pasta, "parent" é o
+    nome da pasta-pai (ex: DAXX) e "sub" o nome exato da sub-pasta a resolver
+    dentro dela; label vira "PARENT/SUB" só para log/filtro.
+    """
+    targets = []
+    for client_name, client_id in CLIENT_MAP.items():
+        targets.append({"label": client_name, "client_id": client_id, "parent": None, "sub": None})
+    for parent_name, subclients in PARENT_FOLDER_CLIENTS.items():
+        for sub_name, client_id in subclients.items():
+            targets.append({
+                "label": f"{parent_name}/{sub_name}",
+                "client_id": client_id,
+                "parent": parent_name,
+                "sub": sub_name,
+            })
+    return targets
+
+
+def _resolve_folder_id(drive_svc, folder_by_name: dict, target: dict) -> Optional[str]:
+    """Resolve the Drive folder id for a sync target (direct or parent/sub-folder)."""
+    if target["parent"] is None:
+        return folder_by_name.get(target["label"])
+
+    parent_id = folder_by_name.get(target["parent"])
+    if not parent_id:
+        return None
+    sub_folders = {
+        f["name"]: f["id"]
+        for f in _list_folder(drive_svc, parent_id, "application/vnd.google-apps.folder")
+    }
+    return sub_folders.get(target["sub"])
+
+
+def run_sync(client_filter: Optional[str] = None, force: bool = False,
+             bq_project: Optional[str] = None) -> list[dict]:
+    # bq_project: override do projeto BQ (ex: 'douglas-bq-staging' para teste
+    # de Nivel 2, regra absoluta do repo -- nunca produção direto). Default
+    # None preserva 100% o comportamento de produção (BQ_PROJECT="adframework").
+    global BQ_PROJECT
+    if bq_project:
+        BQ_PROJECT = bq_project
+
     credentials = _get_credentials()
     drive_svc = build("drive", "v3", credentials=credentials)
     bq_client = bigquery.Client(project=BQ_PROJECT, credentials=credentials)
@@ -718,23 +868,28 @@ def run_sync(client_filter: Optional[str] = None, force: bool = False) -> list[d
     )
     folder_by_name = {f["name"]: f["id"] for f in all_drive_folders}
 
-    clients_to_sync = list(CLIENT_MAP.keys())
+    targets = _build_sync_targets()
     if client_filter:
         needle = client_filter.upper()
-        clients_to_sync = [c for c in CLIENT_MAP if needle in c.upper()]
-        if not clients_to_sync:
+        targets = [t for t in targets if needle in t["label"].upper()]
+        if not targets:
             raise ValueError(
-                f"No client matching '{client_filter}'. Available: {list(CLIENT_MAP.keys())}"
+                f"No client matching '{client_filter}'. Available: "
+                f"{[t['label'] for t in _build_sync_targets()]}"
             )
 
     results = []
-    for client_name in clients_to_sync:
-        if client_name not in folder_by_name:
-            log.warning(f"Drive folder '{client_name}' not found — skipping")
-            results.append({"client": client_name, "processed": 0, "skipped": 0, "error": "folder not found"})
+    for target in targets:
+        folder_id = _resolve_folder_id(drive_svc, folder_by_name, target)
+        if not folder_id:
+            reason = ("parent folder not found" if target["parent"] and target["parent"] not in folder_by_name
+                       else "sub-folder not found" if target["parent"]
+                       else "folder not found")
+            log.warning(f"Drive folder for '{target['label']}' not found ({reason}) — skipping")
+            results.append({"client": target["label"], "processed": 0, "skipped": 0, "error": reason})
             continue
         result = sync_client(drive_svc, bq_client,
-                             client_name, folder_by_name[client_name], force)
+                             target["label"], target["client_id"], folder_id, force)
         results.append(result)
 
     return results
@@ -745,10 +900,13 @@ def main():
     parser.add_argument("--client", help="Sync only this client (e.g. cora, tecpar)")
     parser.add_argument("--force", action="store_true",
                         help="Re-sync even if Drive file unchanged")
+    parser.add_argument("--bq-project", default=None,
+                        help="Override BQ project (ex: douglas-bq-staging para teste Nivel 2). "
+                             "Default: producao (adframework).")
     args = parser.parse_args()
 
     try:
-        results = run_sync(client_filter=args.client, force=args.force)
+        results = run_sync(client_filter=args.client, force=args.force, bq_project=args.bq_project)
     except ValueError as e:
         log.error(str(e))
         sys.exit(1)
