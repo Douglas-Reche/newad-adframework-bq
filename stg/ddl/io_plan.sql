@@ -35,30 +35,62 @@
 -- 'unknown'. Os outros 84 (Push e AppInstall genericos) realmente nao tem
 -- sinal de plataforma no texto -- limitacao real do dado, nao bug de regex.
 --
--- 2026-09-07 -- target_group adicionado ao PARTITION BY do dedup (achado
--- real, Casa do Construtor): quando a aba do xlsx tem múltiplos blocos
--- "TARGET N" empilhados, a MESMA strategy_name se repete uma vez por bloco
--- com valores diferentes (ver raw/ddl/io_plan_drive_snapshot.sql e
--- scripts/io_plan/sync_drive.py, _find_next_block). Sem target_group no
--- PARTITION BY, o ROW_NUMBER original colidia as duas linhas na mesma
--- partição (mesmo client_id/drive_folder/strategy_name/flight_start) e
--- descartava uma delas -- perda de dado silenciosa igual à do parser RAW
--- que motivou esta correção, só que uma camada acima. target_group é NULL
--- para a maioria dos arquivos (sem blocos), então o PARTITION BY se
--- comporta exatamente como antes nesses casos.
+-- 2026-09-07 -- target_group adicionado, e o dedup CORRIGIDO no mesmo dia
+-- (achado real, Casa do Construtor): quando a aba do xlsx tem múltiplos
+-- blocos "TARGET N" empilhados, a MESMA strategy_name se repete uma vez por
+-- bloco com valores diferentes (ver raw/ddl/io_plan_drive_snapshot.sql e
+-- scripts/io_plan/sync_drive.py, _find_next_block).
+--
+-- TENTATIVA 1 (revertida no mesmo dia, ERRADA): adicionar target_group ao
+-- PARTITION BY do ROW_NUMBER. Isso tratava target_group=NULL (linha antiga,
+-- de antes do fix do parser, que raw.io_plan_drive_snapshot preserva por ser
+-- append-only) como uma partição PRÓPRIA, separada de 'TARGET 1' -- as duas
+-- sobreviviam ao dedup juntas, duplicando o Target 1 inteiro sempre que um
+-- arquivo já tinha sido sincronizado antes do fix existir. Resultado real
+-- medido: gold.fact_io_plan da Casa do Construtor em agosto foi para
+-- 12.469.158 impressões / R$250.005,11 (correto: 7.229.495 / R$150.002,41)
+-- -- quase o dobro, silenciosamente, já em produção.
+--
+-- FIX REAL: decidir "qual é o snapshot mais recente" por
+-- (client_id, drive_folder, strategy_name, flight_start) SEM target_group
+-- na partição -- isso identifica corretamente o snapshot_at da ÚLTIMA
+-- sincronização daquele arquivo (todas as linhas de um mesmo arquivo/rodada
+-- compartilham o mesmo snapshot_at, venham de 1 ou N blocos TARGET). Só
+-- DEPOIS de isolar esse snapshot mais recente é que target_group entra --
+-- pra manter as N linhas de dentro dele (uma por target), nunca pra decidir
+-- qual é "mais recente" entre versões diferentes do arquivo.
 
 CREATE OR REPLACE VIEW `adframework.stg.io_plan` AS
-WITH ranked AS (
-  SELECT
-    *,
-    ROW_NUMBER() OVER (
-      PARTITION BY client_id, drive_folder, strategy_name, flight_start, target_group
-      ORDER BY snapshot_at DESC
-    ) AS _rn
+WITH latest_snapshot_per_strategy AS (
+  -- Snapshot mais recente por estrategia+voo, ignorando target_group de
+  -- propósito -- é o que corrige a duplicação.
+  SELECT client_id, drive_folder, strategy_name, flight_start, MAX(snapshot_at) AS latest_snapshot_at
   FROM `adframework.raw.io_plan_drive_snapshot`
   WHERE flight_start IS NOT NULL
     AND flight_end IS NOT NULL
     AND monthly_spend IS NOT NULL
+  GROUP BY client_id, drive_folder, strategy_name, flight_start
+),
+ranked AS (
+  SELECT
+    r.*,
+    ROW_NUMBER() OVER (
+      -- Agora so diferencia linhas DENTRO do mesmo snapshot mais recente --
+      -- protege contra duplicata acidental do mesmo target no mesmo snapshot,
+      -- nunca decide "qual versao e mais nova" (isso ja foi decidido acima).
+      PARTITION BY r.client_id, r.drive_folder, r.strategy_name, r.flight_start, r.target_group
+      ORDER BY r.snapshot_at DESC
+    ) AS _rn
+  FROM `adframework.raw.io_plan_drive_snapshot` r
+  JOIN latest_snapshot_per_strategy lt
+    ON r.client_id = lt.client_id
+    AND r.drive_folder = lt.drive_folder
+    AND r.strategy_name = lt.strategy_name
+    AND r.flight_start = lt.flight_start
+    AND r.snapshot_at = lt.latest_snapshot_at
+  WHERE r.flight_start IS NOT NULL
+    AND r.flight_end IS NOT NULL
+    AND r.monthly_spend IS NOT NULL
 ),
 deduped AS (
   SELECT * FROM ranked WHERE _rn = 1
