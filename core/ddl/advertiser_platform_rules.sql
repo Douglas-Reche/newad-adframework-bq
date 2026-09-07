@@ -33,9 +33,19 @@
 --   em massa como este arquivo fazia antes do versionamento) — isso reinterpretaria
 --   retroativamente tudo que já foi reportado com a versão antiga da regra.
 --   Sempre preencher confirmed_by e notes com evidência de confirmação.
+--
+-- 2026-09-07 — client_id passou a aceitar NULL (migração
+-- core/migration/11_advertiser_platform_rules_allow_global.sql, aplicada via
+-- ALTER TABLE, não via re-execução deste CREATE TABLE IF NOT EXISTS que já
+-- existia com client_id NOT NULL). client_id NULL == regra GERAL, vale para
+-- todo client_id que não tiver override específico vigente na mesma data —
+-- mesma convenção de core.client_business_rules. Quando as duas (geral +
+-- específica) estiverem vigentes ao mesmo tempo para o mesmo
+-- (platform_from, formato), a específica vence — ver
+-- core/ddl/resolve_platform_rule.sql para a lógica de prioridade.
 
 CREATE TABLE IF NOT EXISTS `adframework.core.advertiser_platform_rules` (
-  client_id         STRING  NOT NULL,
+  client_id         STRING,             -- NULL = regra GERAL (todos os clientes); preenchido = override por cliente
   platform_from     STRING  NOT NULL,  -- plataforma no IO Plan (ex: 'unknown')
   formato           STRING  NOT NULL,  -- formato afetado em UPPER (ex: 'PUSH')
   platform_to       STRING  NOT NULL,  -- plataforma real confirmada (ex: 'siprocal')
