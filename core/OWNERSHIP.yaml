@@ -78,6 +78,11 @@ objects:
     dataset: core
     owner: pipeline
     notes: "Log de auditoria de toda execucao do scripts/deploy/apply_ddl.py (test OU prod) -- grava change_id/object_dataset/object_name/tested_env/tested_at/status + previous_definition/commit_hash (para --rollback). Existe em producao (`adframework.core.schema_change_log`, hardcoded em core/ddl/schema_change_log.sql e usado por todo apply_ddl.py). Faltava neste YAML -- adicionado 2026-08-08."
+  - name: dim_client_reconciliation
+    dataset: core
+    owner: pipeline
+    status: "staging_only"
+    notes: "Decisao humana persistida sobre pares de dim_client sinalizados como possivel duplicata pela tela Gerenciamento de Clientes do Hub (2026-09-07). So em douglas-bq-staging ate autorizacao explicita do Douglas para promover pra producao -- ver core/ddl/dim_client_reconciliation.sql e hub/app.py."
 
   # --- Admin UI do Shiro -- NUNCA referenciar no pipeline gold ---
   - name: io_manager_v2

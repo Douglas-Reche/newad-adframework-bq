@@ -15,11 +15,13 @@ Uso:
     streamlit run app.py
 """
 
+import difflib
 import io
 import json
 import os
 import random
 import re
+import unicodedata
 import uuid
 import zipfile
 from datetime import date, datetime, timedelta, timezone
@@ -639,6 +641,312 @@ def load_client_options() -> pd.DataFrame:
     ORDER BY name
     """
     return client.query(query).to_dataframe()
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Gerenciamento de Clientes -- CRUD real de core.dim_client (status
+# ativo/inativo comercial, hierarquia parent_client_id, nome fantasia,
+# toggle "Importar IO Plan"), + deteccao/reconciliacao de duplicatas. Task
+# Notion 3b99d0f6219e81868244cfc5e472ec91, escopo fechado 2026-09-06/07.
+# Motivador real: Casa do Construtor reiniciou relacionamento comercial e
+# precisa "zerar" o historico sem apagar dado (so desativar pra frente);
+# achado real do mesmo dia: Casa do Construtor e Dr. Consulta tem
+# parent_client_id apontando pra DAXX (dax_agency_00000001) corretamente, mas
+# Caloi/Efi Bank/Fox Lux/Mastercard (tambem sub-clientes da DAXX) nao tem esse
+# campo preenchido -- inconsistencia real, nao hipotetica.
+#
+# "Ativo" NAO e calculado por freshness -- e o campo core.dim_client.status,
+# editavel na tela. Freshness (gold.fact_delivery) e plataformas com dado
+# aparecem so como CONTEXTO DE APOIO pra decisao humana (Douglas pergunta pro
+# comercial "esse cliente ainda esta ativo?" e marca aqui), nunca como
+# criterio automatico -- ver comentario de STATUS_OPTIONS abaixo.
+#
+# "Importar IO Plan" (import_io_plan, coluna nova, ver core/migration/
+# 12_dim_client_add_import_io_plan.sql) e um campo SEPARADO de `status` --
+# controla se scripts/io_plan/sync_drive.py deve processar aquele cliente,
+# decisao independente de estar comercialmente ativo. NOTA (nao implementada
+# aqui, fora do escopo do hub-frontend): sync_drive.py hoje decide quem
+# processar via CLIENT_MAP/PARENT_FOLDER_CLIENTS hardcoded no proprio
+# arquivo Python -- esta coluna e so o CAMPO que a tela edita, a migracao do
+# sync pra ler daqui e trabalho de backend, sinalizado no relato final.
+# ─────────────────────────────────────────────────────────────────────────
+CLIENT_MGMT_TABLE = "core.dim_client"
+CLIENT_MGMT_RECONCILIATION_TABLE = "core.dim_client_reconciliation"
+
+# Valores aceitos de core.dim_client.status -- sem CHECK constraint (BigQuery
+# nao suporta), validado no codigo que escreve. Vistos ao vivo em producao
+# (2026-09-07): active, pending_confirmation, legacy (ver core/seeds/clients.csv);
+# "inactive" adicionado aqui porque e o valor que o caso Casa do Construtor
+# (e a desativacao de duplicata, ver deactivate_duplicate_client()) precisa
+# gravar, mesmo sem nenhuma linha usando ainda.
+CLIENT_STATUS_OPTIONS = ["active", "inactive", "pending_confirmation", "legacy"]
+CLIENT_STATUS_LABELS = {
+    "active": "Ativo", "inactive": "Inativo",
+    "pending_confirmation": "Aguardando confirmacao comercial", "legacy": "Legado",
+}
+
+# Limiares da heuristica de duplicata (detect_duplicate_candidates) -- ajustaveis
+# sem mudar a logica. score = similaridade de nome normalizado (0-1, ver
+# normalize_client_name_for_match/similarity_score). Par com o MESMO
+# parent_client_id (nao-nulo) pede uma similaridade menor pra ser sinalizado --
+# sub-clientes do mesmo guarda-chuva com nomes parecidos sao o caso real (DR
+# CONSULTA vs DR CONSULTA RJ, ambos sob DAXX) que motivou esta tela.
+CLIENT_DUP_SCORE_THRESHOLD = 0.72
+CLIENT_DUP_SCORE_THRESHOLD_SAME_PARENT = 0.55
+
+
+def normalize_client_name_for_match(name) -> str:
+    """Pura -- normaliza nome de cliente para comparacao de duplicata:
+    lowercase, remove acentos (unicodedata), remove pontuacao, colapsa
+    espacos multiplos. Nao remove sufixos regionais (ex: 'RJ', 'SP') de
+    proposito -- e exatamente a diferenca que precisa aparecer no score de
+    similaridade pra um humano decidir (removê-la faria 'Dr Consulta' e
+    'Dr Consulta RJ' virarem identicos e o par nunca apareceria como
+    candidato -- o oposto do que a tela precisa fazer)."""
+    if not name or not isinstance(name, str):
+        return ""
+    s = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii")
+    s = s.lower().strip()
+    s = re.sub(r"[^a-z0-9\s]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def similarity_score(a: str, b: str) -> float:
+    """Pura -- razao de similaridade (0-1) entre duas strings ja normalizadas,
+    via difflib.SequenceMatcher (biblioteca padrao, sem dependencia nova)."""
+    if not a or not b:
+        return 0.0
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
+def detect_duplicate_candidates(dim_client_df: pd.DataFrame) -> pd.DataFrame:
+    """Pura -- gera todos os pares (client_id_a, client_id_b) de
+    core.dim_client (client_id_a sempre o lexicograficamente menor, mesma
+    normalizacao de chave usada por CLIENT_MGMT_RECONCILIATION_TABLE) cujo
+    nome normalizado e "parecido o suficiente" (CLIENT_DUP_SCORE_THRESHOLD),
+    OU parecido com um limiar mais baixo quando os dois compartilham o MESMO
+    parent_client_id nao-nulo (caso DR CONSULTA / DR CONSULTA RJ, ambos sob
+    DAXX -- ver comentario de CLIENT_DUP_SCORE_THRESHOLD_SAME_PARENT acima).
+    Clientes ja num relacionamento pai-filho direto entre si (um e o
+    parent_client_id do outro) NUNCA sao candidatos -- isso e hierarquia
+    valida, nao duplicata. Retorna DataFrame vazio (mesmas colunas) se
+    dim_client_df tiver menos de 2 linhas. Nao consulta BigQuery -- so
+    dataframe em memoria, testavel sem mock de BQ."""
+    cols = ["client_id_a", "name_a", "client_id_b", "name_b", "score", "same_parent"]
+    if dim_client_df.shape[0] < 2:
+        return pd.DataFrame(columns=cols)
+
+    rows = dim_client_df.to_dict("records")
+    normalized = [(r, normalize_client_name_for_match(r.get("name"))) for r in rows]
+    candidates = []
+    for i in range(len(normalized)):
+        r_a, norm_a = normalized[i]
+        for j in range(i + 1, len(normalized)):
+            r_b, norm_b = normalized[j]
+            # hierarquia direta (um e pai do outro) nunca e "duplicata"
+            if r_a["client_id"] == r_b.get("parent_client_id") or r_b["client_id"] == r_a.get("parent_client_id"):
+                continue
+            same_parent = (
+                pd.notna(r_a.get("parent_client_id")) and pd.notna(r_b.get("parent_client_id"))
+                and r_a.get("parent_client_id") == r_b.get("parent_client_id")
+            )
+            score = similarity_score(norm_a, norm_b)
+            threshold = CLIENT_DUP_SCORE_THRESHOLD_SAME_PARENT if same_parent else CLIENT_DUP_SCORE_THRESHOLD
+            if score >= threshold:
+                id_a, id_b = sorted([r_a["client_id"], r_b["client_id"]])
+                name_by_id = {r_a["client_id"]: r_a.get("name"), r_b["client_id"]: r_b.get("name")}
+                candidates.append({
+                    "client_id_a": id_a, "name_a": name_by_id[id_a],
+                    "client_id_b": id_b, "name_b": name_by_id[id_b],
+                    "score": round(score, 3), "same_parent": same_parent,
+                })
+    if not candidates:
+        return pd.DataFrame(columns=cols)
+    return pd.DataFrame(candidates).sort_values(["same_parent", "score"], ascending=[False, False]).reset_index(drop=True)
+
+
+def filter_undismissed_candidates(candidates_df: pd.DataFrame, decisions_df: pd.DataFrame) -> pd.DataFrame:
+    """Pura -- remove da lista de candidatos qualquer par ja com decisao
+    registrada em CLIENT_MGMT_RECONCILIATION_TABLE (seja 'same' ou
+    'different'; uma vez decidido -- inclusive quando a decisao foi
+    desativar um dos dois -- o par nao precisa incomodar de novo)."""
+    if candidates_df.empty or decisions_df.empty:
+        return candidates_df
+    decided_pairs = {(r.client_id_a, r.client_id_b) for r in decisions_df.itertuples()}
+    mask = ~candidates_df.apply(lambda r: (r["client_id_a"], r["client_id_b"]) in decided_pairs, axis=1)
+    return candidates_df[mask].reset_index(drop=True)
+
+
+@st.cache_data(ttl=120)
+def check_dim_client_supports_import_io_plan(project_id: str) -> bool:
+    """True se core.dim_client ja tem a coluna import_io_plan neste projeto
+    especifico (ver core/migration/12_dim_client_add_import_io_plan.sql) --
+    checado ao vivo via metadado de schema (nao um valor fixo), mesmo padrao
+    de check_advertiser_rules_supports_global: staging e producao podem estar
+    em estagios diferentes da migracao (aplicado em douglas-bq-staging
+    2026-09-07; producao pendente de aprovacao do Douglas). So leitura de
+    metadado, SA principal."""
+    client = get_bq_client()
+    table = client.get_table(f"{project_id}.{CLIENT_MGMT_TABLE}")
+    return any(f.name == "import_io_plan" for f in table.schema)
+
+
+@st.cache_data(ttl=120)
+def load_client_management_data(project_id: str) -> pd.DataFrame:
+    """Todas as colunas de core.dim_client + contexto de apoio (SUPORTE, nao
+    fonte da verdade de ativo/inativo -- ver comentario no topo da secao):
+    ultima entrega (MAX(day)) e lista de plataformas com dado, agregados de
+    gold.fact_delivery via LEFT JOIN correlacionado -- cliente sem nenhuma
+    linha de fact_delivery aparece com last_delivery/platforms NULL (nunca
+    quebra a query). So leitura, SA principal."""
+    client = get_bq_client()
+    query = f"""
+    SELECT
+      c.*,
+      d.last_delivery,
+      d.platforms_with_data
+    FROM `{project_id}.{CLIENT_MGMT_TABLE}` c
+    LEFT JOIN (
+      SELECT
+        client_id,
+        MAX(day) AS last_delivery,
+        STRING_AGG(DISTINCT platform, ', ' ORDER BY platform) AS platforms_with_data
+      FROM `{project_id}.gold.fact_delivery`
+      GROUP BY client_id
+    ) d USING (client_id)
+    ORDER BY c.name
+    """
+    return client.query(query).to_dataframe()
+
+
+@st.cache_data(ttl=60)
+def load_client_reconciliation_decisions(project_id: str) -> pd.DataFrame:
+    """Decisoes ja registradas em CLIENT_MGMT_RECONCILIATION_TABLE -- NotFound
+    tratado explicitamente (df vazio, nao erro), mesmo padrao de
+    load_io_plan_finding_status: a tabela so existe em douglas-bq-staging ate
+    agora (ver core/OWNERSHIP.yaml), producao ainda nao tem nenhum par
+    decidido -- e correto aparecer vazio la, nao quebrar a tela."""
+    client = get_bq_client()
+    cols = ["client_id_a", "client_id_b", "decision", "decided_by", "decided_at", "notes"]
+    try:
+        query = f"SELECT {', '.join(cols)} FROM `{project_id}.{CLIENT_MGMT_RECONCILIATION_TABLE}`"
+        return client.query(query).to_dataframe()
+    except NotFound:
+        return pd.DataFrame(columns=cols)
+
+
+def update_dim_client_fields(project_id: str, client_id: str, updates: dict) -> dict:
+    """UPDATE real em core.dim_client, WHERE client_id=@client_id -- escrita
+    real pedida explicitamente pela task (status/nome/hierarquia/import_io_plan
+    sao UPDATE direto, dim_client nao segue SCD2 aqui, ver core/ddl/dim_client.sql).
+    `updates` = dict coluna->valor ja no tipo Python certo (str/bool/int/None);
+    o tipo BQ do parametro e inferido pelo tipo Python (STRING para str,
+    BOOL para bool, INT64 para int) -- client_id NUNCA deve estar em updates
+    (e a chave do WHERE, imutavel por design, ver core/ddl/dim_client.sql).
+    Usa a writer SA impersonada, faturando no projeto selecionado na tela
+    (mesmo padrao de get_writer_bq_client_for_project). Nunca lanca excecao
+    pra UI -- retorna dict com 'ok' explicito."""
+    if not updates:
+        return {"ok": False, "detail": "Nenhum campo para atualizar."}
+    _bq_type = {str: "STRING", bool: "BOOL", int: "INT64", type(None): "STRING"}
+    try:
+        client = get_writer_bq_client_for_project(project_id)
+        set_clause = ", ".join(f"{col} = @{col}" for col in updates)
+        sql = f"UPDATE `{project_id}.{CLIENT_MGMT_TABLE}` SET {set_clause} WHERE client_id = @client_id"
+        params = [
+            bigquery.ScalarQueryParameter(col, _bq_type.get(type(val), "STRING"), val)
+            for col, val in updates.items()
+        ]
+        params.append(bigquery.ScalarQueryParameter("client_id", "STRING", client_id))
+        client.query(sql, job_config=bigquery.QueryJobConfig(query_parameters=params)).result()
+        return {"ok": True, "detail": "Cliente atualizado."}
+    except Exception as exc:
+        detail = f"Erro ao atualizar cliente: {exc}"
+        if "403" in str(exc) or "Forbidden" in str(exc):
+            detail += f" -- possivel falta de roles/bigquery.jobUser para `{WRITER_SA_EMAIL}` em `{project_id}`."
+        return {"ok": False, "detail": detail}
+
+
+def save_client_reconciliation_decision(
+    project_id: str, client_id_a: str, client_id_b: str, decision: str, decided_by: str, notes: str,
+) -> dict:
+    """UPSERT (MERGE) em core.dim_client_reconciliation -- mesmo padrao de
+    save_io_plan_finding_status. `client_id_a`/`client_id_b` devem chegar ja
+    ordenados (menor primeiro, ver detect_duplicate_candidates) -- esta
+    funcao nao reordena sozinha, quem chama e responsavel (evita reordenar 2x
+    por engano). Nunca lanca excecao pra UI -- sempre retorna dict com 'ok'
+    explicito (mesmo padrao de erro claro em vez de sucesso fingido)."""
+    try:
+        client = get_writer_bq_client_for_project(project_id)
+        job_config = bigquery.QueryJobConfig(query_parameters=[
+            bigquery.ScalarQueryParameter("client_id_a", "STRING", client_id_a),
+            bigquery.ScalarQueryParameter("client_id_b", "STRING", client_id_b),
+            bigquery.ScalarQueryParameter("decision", "STRING", decision),
+            bigquery.ScalarQueryParameter("decided_by", "STRING", decided_by),
+            bigquery.ScalarQueryParameter("notes", "STRING", notes or None),
+        ])
+        sql = f"""
+        MERGE `{project_id}.{CLIENT_MGMT_RECONCILIATION_TABLE}` T
+        USING (SELECT @client_id_a AS client_id_a, @client_id_b AS client_id_b) S
+        ON T.client_id_a = S.client_id_a AND T.client_id_b = S.client_id_b
+        WHEN MATCHED THEN UPDATE SET
+          decision = @decision, decided_by = @decided_by, notes = @notes, decided_at = CURRENT_TIMESTAMP()
+        WHEN NOT MATCHED THEN INSERT (client_id_a, client_id_b, decision, decided_by, notes, decided_at)
+          VALUES (@client_id_a, @client_id_b, @decision, @decided_by, @notes, CURRENT_TIMESTAMP())
+        """
+        client.query(sql, job_config=job_config).result()
+        return {"ok": True, "detail": "Decisao salva."}
+    except NotFound:
+        return {
+            "ok": False,
+            "detail": (
+                f"Tabela `{project_id}.{CLIENT_MGMT_RECONCILIATION_TABLE}` ainda nao existe neste projeto -- "
+                "aplicar core/ddl/dim_client_reconciliation.sql antes de decidir aqui."
+            ),
+        }
+    except Exception as exc:
+        detail = f"Erro ao salvar decisao: {exc}"
+        if "403" in str(exc) or "Forbidden" in str(exc):
+            detail += f" -- possivel falta de roles/bigquery.jobUser para `{WRITER_SA_EMAIL}` em `{project_id}`."
+        return {"ok": False, "detail": detail}
+
+
+def deactivate_duplicate_client(
+    project_id: str, duplicate_client_id: str, duplicate_name: str,
+    survivor_client_id: str, survivor_name: str, decided_by: str,
+) -> dict:
+    """Confirma 'mesmo cliente' -- desativa o client_id duplicado
+    (status='inactive') com nota apontando pro sobrevivente, e registra a
+    decisao 'same' em CLIENT_MGMT_RECONCILIATION_TABLE. NAO mescla dado
+    historico de fact_delivery/io_plan/platform_client_links -- isso seria
+    mudar o pipeline (fora do escopo do hub-frontend); fica registrado como
+    proximo passo se o Douglas decidir que precisa. As duas escritas
+    (dim_client + reconciliation) sao sequenciais, nao atomicas -- se a
+    segunda falhar, o UPDATE de dim_client ja aconteceu (reportado
+    explicitamente pra UI, nunca escondido)."""
+    note = (
+        f"Desativado em {date.today().isoformat()} -- confirmado como duplicata de "
+        f"'{survivor_name}' ({survivor_client_id}) por {decided_by} via Hub."
+    )
+    update_result = update_dim_client_fields(project_id, duplicate_client_id, {"status": "inactive", "notes": note})
+    if not update_result["ok"]:
+        return update_result
+    id_a, id_b = sorted([duplicate_client_id, survivor_client_id])
+    decision_result = save_client_reconciliation_decision(
+        project_id, id_a, id_b, "same", decided_by,
+        f"'{duplicate_name}' ({duplicate_client_id}) desativado como duplicata de '{survivor_name}' ({survivor_client_id}).",
+    )
+    if not decision_result["ok"]:
+        return {
+            "ok": False,
+            "detail": (
+                f"Cliente '{duplicate_name}' foi desativado com sucesso, mas a decisao NAO foi "
+                f"registrada em {CLIENT_MGMT_RECONCILIATION_TABLE} ({decision_result['detail']}) -- "
+                "o par pode voltar a aparecer como candidato a duplicata na proxima carga."
+            ),
+        }
+    return {"ok": True, "detail": f"'{duplicate_name}' desativado como duplicata de '{survivor_name}'."}
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -2587,7 +2895,7 @@ with st.expander(":material/visibility_off: Farol operacional (saude, propostas,
 
 st.divider()
 
-tab_freshness, tab_jobs, tab_browser, tab_io_health, tab_formats, tab_proposals, tab_overrides, tab_business_rules = st.tabs([
+tab_freshness, tab_jobs, tab_browser, tab_io_health, tab_formats, tab_proposals, tab_overrides, tab_business_rules, tab_clients = st.tabs([
     ":material/database: Visao Geral BQ",
     ":material/sync: Status dos Jobs",
     ":material/table_view: Navegador de Tabelas",
@@ -2596,6 +2904,7 @@ tab_freshness, tab_jobs, tab_browser, tab_io_health, tab_formats, tab_proposals,
     ":material/fact_check: Propostas de Mudanca",
     ":material/history: Ajustes de Dados Historicos",
     ":material/gavel: Regras de Negocio",
+    ":material/groups: Gerenciamento de Clientes",
 ])
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -4478,3 +4787,251 @@ with tab_business_rules:
                         "diferenca": "Diferenca",
                     })
                     st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+# ─────────────────────────────────────────────────────────────────────────
+# Aba 9 -- Gerenciamento de Clientes: CRUD real de core.dim_client + deteccao
+# e reconciliacao manual de duplicatas. Ver bloco de constantes/funcoes
+# (CLIENT_MGMT_*, detect_duplicate_candidates etc.) definido acima, junto de
+# load_client_options().
+# ─────────────────────────────────────────────────────────────────────────
+with tab_clients:
+    st.subheader("Gerenciamento de Clientes")
+    st.caption(
+        "CRUD real de `core.dim_client` -- status ativo/inativo (comercial, editavel aqui, NAO "
+        "calculado por freshness), hierarquia guarda-chuva (`parent_client_id`), nome fantasia e "
+        "toggle \"Importar IO Plan\", mais deteccao/reconciliacao manual de possiveis duplicatas. "
+        "Freshness e plataformas com dado (abaixo) sao so contexto de apoio -- quem decide "
+        "ativo/inativo e o Douglas, escrevendo aqui."
+    )
+
+    _cli_env_choice = st.radio("Ambiente", [e["label"] for e in ENVIRONMENTS], horizontal=True, key="clients_env")
+    _cli_project = next(e["project_id"] for e in ENVIRONMENTS if e["label"] == _cli_env_choice)
+    st.caption(f"Projeto GCP: `{_cli_project}`")
+    if HUB_READ_ONLY:
+        st.info(
+            "Escrita (editar cliente, reconciliar duplicata) desabilitada neste deploy -- writer SA "
+            "nao configurada (variavel WRITER_SA_EMAIL ausente). Use o Hub de staging, ou o de "
+            "producao apos a writer SA ser provisionada, para essas acoes."
+        )
+
+    with st.spinner("Consultando core.dim_client + gold.fact_delivery..."):
+        _cli_df = load_client_management_data(_cli_project)
+
+    if _cli_df.empty:
+        st.info(f"`{_cli_project}.core.dim_client` esta vazia ou nao encontrada.")
+    else:
+        _cli_supports_import_io_plan = check_dim_client_supports_import_io_plan(_cli_project)
+        if not _cli_supports_import_io_plan:
+            st.info(
+                ":material/info: Este projeto (`" + _cli_project + "`) ainda nao tem a coluna "
+                "`import_io_plan` em `core.dim_client` -- o seletor \"Importar IO Plan\" fica oculto "
+                "ate a migracao rodar aqui (ver `core/migration/12_dim_client_add_import_io_plan.sql`). "
+                "Confirmado ao vivo via schema, nao e um valor fixo."
+            )
+
+        _cli_by_id = {r.client_id: r for r in _cli_df.itertuples()}
+        _cli_name_by_id = {r.client_id: r.name for r in _cli_df.itertuples()}
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Clientes", len(_cli_df))
+        m2.metric("Ativos", int((_cli_df["status"] == "active").sum()))
+        m3.metric("Sem hierarquia definida", int(_cli_df["parent_client_id"].isna().sum()))
+
+        st.divider()
+
+        # ── Deteccao de duplicatas ──────────────────────────────────────────
+        st.markdown("#### :material/content_copy: Possiveis duplicatas")
+        st.caption(
+            "Heuristica de nome parecido (e/ou mesmo `parent_client_id`) -- sinaliza, nunca decide "
+            "sozinha. Um par so some desta lista apos decisao explicita abaixo (fica registrado em "
+            "`core.dim_client_reconciliation`, nao volta a perguntar de novo)."
+        )
+        with st.spinner("Consultando core.dim_client_reconciliation..."):
+            _cli_decisions_df = load_client_reconciliation_decisions(_cli_project)
+        _cli_candidates_df = filter_undismissed_candidates(detect_duplicate_candidates(_cli_df), _cli_decisions_df)
+
+        if _cli_candidates_df.empty:
+            st.badge("nenhum candidato pendente", icon=":material/check_circle:", color="green")
+        else:
+            st.warning(f":material/warning: {len(_cli_candidates_df)} par(es) de possivel duplicata pendente(s) de revisao.")
+            for _pair in _cli_candidates_df.itertuples():
+                _pair_label = (
+                    f"**{_pair.name_a}** ({_pair.client_id_a}) <-> **{_pair.name_b}** ({_pair.client_id_b}) "
+                    f"-- similaridade {_pair.score:.0%}"
+                )
+                if _pair.same_parent:
+                    _pair_label += " · mesmo guarda-chuva"
+                with st.container(border=True):
+                    st.markdown(_pair_label)
+                    if HUB_READ_ONLY:
+                        continue
+                    _key_base = f"dup_{_pair.client_id_a}_{_pair.client_id_b}"
+                    _survivor_options = {
+                        f"{_pair.name_a} ({_pair.client_id_a})": (_pair.client_id_a, _pair.name_a),
+                        f"{_pair.name_b} ({_pair.client_id_b})": (_pair.client_id_b, _pair.name_b),
+                    }
+                    _decided_by = st.text_input("Decidido por", value="douglas", key=f"{_key_base}_by")
+                    dc1, dc2, dc3 = st.columns([2, 1.3, 1.3])
+                    with dc1:
+                        _survivor_choice = st.radio(
+                            "Se forem o mesmo cliente, qual client_id e o correto (o outro sera desativado)?",
+                            list(_survivor_options.keys()), key=f"{_key_base}_survivor",
+                        )
+                    with dc2:
+                        st.write("")
+                        st.write("")
+                        if st.button("Confirmar: mesmo cliente", key=f"{_key_base}_same"):
+                            _survivor_id, _survivor_name = _survivor_options[_survivor_choice]
+                            _dup_id, _dup_name = (
+                                (_pair.client_id_b, _pair.name_b) if _survivor_id == _pair.client_id_a
+                                else (_pair.client_id_a, _pair.name_a)
+                            )
+                            _result = deactivate_duplicate_client(
+                                _cli_project, _dup_id, _dup_name, _survivor_id, _survivor_name,
+                                _decided_by.strip() or "douglas",
+                            )
+                            if _result["ok"]:
+                                st.success(_result["detail"])
+                                load_client_management_data.clear()
+                                load_client_reconciliation_decisions.clear()
+                                st.rerun()
+                            else:
+                                st.error(_result["detail"])
+                    with dc3:
+                        st.write("")
+                        st.write("")
+                        if st.button("Confirmar: clientes diferentes", key=f"{_key_base}_diff"):
+                            _result = save_client_reconciliation_decision(
+                                _cli_project, _pair.client_id_a, _pair.client_id_b, "different",
+                                _decided_by.strip() or "douglas", "Confirmado como clientes diferentes via Hub.",
+                            )
+                            if _result["ok"]:
+                                st.success(_result["detail"])
+                                load_client_reconciliation_decisions.clear()
+                                st.rerun()
+                            else:
+                                st.error(_result["detail"])
+
+        if not _cli_decisions_df.empty:
+            with st.expander(f"Ver decisoes ja registradas ({len(_cli_decisions_df)})"):
+                st.dataframe(_cli_decisions_df, use_container_width=True, hide_index=True)
+
+        st.divider()
+
+        # ── Lista de clientes / edicao ───────────────────────────────────────
+        st.markdown("#### :material/edit: Clientes")
+        _cli_search = st.text_input(
+            "Filtrar por nome ou client_id", key="clients_search", placeholder="ex: dr consulta",
+        )
+        _cli_missing_hierarchy_only = st.checkbox(
+            "So sem hierarquia definida (parent_client_id nulo)", key="clients_missing_hierarchy_only",
+        )
+
+        _cli_filtered = _cli_df.copy()
+        if _cli_search.strip():
+            _needle = _cli_search.strip().lower()
+            _cli_filtered = _cli_filtered[
+                _cli_filtered["name"].str.lower().str.contains(_needle, na=False)
+                | _cli_filtered["client_id"].str.lower().str.contains(_needle, na=False)
+            ]
+        if _cli_missing_hierarchy_only:
+            _cli_filtered = _cli_filtered[_cli_filtered["parent_client_id"].isna()]
+
+        st.caption(f"{len(_cli_filtered)} de {len(_cli_df)} cliente(s) exibido(s).")
+
+        for _row in _cli_filtered.sort_values("name").itertuples():
+            _last_delivery_str = (
+                _row.last_delivery.strftime("%d/%m/%Y") if pd.notna(_row.last_delivery) else "sem dado em gold.fact_delivery"
+            )
+            _platforms_str = _row.platforms_with_data if pd.notna(_row.platforms_with_data) else "nenhuma"
+            _status_label = CLIENT_STATUS_LABELS.get(_row.status, _row.status or "?")
+            _title = f"**{_row.name}** ({_row.client_id}) -- {_status_label}"
+            with st.expander(_title):
+                st.caption(
+                    f":material/info: Contexto de apoio (nao altera nada sozinho): ultima entrega em "
+                    f"`gold.fact_delivery` = {_last_delivery_str} · plataformas com dado = {_platforms_str}"
+                )
+                if HUB_READ_ONLY:
+                    st.dataframe(
+                        pd.DataFrame([{
+                            "status": _row.status, "parent_client_id": _row.parent_client_id,
+                            "sector": _row.sector, "notes": _row.notes,
+                        }]),
+                        use_container_width=True, hide_index=True,
+                    )
+                    continue
+
+                _key_base = f"client_{_row.client_id}"
+                ec1, ec2 = st.columns(2)
+                _new_name = ec1.text_input("Nome fantasia", value=_row.name, key=f"{_key_base}_name")
+                _new_status = ec2.selectbox(
+                    "Status", CLIENT_STATUS_OPTIONS,
+                    index=CLIENT_STATUS_OPTIONS.index(_row.status) if _row.status in CLIENT_STATUS_OPTIONS else 0,
+                    format_func=lambda s: CLIENT_STATUS_LABELS.get(s, s),
+                    key=f"{_key_base}_status",
+                )
+
+                # Guarda-chuva -- exclui o proprio cliente da lista (nunca pode ser
+                # pai de si mesmo). So grava parent_client_id/client_level quando a
+                # ESCOLHA muda em relacao ao rotulo atual -- evita limpar sozinho um
+                # parent_client_id "orfao" (aponta pra um client_id inexistente) so
+                # porque o usuario abriu o expander e salvou sem mexer neste campo.
+                _parent_label_to_id = {
+                    f"{name} ({cid})": cid for cid, name in _cli_name_by_id.items() if cid != _row.client_id
+                }
+                _parent_choices = ["(nenhum -- cliente raiz)"] + sorted(_parent_label_to_id.keys())
+                _current_parent_label = "(nenhum -- cliente raiz)"
+                if pd.notna(_row.parent_client_id):
+                    _current_parent_label = next(
+                        (lbl for lbl, cid in _parent_label_to_id.items() if cid == _row.parent_client_id),
+                        f"(client_id nao encontrado: {_row.parent_client_id})",
+                    )
+                    if _current_parent_label not in _parent_choices:
+                        _parent_choices = _parent_choices + [_current_parent_label]
+                _parent_choice = st.selectbox(
+                    "Guarda-chuva (cliente pai)", _parent_choices,
+                    index=_parent_choices.index(_current_parent_label), key=f"{_key_base}_parent",
+                )
+
+                _new_import_io_plan = None
+                if _cli_supports_import_io_plan and hasattr(_row, "import_io_plan"):
+                    _current_import_io_plan = bool(_row.import_io_plan) if pd.notna(_row.import_io_plan) else True
+                    _new_import_io_plan = st.toggle(
+                        "Importar IO Plan (sync_drive.py processa este cliente)",
+                        value=_current_import_io_plan, key=f"{_key_base}_import_io_plan",
+                    )
+
+                _new_notes = st.text_area("Notas internas", value=_row.notes or "", key=f"{_key_base}_notes")
+
+                if st.button("Salvar", key=f"{_key_base}_save"):
+                    _updates = {}
+                    if _new_name.strip() and _new_name.strip() != _row.name:
+                        _updates["name"] = _new_name.strip()
+                    if _new_status != _row.status:
+                        _updates["status"] = _new_status
+                    if _parent_choice != _current_parent_label:
+                        _new_parent_id = (
+                            None if _parent_choice == "(nenhum -- cliente raiz)"
+                            else _parent_label_to_id[_parent_choice]
+                        )
+                        _updates["parent_client_id"] = _new_parent_id
+                        _updates["client_level"] = 2 if _new_parent_id else 1
+                    if _new_import_io_plan is not None:
+                        _current_import_io_plan = bool(_row.import_io_plan) if pd.notna(_row.import_io_plan) else True
+                        if _new_import_io_plan != _current_import_io_plan:
+                            _updates["import_io_plan"] = _new_import_io_plan
+                    if (_new_notes or "") != (_row.notes or ""):
+                        _updates["notes"] = _new_notes or None
+
+                    if not _updates:
+                        st.info("Nenhuma mudanca para salvar.")
+                    else:
+                        _result = update_dim_client_fields(_cli_project, _row.client_id, _updates)
+                        if _result["ok"]:
+                            st.success(_result["detail"])
+                            load_client_management_data.clear()
+                            load_dim_client_options.clear()
+                            load_client_options.clear()
+                            st.rerun()
+                        else:
+                            st.error(_result["detail"])
