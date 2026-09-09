@@ -8,6 +8,35 @@
 
 ---
 
+## 2026-09-08 — Hub: Tela de Gerenciamento de Clientes (dim_client CRUD + reconciliação de duplicatas)
+
+Nova aba (9ª) no Hub com escrita real em `core.dim_client`: status ativo/inativo editável
+(campo `status`, deixa de ser calculado por freshness), hierarquia `parent_client_id`
+(dropdown, recalcula `client_level`), nome fantasia editável, detecção+reconciliação de
+duplicatas (testada contra dado real — achou `dr_consulta_215378ef`/
+`dr_consulta_rj_11040bf9`, mesmo parent DAXX, sem dica manual — decisão gravada em
+`core.dim_client_reconciliation`, tabela nova) e toggle `import_io_plan` (coluna nova).
+
+**Pendência sinalizada, não implementada:** `sync_drive.py` ainda decide quem processar
+via `CLIENT_MAP`/`PARENT_FOLDER_CLIENTS` hardcoded — não lê `import_io_plan` ainda;
+consumo do lado do pipeline fica para trabalho futuro do `backend`.
+
+Aplicado e verificado em produção (`adframework`): `ALTER TABLE core.dim_client ADD
+COLUMN import_io_plan` + backfill `TRUE` nas 36 linhas existentes; `CREATE TABLE
+core.dim_client_reconciliation` (confirmado via `INFORMATION_SCHEMA` ao vivo). Deploy em
+staging (`douglas-data-hub-00024-th6`) e produção (`douglas-data-hub-prod-00003-vqr`).
+
+Achado à parte: `core/OWNERSHIP.yaml` marcava `dim_client_reconciliation` como
+`staging_only` no próprio commit que a criou — nota desatualizada em relação ao commit,
+corrigida nesta sessão de documentação (a tabela existe e foi confirmada em produção).
+
+**Arquivos tocados:** `hub/app.py`, `core/OWNERSHIP.yaml`,
+`core/migration/12_dim_client_add_import_io_plan.sql`,
+`core/ddl/dim_client_reconciliation.sql`, `docs/core_layer_design.md`, `hub/README.md`.
+**Commit:** `763aa6a` (branch `master`).
+
+---
+
 ## 2026-09-07 — Sessão overnight: DAXX + dupla contagem + 3 telas novas no Hub + Hub de produção Fase 2 + bug crítico TARGET N + strategy_format_map
 
 **DAXX — sync de IO Plan corrigido (parcial):** `DAXX` era pasta guarda-chuva com 7 sub-clientes no Drive (Caloi, Casa do Construtor, Dr Consulta, Efibank, Fox Lux, Mastercard-CRM Bonus, Senior Sistemas), tratada como cliente único em `CLIENT_MAP` — `sync_drive.py` rodava todo dia sem trazer dado de nenhum deles, silenciosamente, porque `find_plano_files()` só procurava pasta de ano direto dentro do cliente. Corrigido com `PARENT_FOLDER_CLIENTS`. Só Casa do Construtor (`casa_construtor_adf15c2c`) confirmado e sincronizado; os outros 6 seguem pendentes de confirmação de `client_id` (2 ambíguos, 1 não cadastrado, 3 sem `parent_client_id` linkado em `dim_client`). Notion: task atualizada, `Status → Waiting`.

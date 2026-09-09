@@ -81,8 +81,7 @@ objects:
   - name: dim_client_reconciliation
     dataset: core
     owner: pipeline
-    status: "staging_only"
-    notes: "Decisao humana persistida sobre pares de dim_client sinalizados como possivel duplicata pela tela Gerenciamento de Clientes do Hub (2026-09-07). So em douglas-bq-staging ate autorizacao explicita do Douglas para promover pra producao -- ver core/ddl/dim_client_reconciliation.sql e hub/app.py."
+    notes: "Decisao humana persistida sobre pares de dim_client sinalizados como possivel duplicata pela tela Gerenciamento de Clientes do Hub (2026-09-06/07). Criada em staging e promovida para producao em 2026-09-08 (commit 763aa6a) -- existe hoje em `adframework.core.dim_client_reconciliation` (confirmado via INFORMATION_SCHEMA ao vivo), vazia (nenhuma decisao gravada ainda). Nota anterior deste arquivo ('staging_only', escrita no mesmo commit) ficou desatualizada em relacao ao proprio commit que a introduziu -- corrigido 2026-09-08. Ver core/ddl/dim_client_reconciliation.sql e hub/app.py."
 
   # --- Admin UI do Shiro -- NUNCA referenciar no pipeline gold ---
   - name: io_manager_v2

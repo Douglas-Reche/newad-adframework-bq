@@ -7,9 +7,10 @@ status inferido dos jobs de ingestao diaria, um tracker manual dos Power BI em
 desenvolvimento, um navegador de schema/preview, um query runner, a fila de aprovacao de
 propostas de mudanca, a carga generica de overrides historicos por cliente (upload de
 arquivo local ou link do Google Sheets), a configuracao de overrides por cliente
-(status/toggle sobre `core.client_reporting_source_config`) e a gestao de regras de
-negocio por cliente (`core.client_business_rules`, staging). Nao depende de nenhum codigo
-do repo do Shiro (`rshiro-newad/adframework`).
+(status/toggle sobre `core.client_reporting_source_config`), a gestao de regras de
+negocio por cliente (`core.client_business_rules`, staging) e o cadastro/gerenciamento de
+clientes (`core.dim_client`, escrita real). Nao depende de nenhum codigo do repo do Shiro
+(`rshiro-newad/adframework`).
 
 Tema visual (2026-08-10): cores e tipografia do Manual de Marca da NewAd
 (`hub/.streamlit/config.toml` -- fundo claro, azul-marinho `#0C2443` como texto, roxo
@@ -120,6 +121,34 @@ essa confirmacao na UI.
   de apresentacao. Testado via UI (validacoes, guard contra regra duplicada, fluxo de
   pausa) -- **a escrita real (INSERT/UPDATE) em BigQuery ainda nao foi confirmada
   ponta-a-ponta**, precisa de validacao rodando local com sessao autenticada propria.
+- **Gerenciamento de Clientes** (2026-09-08, commit `763aa6a`) -- CRUD sobre
+  `core.dim_client`, escrita real ja confirmada em producao (`adframework`), mesma writer
+  SA das demais abas (dataEditor escopado a `core`). Cobre:
+  1. **Status ativo/inativo** editavel diretamente (campo `status`) -- deixa de ser
+     calculado por freshness como antes.
+  2. **Hierarquia guarda-chuva** -- dropdown de `parent_client_id`, recalcula
+     `client_level` automaticamente.
+  3. **Nome fantasia** editavel.
+  4. **Deteccao + reconciliacao de duplicatas** -- heuristica (similaridade de nome,
+     limiar mais baixo quando os dois candidatos compartilham `parent_client_id`) roda
+     sobre o cadastro real; testada contra dado real, achou o par
+     `dr_consulta_215378ef`/`dr_consulta_rj_11040bf9` (mesmo parent DAXX) sem dica manual.
+     Decisao (`same`/`different`) gravada em `core.dim_client_reconciliation` (tabela
+     nova) -- nunca pergunta de novo sobre o mesmo par; decisao `same` tambem desativa o
+     `client_id` duplicado em `dim_client` (`deactivate_duplicate_client()`).
+  5. **Toggle `import_io_plan`** (coluna nova em `dim_client`, `BOOL`, default `TRUE`,
+     backfill aplicado nas 36 linhas existentes) -- pensado para controlar se
+     `scripts/io_plan/sync_drive.py` deve processar o cliente no sync automatico do
+     Drive. **Pendencia sinalizada, nao implementada:** `sync_drive.py` ainda decide via
+     `CLIENT_MAP`/`PARENT_FOLDER_CLIENTS` hardcoded no proprio arquivo -- nao le este
+     campo ainda. Consumo do lado do pipeline fica para trabalho futuro do agente
+     `backend` (ver `core/migration/12_dim_client_add_import_io_plan.sql`).
+
+  Aplicado e verificado em producao (`adframework`) 2026-09-08: `ALTER TABLE` + backfill
+  de `import_io_plan`, `CREATE TABLE core.dim_client_reconciliation`. Deploy nos dois
+  ambientes -- staging (`douglas-data-hub-00024-th6`) e producao
+  (`douglas-data-hub-prod-00003-vqr`). Ver `docs/core_layer_design.md` (`dim_client`,
+  `dim_client_reconciliation`) para o schema completo.
 
 ## Rodar local
 

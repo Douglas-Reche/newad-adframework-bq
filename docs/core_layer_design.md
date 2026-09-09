@@ -130,8 +130,29 @@ Grain: `client_id`. Cadastro de cliente — 36 linhas em produção (2026-08-09)
 | parent_client_id | STRING | hierarquia pai-filho (ex: TecPar→Amigo) — consumida por `gold.dim_advertiser` pro rollup no Power BI |
 | client_level | INT64 | nível na hierarquia |
 | newad_account_id | STRING | coluna real em produção não presente no DDL commitado originalmente — sincronizada em 2026-08-06 (ver `known_issues.md` R5) |
+| import_io_plan | BOOL | coluna nova (2026-09-08, `core/migration/12_dim_client_add_import_io_plan.sql`) — controla se `scripts/io_plan/sync_drive.py` deve processar o cliente no sync automático do Drive, independente de `status` (comercial). Default `TRUE`; backfill aplicado nas 36 linhas existentes. Editável via aba "Gerenciamento de Clientes" do Hub. `sync_drive.py` ainda **não lê** este campo — continua decidindo via `CLIENT_MAP`/`PARENT_FOLDER_CLIENTS` hardcoded; consumo do lado do pipeline é trabalho futuro do `backend` |
 
-Status: ✅ validado em 2026-08-09 (schema real).
+Status: ✅ validado em 2026-09-08 (schema real, `import_io_plan` confirmado via `INFORMATION_SCHEMA` + backfill 36/36 `TRUE`).
+
+### `dim_client_reconciliation`
+Grain: 1 linha por par não-ordenado de `client_id` (`client_id_a` sempre o lexicograficamente
+menor). Registra decisão humana sobre pares de `dim_client` sinalizados como possível
+duplicata pela aba "Gerenciamento de Clientes" do Hub — sem SCD2 (decisão corrigível via
+MERGE). Criada 2026-09-08 (commit `763aa6a`, `core/ddl/dim_client_reconciliation.sql`).
+
+| Campo | Tipo | Origem/lógica |
+|---|---|---|
+| client_id_a | STRING | menor dos dois `client_id` do par (normalizado no código do Hub, não no BQ) |
+| client_id_b | STRING | maior dos dois |
+| decision | STRING | `same` (mesmo cliente — desativa o duplicado em `dim_client`, `status='inactive'`) ou `different` (dismiss, `dim_client` não é alterado) |
+| decided_by | STRING | ex: `douglas` |
+| decided_at | TIMESTAMP | |
+| notes | STRING | evidência/contexto da decisão |
+
+Detecção de duplicatas (`detect_duplicate_candidates()` em `hub/app.py`) testada contra dado
+real — achou o par `dr_consulta_215378ef`/`dr_consulta_rj_11040bf9` (mesmo `parent_client_id`
+DAXX) sem dica manual. Status: ✅ tabela validada em produção 2026-09-08 (confirmado via
+`INFORMATION_SCHEMA`), vazia — o par acima segue sem decisão registrada.
 
 ### `platform_client_links`
 Grain: `platform + link_type + link_value`. Vínculo plataforma→cliente — 183 linhas em
