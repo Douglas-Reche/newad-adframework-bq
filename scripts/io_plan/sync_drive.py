@@ -104,14 +104,18 @@ CLIENT_MAP = {
 #                          dim_client, sem parent_client_id e sem menção a "CRM Bonus" no
 #                          nome. Pode ser o mesmo cliente ou um sub-produto ainda não
 #                          cadastrado — não assumir.
-#   SENIOR SISTEMAS      → NÃO ENCONTRADO em dim_client sob nenhuma variação de nome
-#                          (Senior, Sênior, Sistemas). Cliente não cadastrado ainda.
+#   SENIOR SISTEMAS      → cadastrado em 2026-10-09 (senior_sistemas_a42bdbc9,
+#                          status pending_confirmation) -- cliente achado via
+#                          campanhas reais em raw.ms_campaigns (ERP/HCM/AGRO,
+#                          Set-Out/2026), inserido primeiro em staging antes
+#                          de subir pra core.dim_client de produção.
 #
-# Só CASA DO CONSTRUTOR entra no mapa agora — os outros 6 ficam de fora até o
-# client_id de cada um ser confirmado (nunca inventar).
+# CASA DO CONSTRUTOR e SENIOR SISTEMAS entram no mapa agora — os outros 5
+# ficam de fora até o client_id de cada um ser confirmado (nunca inventar).
 PARENT_FOLDER_CLIENTS = {
     "DAXX": {
         "CASA DO CONSTRUTOR": "casa_construtor_adf15c2c",
+        "SENIOR SISTEMAS": "senior_sistemas_a42bdbc9",
     },
 }
 
@@ -296,6 +300,15 @@ HEADER_KEYWORDS = {
     "ctr": "ctr",
     "cliques mensais": "clicks",
     "cliques": "clicks",
+    "clicks": "clicks",  # 2026-09-14: Casa do Construtor usa header em ingles
+                          # ("CLICKS", nao "CLIQUES") -- nao batia com nenhuma
+                          # keyword existente (todas em portugues; "cliques" nao
+                          # e substring de "clicks", ordens de letra diferentes
+                          # -- c-l-i-Q-u-e-s vs c-l-i-CK-s), entao a coluna real
+                          # de clicks (confirmada com dado, ex: 5120 pra Video
+                          # Ads TARGET 1 em 10/08-09/09) nunca era capturada,
+                          # clicks ficava NULL pra sempre nesse cliente. Achado
+                          # ao investigar reclamacao real do Douglas.
     "alcance": "reach",
 }
 
@@ -327,13 +340,26 @@ def _gcell(row, col_map: dict, key: str):
 # confundida com o marcador de um bloco novo.
 TARGET_BLOCK_RE = re.compile(r"^TARGET\s*\d+$")
 
+# Linha isolada tipo "PI 7877 ERP" / "PI 7886 HCM RH" / "PI 7892 AGRO" que
+# também marca início de bloco empilhado -- achado real 2026-10-09, Senior
+# Sistemas (DAXX), mesmo problema estrutural da Casa do Construtor mas com
+# divisão por PRODUTO/unidade de negócio em vez de público-alvo. Reaproveita
+# o campo target_group pra guardar o rótulo do produto (decisão do Douglas,
+# 2026-10-14 -- mais simples que criar uma dimensão nova "plan_group"; as
+# duas semânticas, "TARGET N" e "PI <num> <produto>", nunca coexistem no
+# mesmo arquivo, então não há ambiguidade de leitura). Grupo capturado é só
+# o texto depois do número do PI (ex: "ERP", "HCM RH", "AGRO").
+PI_BLOCK_RE = re.compile(r"^PI\s+\d+\s+(.+)$")
+
 
 def _find_next_block(ws, start_row: int, max_row: int):
     """
     A partir de start_row, procura o próximo header de colunas (linha com
     >=2 chaves reconhecidas por _map_headers) até max_row (inclusive).
-    Ao longo do caminho, registra a última linha isolada "TARGET N" vista
-    antes desse header -- vira o target_group do bloco que começa nele.
+    Ao longo do caminho, registra a última linha isolada "TARGET N" ou
+    "PI <num> <produto>" vista antes desse header -- vira o target_group do
+    bloco que começa nele (ver TARGET_BLOCK_RE/PI_BLOCK_RE acima pros dois
+    formatos aceitos).
     Retorna (header_row_num, col_map, target_group) ou (None, None, None)
     se nenhum header for encontrado na janela.
     """
@@ -342,6 +368,10 @@ def _find_next_block(ws, start_row: int, max_row: int):
         row_text = " ".join(str(c.value).strip() if c.value else "" for c in row if c.value).upper()
         if TARGET_BLOCK_RE.fullmatch(row_text):
             target_group = row_text
+            continue
+        pi_match = PI_BLOCK_RE.fullmatch(row_text)
+        if pi_match:
+            target_group = pi_match.group(1).strip()
             continue
         candidate_map = _map_headers(row)
         if len(candidate_map) >= 2:
